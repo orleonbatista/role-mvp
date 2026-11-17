@@ -155,6 +155,7 @@ function LeadSheet({ open, onClose, place, defaultName, onDone }: { open: boolea
   const [time, setTime] = useState('20h')
   const [people, setPeople] = useState(place.privateSpace ? 10 : 2)
   const [name, setName] = useState(defaultName ?? '')
+  useEffect(() => { if (defaultName && !name) setName(defaultName) }, [defaultName]) // eslint-disable-line react-hooks/exhaustive-deps
   const [contact, setContact] = useState('')
   const [note, setNote] = useState('')
   const sel = day ?? days[0]?.key
