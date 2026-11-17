@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0a0a0b" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Vota no rolê — rolê.</title>
+    <!-- Página estática (HTTP 200) só para o preview do link no WhatsApp/Telegram/iMessage.
+         Crawlers não rodam JS: leem estas tags. Pessoas são redirecionadas na hora para a votação. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="rolê." />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:title" content="Onde vai ser o rolê? Vota aqui 🗳️" />
+    <meta property="og:description" content="Sua turma está decidindo. Vota em 10 segundos, sem instalar nada." />
+    <meta property="og:url" content="%VITE_SITE_URL%/v/" />
+    <meta property="og:image" content="%VITE_SITE_URL%/og.jpg" />
+    <meta property="og:image:secure_url" content="%VITE_SITE_URL%/og.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Votação do rolê com três opções de bares" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <style>html,body{margin:0;height:100%;background:#0a0a0b;color:#8b8b94;font:15px system-ui;display:grid;place-items:center}</style>
+    <script>
+      // /v/?id=r-xxx&src=wa#p=...  ->  /r/r-xxx?src=wa#p=...
+      (function () {
+        var q = new URLSearchParams(location.search)
+        var id = q.get('id')
+        if (!id) {
+          try { var m = location.hash.match(/p=([A-Za-z0-9_-]+)/); id = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))))).id } catch (e) {}
+        }
+        q.delete('id')
+        var base = location.pathname.replace(/v\/?(index\.html)?$/, '')
+        var qs = q.toString()
+        location.replace(base + (id ? 'r/' + encodeURIComponent(id) : '') + (qs ? '?' + qs : '') + location.hash)
+      })()
+    </script>
+  </head>
+  <body>abrindo a votação…</body>
+</html>

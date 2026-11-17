@@ -23,7 +23,8 @@ export function shareUrl(d: RequestDetail) {
     optionIds: d.options.map((o) => o.id), times: d.times,
     author: { name: d.author.name.split(' ')[0], hue: d.author.hue }, createdAt: d.request.createdAt,
   }
-  return `${location.origin}${import.meta.env.BASE_URL}r/${d.request.id}#p=${b64url(JSON.stringify(payload))}`
+  // /v/ é uma página estática com preview (og:*) que redireciona para /r/<id>; o #p= nunca vai ao servidor
+  return `${location.origin}${import.meta.env.BASE_URL}v/?id=${encodeURIComponent(d.request.id)}#p=${b64url(JSON.stringify(payload))}`
 }
 
 export function readPayload(hash: string): SharePayload | null {

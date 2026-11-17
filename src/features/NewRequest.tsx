@@ -6,7 +6,7 @@ import { Chip, Page, TopBar, cx } from '../ui/primitives'
 import { ease, pop } from '../ui/motion'
 import { OCCASIONS, VIBES, nicheLabel, occasionLabel, vibeLabel } from '../lib/labels'
 import { track } from '../lib/track'
-import { isVague } from '../mocks/ranker'
+import { isVague, parseRequest } from '../mocks/ranker'
 import { parseText, useCreateRequest } from '../lib/api'
 import type { Criteria, Occasion, Vibe } from '../lib/types'
 
@@ -64,10 +64,12 @@ export function NewRequest() {
   async function submit(force = false) {
     if (text.trim().length < 6) return
     // pedido vago: pergunta antes de chutar (uma vez)
-    const vague = parsed ? isVague({ ...parsed, occasion: occ, vibes: [...parsed.vibes, ...vibes] }) : true
+    // analisa o texto atual na hora (a análise ao vivo tem debounce e pode estar atrasada)
+    const now = parseRequest(text)
+    const vague = isVague({ ...now, occasion: occasion ?? now.occasion, vibes: [...now.vibes, ...vibes] })
     if (vague && !force && !clarify) { setClarify(true); track('clarify_shown', { text }); return }
     const { id } = await create.mutateAsync({ text, overrides: { occasion, groupSize: group, vibes: vibes.length ? [...new Set([...(parsed?.vibes ?? []), ...vibes])] : undefined } })
-    track('request_created', { vague, clarified: clarify, groupSize: size, occasion: occ, niches: parsed?.niches, unmet })
+    track('request_created', { vague, clarified: clarify, groupSize: group ?? now.groupSize, occasion: occasion ?? now.occasion, niches: now.niches, unmet })
     nav(`/pedido/${id}`, { replace: true })
   }
 

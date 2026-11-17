@@ -17,6 +17,8 @@ const ollamaProxy = {
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/',
   plugins: [react(), tailwindcss()],
+  // v/index.html: página estática com og:* para o preview do link da votação (HTTP 200, sem JS para crawlers)
+  build: { rolldownOptions: { input: { main: 'index.html', v: 'v/index.html' } } },
   server: { host: true, port: 5173, proxy: ollamaProxy },
   preview: { host: true, port: 4173, proxy: ollamaProxy },
 })
