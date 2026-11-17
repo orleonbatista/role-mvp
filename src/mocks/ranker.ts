@@ -193,7 +193,7 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
     }
 
     score += (place.rating - 8) * 1.5
-    if (place.rating >= 8.8) why.push([1.2, `Nota ${place.rating.toFixed(1)} na comunidade`])
+    if (place.rating >= 8.8) why.push([1.2, place.source === 'google' ? `Nota ${(place.rating / 2).toFixed(1)} no Google (${place.ratingCount})` : `Nota ${place.rating.toFixed(1)} na comunidade`])
 
     const reasons = why.sort((a, b) => b[0] - a[0]).map(([, s]) => s).filter((s, i, a) => a.indexOf(s) === i).slice(0, 3)
     if (!reasons.length) reasons.push(place.tagline)

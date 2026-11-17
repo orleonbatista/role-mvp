@@ -31,7 +31,7 @@ db.exec(`
   );
   CREATE TABLE IF NOT EXISTS suggestions (
     id TEXT PRIMARY KEY, request_id TEXT NOT NULL, place_id TEXT NOT NULL, by_name TEXT NOT NULL, comment TEXT NOT NULL,
-    hue INTEGER, device TEXT NOT NULL, at INTEGER NOT NULL, UNIQUE (request_id, place_id, by_name)
+    hue INTEGER, device TEXT NOT NULL, at INTEGER NOT NULL, place TEXT, UNIQUE (request_id, place_id, by_name)
   );
   CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY, data TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pendente', device TEXT NOT NULL, at INTEGER NOT NULL, reviewed_at INTEGER
@@ -42,22 +42,33 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY, device TEXT NOT NULL, data TEXT NOT NULL, at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS leads (id TEXT PRIMARY KEY, device TEXT NOT NULL, data TEXT NOT NULL, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_votes_req ON votes(request_id);
+
   CREATE INDEX IF NOT EXISTS ix_sug_req ON suggestions(request_id);
   CREATE INDEX IF NOT EXISTS ix_events_at ON events(at);
 `)
+
+// migração: coluna com o resumo do lugar do Google na sugestão (bancos criados antes dela)
+if (!db.prepare("SELECT 1 FROM pragma_table_info('suggestions') WHERE name = 'place'").get()) db.exec('ALTER TABLE suggestions ADD COLUMN place TEXT')
 
 /* ---------- validação ---------- */
 const RE = {
   request: /^r-[a-z0-9-]{1,24}$/,
   sub: /^ev-u-[a-z0-9-]{1,40}$/,
   device: /^[a-z0-9-]{8,40}$/,
-  place: /^[a-z0-9-]{2,60}$/,
+  // catálogo (ex.: jazz-laje) ou Google Places (g-ChIJ...)
+  place: /^(?:[a-z0-9-]{2,60}|g-[A-Za-z0-9_-]{5,120})$/,
   evName: /^[a-z_]{2,40}$/,
 }
 const str = (v, n) => String(v ?? '').slice(0, n)
 const int = (v, d = 0) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : d)
 const json = (v, max) => { const s = JSON.stringify(v ?? null); return s.length <= max ? s : null }
 const parse = (s) => { try { return JSON.parse(s) } catch { return null } }
+
+/** resumo de lugar do Google: [id, nome, tipo, bairro, estilos, preço, nota, nº avaliações, link do Maps] */
+function snap(v) {
+  if (!Array.isArray(v) || !/^g-[A-Za-z0-9_-]{5,120}$/.test(String(v[0]))) return null
+  return [String(v[0]), str(v[1], 80), str(v[2], 12), str(v[3], 40), (Array.isArray(v[4]) ? v[4] : []).slice(0, 3).map((x) => str(x, 20)), int(v[5]), Number(v[6]) || 0, int(v[7]), str(v[8], 300)]
+}
 
 function isAdmin(req) {
   const k = Buffer.from(String(req.headers['x-admin-key'] ?? ''))
@@ -74,8 +85,8 @@ const q = {
   votes: db.prepare('SELECT device, kind, value, voter, at FROM votes WHERE request_id = ? ORDER BY at'),
   vote: db.prepare(`INSERT INTO votes (request_id, device, kind, value, voter, at) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT (request_id, device, kind) DO UPDATE SET value = excluded.value, voter = excluded.voter, at = excluded.at`),
-  sugs: db.prepare('SELECT id, place_id AS placeId, by_name AS byName, comment, hue, device, at FROM suggestions WHERE request_id = ? ORDER BY at'),
-  sug: db.prepare('INSERT OR IGNORE INTO suggestions (id, request_id, place_id, by_name, comment, hue, device, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
+  sugs: db.prepare('SELECT id, place_id AS placeId, by_name AS byName, comment, hue, device, at, place FROM suggestions WHERE request_id = ? ORDER BY at'),
+  sug: db.prepare('INSERT OR IGNORE INTO suggestions (id, request_id, place_id, by_name, comment, hue, device, at, place) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
   insSub: db.prepare('INSERT OR IGNORE INTO submissions (id, data, device, at) VALUES (?, ?, ?, ?)'),
   subs: db.prepare('SELECT * FROM submissions ORDER BY at DESC LIMIT 200'),
   mySubs: db.prepare('SELECT id, status, reviewed_at FROM submissions WHERE device = ?'),
@@ -94,7 +105,7 @@ function requestState(id) {
     authorDevice: r.author_device,
     decision: r.decided_place ? { placeId: r.decided_place, time: r.decided_time ?? undefined, at: r.decided_at } : null,
     votes: q.votes.all(id),
-    suggestions: q.sugs.all(id),
+    suggestions: q.sugs.all(id).map((x) => ({ ...x, place: x.place ? parse(x.place) : undefined })),
   }
 }
 
@@ -147,7 +158,8 @@ export function handleApi(method, path, req, body) {
       text: str(body.text, 400), criteria: body.criteria, optionIds: (body.optionIds ?? []).filter((x) => RE.place.test(String(x))).slice(0, 6),
       times: (body.times ?? []).map((t) => str(t, 20)).slice(0, 4), author: { name: str(body.author?.name, 40), hue: int(body.author?.hue) },
       eventId: RE.place.test(String(body.eventId ?? '')) ? body.eventId : undefined,
-    }, 8000)
+      places: (Array.isArray(body.places) ? body.places : []).slice(0, 6).map(snap).filter(Boolean),
+    }, 12000)
     if (!data) return bad('too_large', 413)
     const ins = q.insReq.run(id, data, device, int(body.createdAt, now))
     if (!ins.changes) q.updReq.run(data, id, device) // o autor pode atualizar (ex.: novas opções); os outros não
@@ -175,11 +187,14 @@ export function handleApi(method, path, req, body) {
     if (!RE.place.test(placeId)) return bad('place')
     const by = str(body.by, 40).trim() || 'Alguém'
     const id = `rs-${randomBytes(5).toString('hex')}`
-    const ins = q.sug.run(id, m[1], placeId, by, str(body.comment, 200) || 'Sugeri esse aqui!', int(body.hue, 200), device, now)
+    const ps = placeId.startsWith('g-') ? snap(body.place) : null
+    if (placeId.startsWith('g-') && (!ps || ps[0] !== placeId)) return bad('place_snapshot')
+    const ins = q.sug.run(id, m[1], placeId, by, str(body.comment, 200) || 'Sugeri esse aqui!', int(body.hue, 200), device, now, ps ? JSON.stringify(ps) : null)
     // a sugestão vira opção da votação pra todo mundo (máx. 6 opções; as mais antigas da IA saem primeiro)
     const data = parse(r.data)
     if (!data.optionIds.includes(placeId)) {
       data.optionIds = [...data.optionIds, placeId].slice(-6)
+      if (ps) data.places = [...(data.places ?? []).filter((p) => p[0] !== placeId), ps].slice(-6)
       db.prepare('UPDATE requests SET data = ? WHERE id = ?').run(JSON.stringify(data), m[1])
     }
     return ok({ ok: true, duplicate: !ins.changes })

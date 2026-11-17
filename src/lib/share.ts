@@ -1,6 +1,8 @@
 import type { EventDraft, RequestDetail } from './types'
 import { SEED_COUNT, placeById, places } from '../mocks/seeds/places'
 import { parseRequest, timeOptions, unmetFor } from '../mocks/ranker'
+import { adoptSnaps, snapsFor } from '../mocks/gplaces'
+import { snapOf } from './places'
 
 /* Link autossuficiente e CURTO: o pedido vai comprimido no fragmento (#d=...), que nunca chega ao servidor.
    Só o essencial viaja (id, texto, opções, autor); critérios e horários são recalculados do texto.
@@ -35,7 +37,9 @@ const idOf = (r: unknown) => (typeof r === 'string' ? (placeById.has(r) ? r : un
 
 export async function shareUrl(d: RequestDetail) {
   const idx = d.options.map((o) => refOf(o.id)).filter((i) => i !== -1)
-  const compact = [d.request.id, d.request.text, idx, d.author.name.split(' ')[0], d.author.hue]
+  const gs = snapsFor(d.options.map((o) => o.id))
+  // 6º item (opcional): resumo dos lugares do Google, que o outro aparelho não tem no catálogo
+  const compact = [d.request.id, d.request.text, idx, d.author.name.split(' ')[0], d.author.hue, ...(gs.length ? [gs] : [])]
   const json = new TextEncoder().encode(JSON.stringify(compact))
   const base = `${location.origin}${import.meta.env.BASE_URL}v/?id=${encodeURIComponent(d.request.id)}`
   if (canCompress()) return `${base}#d=${toB64url(await pipe(json, new CompressionStream('deflate-raw')))}`
@@ -44,8 +48,9 @@ export async function shareUrl(d: RequestDetail) {
 
 function expand(arr: unknown): SharePayload | null {
   if (!Array.isArray(arr)) return null
-  const [id, text, idx, name, hue] = arr as [string, string, (number | string)[], string, number]
+  const [id, text, idx, name, hue, gs] = arr as [string, string, (number | string)[], string, number, unknown]
   if (typeof id !== 'string' || typeof text !== 'string') return null
+  adoptSnaps(gs)
   const criteria = parseRequest(text)
   criteria.unmet = unmetFor(criteria, places)
   return {
@@ -78,7 +83,8 @@ export const suggestUrl = (voteLink: string) => voteLink.replace('/v/?', '/v/?to
 const b64 = (s: string) => toB64url(new TextEncoder().encode(s))
 /** link de retorno: leva o pedido (#d=) + a sugestão (&g=) de volta ao autor */
 export function returnUrl(voteLink: string, placeId: string, by: string, comment: string, hue: number) {
-  const g = b64(JSON.stringify([refOf(placeId), by.slice(0, 30), comment.slice(0, 140), hue]))
+  const p = placeById.get(placeId)
+  const g = b64(JSON.stringify([refOf(placeId), by.slice(0, 30), comment.slice(0, 140), hue, ...(p?.source === 'google' ? [snapOf(p)] : [])]))
   return voteLink.replace('/v/?', '/v/?to=i&').replace(/[?&]src=[^&#]*/, '') + `&g=${g}`
 }
 
@@ -86,7 +92,8 @@ export function readSuggestion(hash: string): { placeId: string; by: string; com
   const m = hash.match(/[#&]g=([A-Za-z0-9_-]+)/)
   if (!m) return null
   try {
-    const [idx, by, comment, hue] = JSON.parse(new TextDecoder().decode(fromB64url(m[1])))
+    const [idx, by, comment, hue, snap] = JSON.parse(new TextDecoder().decode(fromB64url(m[1])))
+    if (snap) adoptSnaps([snap])
     const pid = idOf(idx)
     return pid ? { placeId: pid, by: String(by || 'Alguém'), comment: String(comment ?? ''), hue: Number(hue) || 200 } : null
   } catch { return null }

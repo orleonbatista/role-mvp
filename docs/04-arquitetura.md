@@ -42,6 +42,7 @@ o **backend**, que compartilha dados entre aparelhos. Se o PC desliga, o app vol
 | Hospedagem | GitHub Pages + workflow `pages.yml` | Grátis; `404.html` faz o fallback da SPA |
 | LLM | Ollama + qwen2.5:7b (GPU de 8 GB) | Custo zero; saída JSON com schema |
 | Backend | Node 22 + `node:sqlite` (sem dependências) | Roda no PC, um arquivo `.db`, zero instalação |
+| Lugares reais | Google Places API (New), Text Search direto do navegador (`lib/places.ts`) | Qualquer lugar de SP sem backend; chave restrita por domínio + cotas diárias |
 | Exposição | Cloudflare Quick Tunnel | HTTPS público sem conta, domínio nem abrir porta no roteador |
 
 ## Pastas
@@ -107,6 +108,7 @@ docs/         esta documentação
 |---|---|---|
 | Criar pedido (ou convite de evento) | `db.requests` | `POST /api/requests` (o dono é o aparelho autor) |
 | Abrir pedido (polling a cada 4s) | — | `GET /api/requests/:id` → mescla opções, **votos de outros aparelhos**, sugestões e decisão |
+| Sugerir lugar do Google | `db.gplaces` (id + resumo) | resumo vai junto na sugestão e no pedido (`places`); link carrega o resumo no 6º item do `#d=` |
 | Votar | `db.votes` | `POST …/votes` (1 voto por aparelho e tipo; voto do modo demo nunca sobe) |
 | Sugerir | `db.answers` + opção | `POST …/suggestions` → vira opção pra todos (máx. 6) |
 | Fechar | `status=decidido` | `POST …/decide` (só o aparelho autor; outro recebe 403) |

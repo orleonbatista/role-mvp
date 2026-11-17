@@ -176,7 +176,7 @@ export function VotePage() {
                         {p.name}
                         <AnimatePresence>{isLeader && <motion.span initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0 }} transition={spring}><Crown size={14} className="text-accent" /></motion.span>}</AnimatePresence>
                       </p>
-                      <p className="text-xs text-mute">{p.hood} · {priceLabel(p.price)}</p>
+                      <p className="text-xs text-mute">{p.hood} · {p.source === 'google' ? <>Google Maps{p.ratingCount ? ` ★ ${(p.rating / 2).toFixed(1)}` : ''}</> : priceLabel(p.price)}</p>
                       <div className="mt-1.5 flex -space-x-1.5">
                         <AnimatePresence>
                           {t?.voters.map((v) => (

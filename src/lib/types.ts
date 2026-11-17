@@ -41,6 +41,11 @@ export interface Place {
   promoter?: string
   ticketUrl?: string
   eventDate?: string
+  /** lugar vindo do Google Maps (Places API New): nota/horário/preço são do Google, estilo é estimado */
+  source?: 'google'
+  mapsUrl?: string
+  lat?: number
+  lng?: number
 }
 
 export interface Person {

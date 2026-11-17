@@ -2,6 +2,8 @@ import type { EventDraft, EventSubmission, Feedback, Lead, RoleRequest, TrackEve
 import { db } from '../db/db'
 import { gatewayConfig } from './llm'
 import { placeById } from './seeds/places'
+import { adoptSnaps, snapsFor } from './gplaces'
+import { snapOf } from '../lib/places'
 
 /* Sincronização com o backend do PC (llm-gateway/api.mjs, exposto no mesmo túnel do LLM).
    Regra: o app NUNCA depende dele. Toda escrita vai primeiro pro IndexedDB local; depois, se o backend
@@ -71,17 +73,18 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opt
 
 /* ---------- pedidos, votos, sugestões, decisão ---------- */
 interface RemoteState {
-  request: { id: string; text: string; criteria: RoleRequest['criteria']; optionIds: string[]; times: string[]; author: { name: string; hue: number }; createdAt: number; eventId?: string }
+  request: { id: string; text: string; criteria: RoleRequest['criteria']; optionIds: string[]; times: string[]; author: { name: string; hue: number }; createdAt: number; eventId?: string; places?: unknown[] }
   authorDevice: string
   decision: { placeId: string; time?: string; at: number } | null
   votes: { device: string; kind: 'place' | 'time'; value: string; voter: string; at: number }[]
-  suggestions: { id: string; placeId: string; byName: string; comment: string; hue: number; device: string; at: number }[]
+  suggestions: { id: string; placeId: string; byName: string; comment: string; hue: number; device: string; at: number; place?: unknown }[]
 }
 
 const pushed = new Set<string>()
 export async function pushRequest(r: RoleRequest, author: { name: string; hue: number }) {
   const ok = await call('POST', '/api/requests', {
     id: r.id, text: r.text, criteria: r.criteria, optionIds: r.optionIds ?? [], times: r.times ?? [], author, createdAt: r.createdAt, eventId: r.eventId,
+    places: snapsFor(r.optionIds ?? []),
   })
   if (ok) pushed.add(r.id)
   return !!ok
@@ -94,6 +97,8 @@ export async function syncRequest(id: string): Promise<boolean> {
   if (!s) return false
   const me = deviceId()
   const mine = s.authorDevice === me
+  // lugares do Google que este aparelho ainda não conhece
+  adoptSnaps([...(s.request.places ?? []), ...s.suggestions.map((x) => x.place).filter(Boolean)])
   const optionIds = s.request.optionIds.filter((x) => placeById.has(x))
   const local = await db.requests.get(id)
   if (!local) {
@@ -132,8 +137,10 @@ export async function syncRequest(id: string): Promise<boolean> {
 
 export const pushVote = (rid: string, kind: 'place' | 'time', value: string, voter: string) =>
   call('POST', `/api/requests/${encodeURIComponent(rid)}/votes`, { kind, value, voter }).then(Boolean)
-export const pushSuggestion = (rid: string, b: { placeId: string; by: string; comment: string; hue?: number }) =>
-  call('POST', `/api/requests/${encodeURIComponent(rid)}/suggestions`, b).then(Boolean)
+export const pushSuggestion = (rid: string, b: { placeId: string; by: string; comment: string; hue?: number }) => {
+  const p = placeById.get(b.placeId)
+  return call('POST', `/api/requests/${encodeURIComponent(rid)}/suggestions`, { ...b, place: p?.source === 'google' ? snapOf(p) : undefined }).then(Boolean)
+}
 export const pushDecision = (rid: string, placeId: string, time?: string) =>
   call('POST', `/api/requests/${encodeURIComponent(rid)}/decide`, { placeId, time }).then(Boolean)
 

@@ -56,6 +56,39 @@ use `/testes` → "URL do gateway".
 - `https://<túnel>/api/health` → `{ ok: true, db: true }` (backend). Pelo navegador, a resposta vem
   bloqueada por origem, o que é esperado; o próprio `/testes` mostra o status.
 
+## Google Places (busca de qualquer lugar)
+- **Projeto:** `role-mvp` no Google Cloud, com a conta de faturamento "Minha conta de faturamento 2".
+  O pré-pagamento de R$ 170 fica como crédito e é reembolsável se você encerrar a conta de faturamento.
+- **Chave `role-web-places`** (Credenciais):
+  - aceita só os sites `https://orleonbatista.github.io/*`, `http://localhost:5173/*` e `http://localhost:4173/*`;
+  - aceita só a Places API (New).
+  - O site precisa ser o domínio inteiro: em chamadas entre domínios o navegador manda só o domínio, sem
+    o caminho `/role-mvp/`.
+- **Onde a chave fica:**
+  - no site publicado: segredo `PLACES_KEY` do repositório, lido pelo `pages.yml` como `VITE_PLACES_KEY`;
+  - no desenvolvimento: `.env.local`.
+  Ela vai dentro do JavaScript do site, como toda chave de navegador do Google. A proteção é a restrição
+  de site, a restrição de API e as cotas.
+- **Cotas diárias** (APIs e serviços → Places API (New) → Cotas):
+  - SearchText, SearchNearby, GetPlace e GetPhotoMedia: **30 por dia** (≤ 930 por mês, abaixo da menor cota
+    grátis por SKU, de 1.000);
+  - Autocomplete: **300 por dia** (≤ 9.300, abaixo de 10.000);
+  - endpoints que o app não usa: **0**.
+  Ao bater o limite, o Google responde 429 e o app mostra "a cota de hoje acabou". Nada é cobrado.
+- **No app:** no máximo 12 buscas por aparelho por dia, cache por busca, e só busca quando a pessoa toca em
+  "Buscar no Google Maps", nunca enquanto digita.
+- **Alerta de orçamento** "role-mvp alerta": R$ 10 por mês, com e-mail a 10%, 90% e 100%. A Places API não
+  aceita bloqueio automático por gasto (só Cloud Run, Functions, Gemini e Vertex), por isso as cotas são a
+  trava real.
+- **Termos do Google:**
+  - mostramos "Dados de lugares: Google Maps" onde aparecem resultados;
+  - guardamos o `place_id` e um resumo curto (nome, bairro, nota) para a opção aparecer na votação dos
+    outros aparelhos;
+  - a página do lugar aponta pro Google Maps.
+  - Para produção: buscar os detalhes de novo pelo `place_id` em vez de guardar o resumo.
+- **Para aumentar o limite:** suba as cotas aos poucos e acompanhe "Faturamento → Relatórios" antes de passar
+  da cota grátis.
+
 ## Curadoria
 1. Abra `llm-gateway\data\admin-key.txt` no PC e copie a chave.
 2. No celular de quem cura: `/testes` → **Chave da curadoria** → colar → Salvar. Aparece "Curadoria

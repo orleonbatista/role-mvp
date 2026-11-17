@@ -57,8 +57,9 @@ Story com sticker de link → `/v/?src=ig` → votação
   - Agora a votação tem **"Nenhuma te convence? Sugere outro lugar"**.
   - Com backend, a sugestão entra na votação de todo mundo na hora.
   - Sem backend, vira um link de retorno para o autor aprovar.
-- ⚠️ A sugestão só aceita lugares do catálogo, não um lugar qualquer da cidade. Isso se resolve com
-  o Google Places (próximo passo do roadmap).
+- 🔧 **A sugestão só aceitava lugares do catálogo.** Agora, se o lugar não está no catálogo, um toque
+  em **"Buscar no Google Maps"** traz qualquer lugar de SP, já com % de encaixe. A opção escolhida
+  aparece na votação de todos com "Google Maps ★ nota".
 
 ## J5 · Votar e acompanhar
 `/r/:id` → nome → vota no lugar e no horário → pergunta à IA → acompanha
@@ -133,7 +134,7 @@ teu grupo" → votação com o evento como 1ª opção
 
 | # | Gap | Impacto | Caminho |
 |---|---|---|---|
-| 1 | Sugestão só aceita lugares do catálogo | Alto: limita a sugestão "fora da lista" | Google Places (New) com busca ao vivo |
+| 1 | ~~Sugestão só aceita lugares do catálogo~~ | Resolvido com o Google Places (New) | Próximo: usar o Google também para o organizador montar o pedido |
 | 2 | Sem notificação de votos e sugestões | Médio: a organizadora precisa abrir a votação | Web Push, ou resumo pelo WhatsApp |
 | 3 | Identidade por nome e aparelho | Médio: homônimos; fechar só no aparelho de origem | Login leve (link mágico ou WhatsApp OTP) na fase B |
 | 4 | Story exige sticker manual | Médio: atrito no canal mais viral | App nativo (Share to Story com AppID) na fase C |

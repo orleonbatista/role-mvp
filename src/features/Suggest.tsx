@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router'
-import { AlertTriangle, Check, Copy, Search, Send, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Check, Copy, MapPin, Search, Send, Sparkles, X } from 'lucide-react'
 import { Avatar, Button, Cover, EmptyState, Page, Skeleton, Tag, cx } from '../ui/primitives'
 import { Sheet } from '../ui/Sheet'
 import { ease } from '../ui/motion'
@@ -12,6 +12,16 @@ import { currentVoteLink, readPayload, returnUrl } from '../lib/share'
 import { KIND_LABEL, nicheLabel, occasionLabel, priceLabel } from '../lib/labels'
 import { track } from '../lib/track'
 import type { Ranked } from '../lib/types'
+import { placesEnabled, searchGoogle, searchesLeftToday } from '../lib/places'
+import { rank } from '../mocks/ranker'
+import { rememberPlace } from '../mocks/gplaces'
+
+const G_MSG: Record<string, string> = {
+  limite_aparelho: 'Você já usou as buscas no Google de hoje neste celular. Escolha do catálogo ou tente amanhã.',
+  limite_dia: 'A cota de buscas do Google de hoje acabou (mantém o app grátis). Escolha do catálogo ou tente amanhã.',
+  erro: 'Não consegui buscar no Google agora. Tente de novo em instantes.',
+  off: '',
+}
 
 const hueOf = (s: string) => [...s].reduce((a, c) => a + c.charCodeAt(0) * 37, 0) % 360
 
@@ -42,6 +52,9 @@ export function SuggestPage() {
   const [comment, setComment] = useState('')
   const [sent, setSent] = useState<string | null>(null)
   const [live, setLive] = useState(false)
+  const [gq, setGq] = useState('')
+  const [gres, setGres] = useState<Ranked[] | null>(null)
+  const [gstate, setGstate] = useState<'idle' | 'loading' | keyof typeof G_MSG>('idle')
   const [sending, setSending] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -58,9 +71,20 @@ export function SuggestPage() {
   const c = data?.request.criteria
   const inPoll = new Set(data?.options.map((o) => o.id) ?? [])
 
+  async function searchG() {
+    if (!data || q.trim().length < 3) return
+    setGstate('loading'); setGq(q.trim())
+    const r = await searchGoogle(q.trim())
+    track('places_search', { ok: r.ok, reason: r.ok ? undefined : r.reason, n: r.ok ? r.places.length : 0 })
+    if (!r.ok) { setGres(null); setGstate(r.reason); return }
+    setGres(rank(r.places, data.request.criteria))
+    setGstate('idle')
+  }
+
   async function send() {
     if (!picked || !name.trim() || !data || sending) return
     setSending(true)
+    if (picked.place.source === 'google') await rememberPlace(picked.place)
     localStorage.setItem('role.voter', name.trim())
     // entra na votação deste aparelho e, com o backend no ar, na de todo mundo
     const r = await addSuggestion(id, { placeId: picked.place.id, by: name.trim(), comment: comment.trim(), hue: hueOf(name.trim()) }).catch(() => null)
@@ -75,6 +99,31 @@ export function SuggestPage() {
       ? `Sugeri ${picked.place.name} pro rolê${comment.trim() ? `: “${comment.trim()}”` : ''}. Já tá na votação 👇\n${sent}`
       : `Sugeri ${picked.place.name} pro teu rolê${comment.trim() ? `: “${comment.trim()}”` : ''} 👉 Toca pra adicionar na votação:\n${sent}`
     : ''
+
+  function row(r: Ranked, google = false) {
+    const on = picked?.place.id === r.place.id
+    const already = inPoll.has(r.place.id)
+    return (
+      <motion.button key={r.place.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.35, ease }}
+        whileTap={{ scale: 0.98 }} disabled={already} onClick={() => setPicked(on ? null : r)}
+        className={cx('flex items-center gap-3 rounded-[20px] border p-2.5 pr-3 text-left transition-colors', on ? 'border-accent bg-accent/[0.07]' : 'border-line bg-surface/60', already && 'opacity-50')}>
+        <Cover hue={r.place.hue} icon={placeIcon(r.place)} iconSize={20} className="size-14 shrink-0" rounded="rounded-[14px]" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px]">{r.place.name}</p>
+          <p className="truncate text-xs text-mute">
+            {google ? `${r.place.tagline} · ${r.place.hood}` : `${KIND_LABEL[r.place.kind]} · ${r.place.hood} · ${priceLabel(r.place.price)}`}
+            {google && r.place.ratingCount > 0 ? ` · ★ ${(r.place.rating / 2).toFixed(1)} (${r.place.ratingCount})` : ''}
+          </p>
+          {r.warnings[0]
+            ? <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-amber-300/90"><AlertTriangle size={10} />{r.warnings[0]}</p>
+            : <p className="mt-0.5 truncate text-[11px] text-accent/90">{r.reasons[0]}</p>}
+        </div>
+        <span className={cx('shrink-0 rounded-full px-2 py-1 text-[11px]', already ? 'bg-white/10 text-mute' : r.match >= 70 ? 'bg-accent/15 text-accent' : 'bg-amber-400/15 text-amber-300')}>
+          {already ? 'já na lista' : `${r.match}%`}
+        </span>
+      </motion.button>
+    )
+  }
 
   return (
     <Page footer={picked && data ? (
@@ -131,31 +180,42 @@ export function SuggestPage() {
 
           <div className="grid gap-2 px-5 pt-2">
             {!results && [0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}
-            {results?.length === 0 && <p className="py-6 text-center text-sm text-mute">Não achei esse lugar no catálogo (ainda). Com a busca do Google isso vai abrir pra qualquer lugar.</p>}
+            {results?.length === 0 && <p className="py-4 text-center text-sm text-mute">Não achei no catálogo do rolê.{placesEnabled() ? ' Busca no Google Maps aqui embaixo ↓' : ''}</p>}
             <AnimatePresence initial={false}>
-              {results?.map((r) => {
-                const on = picked?.place.id === r.place.id
-                const already = inPoll.has(r.place.id)
-                return (
-                  <motion.button key={r.place.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.35, ease }}
-                    whileTap={{ scale: 0.98 }} disabled={already} onClick={() => setPicked(on ? null : r)}
-                    className={cx('flex items-center gap-3 rounded-[20px] border p-2.5 pr-3 text-left transition-colors', on ? 'border-accent bg-accent/[0.07]' : 'border-line bg-surface/60', already && 'opacity-50')}>
-                    <Cover hue={r.place.hue} icon={placeIcon(r.place)} iconSize={20} className="size-14 shrink-0" rounded="rounded-[14px]" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[15px]">{r.place.name}</p>
-                      <p className="truncate text-xs text-mute">{KIND_LABEL[r.place.kind]} · {r.place.hood} · {priceLabel(r.place.price)}</p>
-                      {r.warnings[0]
-                        ? <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-amber-300/90"><AlertTriangle size={10} />{r.warnings[0]}</p>
-                        : <p className="mt-0.5 truncate text-[11px] text-accent/90">{r.reasons[0]}</p>}
-                    </div>
-                    <span className={cx('shrink-0 rounded-full px-2 py-1 text-[11px]', already ? 'bg-white/10 text-mute' : r.match >= 70 ? 'bg-accent/15 text-accent' : 'bg-amber-400/15 text-amber-300')}>
-                      {already ? 'já na lista' : `${r.match}%`}
-                    </span>
-                  </motion.button>
-                )
-              })}
+              {results?.map((r) => row(r))}
             </AnimatePresence>
           </div>
+
+          {placesEnabled() && (
+            <section className="mt-5 px-5">
+              {q.trim().length >= 3 && gq !== q.trim() && gstate !== 'loading' && (
+                <button onClick={searchG}
+                  className="flex w-full items-center gap-3 rounded-[20px] border border-dashed border-white/15 px-4 py-3 text-left transition-colors hover:border-accent/40">
+                  <MapPin size={18} className="shrink-0 text-accent" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px]">Buscar “{q.trim()}” no Google Maps</span>
+                    <span className="block text-[11px] text-mute">Qualquer lugar de SP · {searchesLeftToday()} buscas hoje neste celular</span>
+                  </span>
+                </button>
+              )}
+              {q.trim().length < 3 && !gres && <p className="text-center text-[12px] text-faint">Não achou? Digite o nome e busque no Google Maps.</p>}
+              {gstate === 'loading' && <div className="grid gap-2"><Skeleton className="h-20" /><Skeleton className="h-20" /></div>}
+              {gstate !== 'idle' && gstate !== 'loading' && G_MSG[gstate] && <p className="rounded-[16px] bg-white/[0.04] p-3 text-[13px] text-mute">{G_MSG[gstate]}</p>}
+              {gres && gstate === 'idle' && (
+                <>
+                  <p className="mb-2 mt-1 flex items-center justify-between text-[12px] uppercase tracking-[0.14em] text-mute">
+                    <span>No Google Maps</span><span className="normal-case tracking-normal text-faint">“{gq}”</span>
+                  </p>
+                  {gres.length === 0 && <p className="py-3 text-center text-sm text-mute">Nada encontrado com esse nome em SP.</p>}
+                  <div className="grid gap-2">
+                    <AnimatePresence initial={false}>{gres.map((r) => row(r, true))}</AnimatePresence>
+                  </div>
+                  {/* atribuição exigida pelos termos do Google Maps Platform */}
+                  <p className="mt-2 text-right text-[11px] text-faint">Dados de lugares: <span className="font-medium text-mute">Google Maps</span></p>
+                </>
+              )}
+            </section>
+          )}
         </>
       )}
 

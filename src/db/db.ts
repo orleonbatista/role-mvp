@@ -13,6 +13,8 @@ class RoleDB extends Dexie {
   feedback!: Table<Feedback, string>
   leads!: Table<Lead, string>
   submissions!: Table<EventSubmission, string>
+  /** lugares do Google usados em votações: só id + resumo curto (ver lib/places.ts) */
+  gplaces!: Table<{ id: string; snap: unknown[] }, string>
 
   constructor() {
     super('role-mvp')
@@ -30,6 +32,7 @@ class RoleDB extends Dexie {
       leads: 'id, placeId, at',
     })
     this.version(3).stores({ submissions: 'id, status, at' })
+    this.version(4).stores({ gplaces: 'id' })
   }
 }
 

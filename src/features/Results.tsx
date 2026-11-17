@@ -191,7 +191,7 @@ function Community({ data }: { data: RequestDetail }) {
               {a.fit.warnings[0] && <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-amber-300/90"><AlertTriangle size={12} />{a.fit.warnings[0]}</p>}
               <div className="mt-3 flex items-center justify-between">
                 <Link to={`/lugar/${a.place.id}`} className="flex items-center gap-2 rounded-full bg-white/[0.05] py-1 pl-1 pr-3 text-xs hover:bg-white/[0.08]">
-                  <Cover hue={a.place.hue} className="size-6" rounded="rounded-full" />{a.place.name}
+                  <Cover hue={a.place.hue} className="size-6" rounded="rounded-full" />{a.place.name}{a.place.source === 'google' && <span className="text-faint">· Google Maps</span>}
                 </Link>
                 <motion.button
                   whileTap={{ scale: 0.85 }}

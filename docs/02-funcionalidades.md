@@ -38,7 +38,8 @@ Inventário do MVP (nov/2026). Entre parênteses, a rota da tela.
   - **Falta gente votar? Cobra no grupo**: reenvia o link no WhatsApp depois de votar.
   - **Fechar no X · horário** (só o autor): celebração + arte de Story "fechado". Todo mundo vê o banner **Fechado**.
   - Convite "Tem um rolê pra decidir?" pra quem chegou pelo link.
-- **Sugerir** (`/s/:id`, pública): vê os critérios do pedido, busca no catálogo com % de encaixe e avisos,
+- **Sugerir** (`/s/:id`, pública): vê os critérios do pedido, busca no catálogo com % de encaixe e avisos
+  e, se não achar, **busca no Google Maps** (qualquer lugar de SP, com nota do Google e atribuição);
   escolhe, põe nome e comentário. Com backend → entra na votação de todos; sem → gera link de retorno
   pro autor (WhatsApp/direct).
 - **Importar sugestão** (`/i/:id`): o autor toca no link de retorno e a sugestão entra na votação.

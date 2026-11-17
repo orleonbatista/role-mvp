@@ -24,8 +24,9 @@ Cada fase só avança quando os critérios da anterior forem cumpridos.
 | Divulgação de eventos (@, bio, convite) + envio com curadoria | ✅ |
 | Backend compartilhado (placar ao vivo, sugestão direta, curadoria que publica, métricas globais) | ✅ |
 | Encaixe 100% no celular (zoom do iOS, overflow) | ✅ |
-| **Catálogo real via Google Places (New)**, só para SP e com cotas diárias | ⏭ próximo |
-| Sugerir **qualquer** lugar (busca Places), não só do catálogo | ⏭ depende do anterior |
+| Google Places (New) com cotas diárias abaixo da cota grátis | ✅ |
+| Sugerir **qualquer** lugar (busca no Google Maps) | ✅ |
+| Organizador também buscar no Google ao montar o pedido | ⏭ |
 | Túnel com URL fixa (Cloudflare named tunnel + domínio) ou backend gerenciado | ⏭ |
 | Rodada de teste com 3 a 5 grupos reais (modo demo desligado) | ⏭ |
 
@@ -79,7 +80,7 @@ Cada fase só avança quando os critérios da anterior forem cumpridos.
 
 | # | Item | Fase | Esforço |
 |---|---|---|---|
-| 1 | Google Places (New): busca ao vivo para sugerir, detalhes do lugar, atribuição Google, cotas e alerta de orçamento | A | M |
+| 1 | Google Places também no fluxo do organizador (pedido e resultados) | A | M |
 | 2 | Teste com grupos reais + leitura das métricas globais | A | P |
 | 3 | URL fixa do túnel (named tunnel) para não editar o `llm.json` | A | P |
 | 4 | Web Push (votos, sugestões, fechou) | B | M |

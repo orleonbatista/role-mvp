@@ -43,6 +43,9 @@ export function PlacePage() {
   )
   if (!place) return <Page><Skeleton className="m-5 h-80" /></Page>
   const status = openStatus(place)
+  // lugar do Google visto por outro aparelho: só o resumo viaja (sem horário/capacidade)
+  const google = place.source === 'google'
+  const noHours = google && place.hours.startsWith('Ver horário')
   const km = distanceKm(me?.hood, place.hood)
 
   const isEvent = place.kind === 'evento'
@@ -85,7 +88,7 @@ export function PlacePage() {
           </motion.h1>
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }} className="mt-3 text-[15px] text-ink/80">{place.tagline}</motion.p>
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.45 }} className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-            {place.kind !== 'evento' && (
+            {place.kind !== 'evento' && !noHours && (
               <span className={cx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1', status.open ? 'bg-accent/15 text-accent' : 'bg-white/[0.06] text-mute')}>
                 <span className={cx('size-1.5 rounded-full', status.open ? 'bg-accent' : 'bg-faint')} />{status.label}
               </span>
@@ -96,11 +99,15 @@ export function PlacePage() {
 
           <motion.div variants={list} initial="initial" animate="animate" className="mt-6 grid grid-cols-3 gap-2">
             {[
-              place.ratingCount === 0
+              place.source === 'google'
+                ? { k: 'Google', v: place.ratingCount ? (place.rating / 2).toFixed(1) : '—', icon: <Star size={13} className="fill-accent text-accent" />, sub: place.ratingCount ? `${place.ratingCount} avaliações` : 'sem nota' }
+                : place.ratingCount === 0
                 ? { k: 'nota', v: 'novo', icon: null, sub: 'sem avaliações' }
                 : { k: 'nota', v: place.rating.toFixed(1), icon: <Star size={13} className="fill-accent text-accent" />, sub: `${place.ratingCount} avaliações` },
-              { k: 'por pessoa', v: place.price === 0 ? 'Grátis' : `R$ ${place.price}`, icon: null, sub: 'média' },
-              { k: 'grupo', v: `${place.capacity}`, icon: <Users size={13} />, sub: 'pessoas' },
+              { k: 'por pessoa', v: place.price === 0 ? 'Grátis' : `R$ ${place.price}`, icon: null, sub: google ? 'estimado' : 'média' },
+              google
+                ? { k: 'grupo', v: '—', icon: <Users size={13} />, sub: 'pergunte à casa' }
+                : { k: 'grupo', v: `${place.capacity}`, icon: <Users size={13} />, sub: 'pessoas' },
             ].map((s) => (
               <motion.div key={s.k} variants={item} className="rounded-[20px] bg-surface p-3">
                 <p className="text-[11px] uppercase tracking-[0.12em] text-mute">{s.k}</p>
@@ -116,7 +123,7 @@ export function PlacePage() {
             {place.tags.map((t) => <Tag key={t}>{({ vegano: 'opção vegana', samba: 'samba', pet: 'pet friendly', acessivel: 'acessível', karaoke: 'karaokê' } as Record<string, string>)[t] ?? t}</Tag>)}
           </div>
 
-          <h2 className="mb-3 mt-8 text-[13px] uppercase tracking-[0.14em] text-mute">Por que ir</h2>
+          {place.highlights.length > 0 && <h2 className="mb-3 mt-8 text-[13px] uppercase tracking-[0.14em] text-mute">Por que ir</h2>}
           <ul className="grid gap-2">
             {place.highlights.map((h, i) => (
               <motion.li key={h} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08, duration: 0.5, ease }}
@@ -147,6 +154,17 @@ export function PlacePage() {
           <div className="mt-8 grid gap-2 text-sm text-ink/80">
             <p className="flex items-center gap-2"><MapPin size={14} className="text-mute" />{place.address}</p>
             <p className="flex items-center gap-2"><Clock size={14} className="text-mute" />{place.hours}</p>
+            {place.source === 'google' && (
+              <>
+                {place.mapsUrl && (
+                  <a href={place.mapsUrl} target="_blank" rel="noreferrer" onClick={() => track('maps_open', { id: place.id })}
+                    className="mt-2 inline-flex w-fit items-center gap-2 rounded-full bg-white/[0.06] px-4 py-2 text-[13px] text-ink hover:bg-white/[0.1]">
+                    <MapPin size={14} className="text-accent" />Abrir no Google Maps
+                  </a>
+                )}
+                <p className="mt-1 text-[11px] text-faint">Lugar sugerido pela comunidade. Nota, endereço e horário: <span className="text-mute">Google Maps</span>. Estilo e preço são estimados.</p>
+              </>
+            )}
           </div>
 
           <h2 className="mb-3 mt-9 text-[13px] uppercase tracking-[0.14em] text-mute">Quem foi</h2>

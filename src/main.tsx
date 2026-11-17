@@ -9,6 +9,7 @@ import './index.css'
 import { startMocks } from './mocks/browser'
 import { seedIfEmpty } from './db/db'
 import { loadExtraEvents } from './mocks/extraEvents'
+import { loadGooglePlaces } from './mocks/gplaces'
 import { App } from './app/App'
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: false } } })
@@ -16,7 +17,7 @@ const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, ref
 async function boot() {
   await startMocks()
   await seedIfEmpty()
-  await loadExtraEvents()
+  await Promise.all([loadExtraEvents(), loadGooglePlaces()])
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <QueryClientProvider client={qc}>
