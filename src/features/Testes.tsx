@@ -4,7 +4,9 @@ import { Cpu, Download, MessageSquareHeart, Store } from 'lucide-react'
 import { getLLMOverride, llmStatus, setLLMOverride } from '../mocks/llm'
 import { AnimatedNumber, Button, Page, SectionTitle, Skeleton, Tag, TopBar } from '../ui/primitives'
 import { ease } from '../ui/motion'
-import { exportTestes, useTestes } from '../lib/api'
+import { exportTestes, useSubmissions, useTestes } from '../lib/api'
+import { SubmissionReview } from './SubmissionReview'
+import { Link } from 'react-router'
 import { FUNNEL } from '../lib/track'
 import { timeAgo } from '../lib/labels'
 
@@ -38,6 +40,9 @@ function LLMCard() {
 
 export function TestesPage() {
   const { data } = useTestes()
+  const subs = useSubmissions()
+  const queue = [...(subs.data ?? [])].sort((a, b) => Number(b.status === 'pendente') - Number(a.status === 'pendente') || b.at - a.at)
+  useEffect(() => { if (location.hash === '#fila' && subs.data) setTimeout(() => document.getElementById('fila')?.scrollIntoView({ behavior: 'smooth' }), 300) }, [subs.data])
 
   async function download() {
     const json = await exportTestes()
@@ -90,16 +95,26 @@ export function TestesPage() {
         </div>
       </section>
 
+      <section className="mt-8" id="fila">
+        <SectionTitle aside={<Link to="/divulgar" className="text-xs text-faint hover:text-ink">+ enviar</Link>}>
+          Fila de eventos{queue.some((q) => q.status === 'pendente') ? ` · ${queue.filter((q) => q.status === 'pendente').length} pendente(s)` : ''}
+        </SectionTitle>
+        <div className="grid gap-2.5 px-5">
+          {queue.length ? queue.map((q) => <SubmissionReview key={q.id} s={q} compact />)
+            : <p className="rounded-[18px] border border-dashed border-line px-4 py-5 text-center text-[13px] text-faint">Nenhum envio ainda. Os links de curadoria que chegarem por WhatsApp aparecem aqui.</p>}
+        </div>
+      </section>
+
       <section className="mt-8">
         <SectionTitle aside={<span className="text-xs text-faint">primeiro acesso</span>}>Por origem</SectionTitle>
         <div className="mx-5 overflow-hidden rounded-[18px] border border-line text-[12px]">
-          <div className="grid grid-cols-6 gap-1 bg-white/[0.04] px-3 py-2 text-mute">
-            <span className="col-span-2">origem</span><span>abriu</span><span>votou</span><span>cadastro</span><span>story</span>
+          <div className="grid grid-cols-7 gap-1 bg-white/[0.04] px-3 py-2 text-mute">
+            <span className="col-span-2">origem</span><span>abriu</span><span>votou</span><span>cadastro</span><span>story</span><span>grupos</span>
           </div>
           {Object.entries(data.bySrc).sort((a, b) => b[1].app_open - a[1].app_open).map(([src, r]) => (
-            <div key={src} className="grid grid-cols-6 gap-1 border-t border-line px-3 py-2">
-              <span className="col-span-2 truncate">{({ ig: 'Instagram', wa: 'WhatsApp', direto: 'direto' } as Record<string, string>)[src] ?? src}</span>
-              <span>{r.app_open}</span><span>{r.vote_cast}</span><span>{r.onboarding_done}</span><span>{r.story_shared}</span>
+            <div key={src} className="grid grid-cols-7 gap-1 border-t border-line px-3 py-2">
+              <span className="col-span-2 truncate">{({ ig: 'Instagram', wa: 'WhatsApp', direto: 'direto', evt: 'evento (sem @)' } as Record<string, string>)[src] ?? (src.startsWith('cr_') ? `@${src.slice(3)}` : src)}</span>
+              <span>{r.app_open}</span><span>{r.vote_cast}</span><span>{r.onboarding_done}</span><span>{r.story_shared}</span><span>{r.event_group_created ?? 0}</span>
             </div>
           ))}
         </div>

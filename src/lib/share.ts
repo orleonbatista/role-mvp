@@ -1,5 +1,5 @@
-import type { RequestDetail } from './types'
-import { places } from '../mocks/seeds/places'
+import type { EventDraft, RequestDetail } from './types'
+import { SEED_COUNT, placeById, places } from '../mocks/seeds/places'
 import { parseRequest, timeOptions, unmetFor } from '../mocks/ranker'
 
 /* Link autossuficiente e CURTO: o pedido vai comprimido no fragmento (#d=...), que nunca chega ao servidor.
@@ -26,8 +26,15 @@ async function pipe(bytes: Uint8Array, stream: CompressionStream | Decompression
 }
 const canCompress = () => typeof CompressionStream !== 'undefined'
 
+/** lugar do seed vai como índice (curto); evento enviado pela comunidade vai pelo id */
+const refOf = (id: string): number | string => {
+  const i = places.findIndex((p) => p.id === id)
+  return i < 0 ? -1 : i < SEED_COUNT ? i : id
+}
+const idOf = (r: unknown) => (typeof r === 'string' ? (placeById.has(r) ? r : undefined) : places[r as number]?.id)
+
 export async function shareUrl(d: RequestDetail) {
-  const idx = d.options.map((o) => places.findIndex((p) => p.id === o.id)).filter((i) => i >= 0)
+  const idx = d.options.map((o) => refOf(o.id)).filter((i) => i !== -1)
   const compact = [d.request.id, d.request.text, idx, d.author.name.split(' ')[0], d.author.hue]
   const json = new TextEncoder().encode(JSON.stringify(compact))
   const base = `${location.origin}${import.meta.env.BASE_URL}v/?id=${encodeURIComponent(d.request.id)}`
@@ -37,13 +44,13 @@ export async function shareUrl(d: RequestDetail) {
 
 function expand(arr: unknown): SharePayload | null {
   if (!Array.isArray(arr)) return null
-  const [id, text, idx, name, hue] = arr as [string, string, number[], string, number]
+  const [id, text, idx, name, hue] = arr as [string, string, (number | string)[], string, number]
   if (typeof id !== 'string' || typeof text !== 'string') return null
   const criteria = parseRequest(text)
   criteria.unmet = unmetFor(criteria, places)
   return {
     id, text, criteria, times: timeOptions(criteria),
-    optionIds: (idx ?? []).map((i) => places[i]?.id).filter(Boolean) as string[],
+    optionIds: (idx ?? []).map(idOf).filter(Boolean) as string[],
     author: { name: name || 'Alguém', hue: Number(hue) || 82 }, createdAt: Date.now(),
   }
 }
@@ -71,8 +78,7 @@ export const suggestUrl = (voteLink: string) => voteLink.replace('/v/?', '/v/?to
 const b64 = (s: string) => toB64url(new TextEncoder().encode(s))
 /** link de retorno: leva o pedido (#d=) + a sugestão (&g=) de volta ao autor */
 export function returnUrl(voteLink: string, placeId: string, by: string, comment: string, hue: number) {
-  const idx = places.findIndex((p) => p.id === placeId)
-  const g = b64(JSON.stringify([idx, by.slice(0, 30), comment.slice(0, 140), hue]))
+  const g = b64(JSON.stringify([refOf(placeId), by.slice(0, 30), comment.slice(0, 140), hue]))
   return voteLink.replace('/v/?', '/v/?to=i&').replace(/[?&]src=[^&#]*/, '') + `&g=${g}`
 }
 
@@ -81,8 +87,8 @@ export function readSuggestion(hash: string): { placeId: string; by: string; com
   if (!m) return null
   try {
     const [idx, by, comment, hue] = JSON.parse(new TextDecoder().decode(fromB64url(m[1])))
-    const p = places[idx]
-    return p ? { placeId: p.id, by: String(by || 'Alguém'), comment: String(comment ?? ''), hue: Number(hue) || 200 } : null
+    const pid = idOf(idx)
+    return pid ? { placeId: pid, by: String(by || 'Alguém'), comment: String(comment ?? ''), hue: Number(hue) || 200 } : null
   } catch { return null }
 }
 
@@ -91,4 +97,37 @@ export function currentVoteLink() {
   const d = location.hash.match(/[#&](d|j|p)=([A-Za-z0-9_-]+)/)
   const id = location.pathname.split('/').filter(Boolean).pop() ?? ''
   return `${location.origin}${import.meta.env.BASE_URL}v/?id=${encodeURIComponent(id)}${d ? `#${d[1]}=${d[2]}` : ''}`
+}
+
+/* ---------- divulgação de eventos ---------- */
+export const handleSlug = (h: string) => h.toLowerCase().normalize('NFD').replace(/[^a-z0-9_.]/g, '').slice(0, 24)
+/** link de divulgação: abre o convite do evento (/e/) já com a origem do divulgador (cr_handle) */
+export function promoteUrl(placeId: string, handle?: string) {
+  const slug = handle ? handleSlug(handle) : ''
+  return `${location.origin}${import.meta.env.BASE_URL}v/?to=e&id=${encodeURIComponent(placeId)}&src=${slug ? `cr_${slug}` : 'evt'}`
+}
+export function promoteText(p: { name: string; when?: string; hood: string; price: number }) {
+  return `🎟 ${p.name}\n${[p.when, p.hood, p.price === 0 ? 'grátis' : `~R$ ${p.price}`].filter(Boolean).join(' · ')}\nBora? Monta a votação com teu grupo:`
+}
+
+/** envio pra curadoria: o evento inteiro vai comprimido no fragmento */
+export async function curadoriaUrl(subId: string, draft: EventDraft) {
+  const json = new TextEncoder().encode(JSON.stringify(draft))
+  const base = `${location.origin}${import.meta.env.BASE_URL}v/?to=c&id=${encodeURIComponent(subId)}`
+  if (canCompress()) return `${base}#d=${toB64url(await pipe(json, new CompressionStream('deflate-raw')))}`
+  return `${base}#j=${toB64url(json)}`
+}
+export async function readDraft(hash: string): Promise<unknown> {
+  try {
+    const d = hash.match(/[#&]d=([A-Za-z0-9_-]+)/)
+    if (d) return JSON.parse(new TextDecoder().decode(await pipe(fromB64url(d[1]), new DecompressionStream('deflate-raw'))))
+    const j = hash.match(/[#&]j=([A-Za-z0-9_-]+)/)
+    if (j) return JSON.parse(new TextDecoder().decode(fromB64url(j[1])))
+  } catch { /* corrompido */ }
+  return null
+}
+/** link fixo da bio do divulgador */
+export const bioUrl = (handle: string) => {
+  const slug = handleSlug(handle.replace(/^@/, ''))
+  return `${location.origin}${import.meta.env.BASE_URL}v/?to=p&id=${slug}&src=cr_${slug}`
 }

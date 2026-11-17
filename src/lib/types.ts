@@ -37,6 +37,10 @@ export interface Place {
   /** tem área/sala/mesa reservável para grupo */
   privateSpace: boolean
   periods: OpenPeriod[]
+  /** eventos enviados pela comunidade */
+  promoter?: string
+  ticketUrl?: string
+  eventDate?: string
 }
 
 export interface Person {
@@ -87,6 +91,8 @@ export interface RoleRequest {
   optionIds?: string[]
   /** opções de horário para votação */
   times?: string[]
+  /** pedido criado a partir de um convite de evento: o evento fica fixo como 1ª opção */
+  eventId?: string
   /** autor quando o pedido veio de outro aparelho via link */
   externalAuthor?: { name: string; hue: number }
 }
@@ -188,3 +194,33 @@ export interface PlaceDetail {
 export interface DiaryEntry extends Review {
   place: Place
 }
+
+/* ---------- eventos enviados por artistas/produtores/criadores ---------- */
+export type PromoterRole = 'artista' | 'produtor' | 'casa' | 'criador'
+export interface EventDraft {
+  name: string
+  niches: Niche[]
+  vibes: Vibe[]
+  occasions: Occasion[]
+  hood: string
+  /** AAAA-MM-DD */
+  date: string
+  hour: number
+  price: number
+  capacity: number
+  tagline: string
+  highlights: string[]
+  ticketUrl?: string
+  by: { handle: string; role: PromoterRole; contact?: string }
+}
+export interface EventSubmission extends EventDraft {
+  id: string
+  hue: number
+  at: number
+  status: 'pendente' | 'aprovado' | 'recusado'
+  /** 'meu' = enviei deste aparelho; 'recebido' = chegou pelo link da curadoria */
+  origin: 'meu' | 'recebido'
+  reviewedAt?: number
+}
+/** matches = em quantos pedidos o evento entraria no top 5 do ranking */
+export interface EventFit { total: number; matches: number; top: { text: string; match: number; pos: number }[] }

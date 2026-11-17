@@ -30,7 +30,7 @@
         if (!id) {
           try { var m = location.hash.match(/p=([A-Za-z0-9_-]+)/); id = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))))).id } catch (e) {}
         }
-        var to = { s: 's/', i: 'i/' }[q.get('to')] || 'r/'
+        var to = { s: 's/', i: 'i/', e: 'e/', c: 'c/', p: 'p/' }[q.get('to')] || 'r/'
         q.delete('id'); q.delete('to')
         var base = location.pathname.replace(/v\/?(index\.html)?$/, '')
         var qs = q.toString()

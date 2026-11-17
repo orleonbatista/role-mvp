@@ -1,7 +1,7 @@
 import { delay, http, HttpResponse } from 'msw'
 import { db } from '../db/db'
 import type {
-  Answer, AnswerDTO, Criteria, DiaryEntry, Feedback, FeedItem, Lead, Person, PlaceDetail, Profile, RequestDetail, Review,
+  Answer, AnswerDTO, Criteria, DiaryEntry, EventSubmission, Feedback, FeedItem, Lead, Person, PlaceDetail, Profile, RequestDetail, Review,
   RoleRequest, Verdict, Vote, VoteTally,
 } from '../lib/types'
 import { confidenceOf, introFor, parseRequest, rank, timeOptions, unmetFor } from './ranker'
@@ -9,6 +9,8 @@ import { refineWithLLM } from './llm'
 import { people } from './seeds/people'
 import { placeById, places } from './seeds/places'
 import { KIND_LABEL, nicheLabel, occasionLabel } from '../lib/labels'
+import { DAY_SHORT } from '../lib/hours'
+import { approveLocally, fitOf, isPast, sanitizeDraft } from './extraEvents'
 
 const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`
 const latency = () => delay(160 + Math.random() * 200)
@@ -82,7 +84,10 @@ async function buildDetail(id: string): Promise<RequestDetail | null> {
   if (!request) return null
   const profile = await getProfile()
   const author = await personById(request.authorId, request)
-  const ranked = rank(places, request.criteria, request.authorId === 'me' ? profile : null).slice(0, 3)
+  const pinned = request.eventId ? placeById.get(request.eventId) : undefined
+  const ranked = pinned
+    ? [rank([pinned], request.criteria)[0], ...rank(places.filter((p) => p.id !== pinned.id), request.criteria, request.authorId === 'me' ? profile : null)].slice(0, 3)
+    : rank(places, request.criteria, request.authorId === 'me' ? profile : null).slice(0, 3)
   const now = Date.now()
   const all = await db.answers.where('requestId').equals(id).toArray()
   const visible = all.filter((a) => a.visibleAt <= now).sort((a, b) => b.helpful - a.helpful || a.createdAt - b.createdAt)
@@ -138,7 +143,67 @@ export const handlers = [
 
   http.get('/api/events', async () => {
     await latency()
-    return HttpResponse.json(places.filter((p) => p.kind === 'evento'))
+    return HttpResponse.json(places.filter((p) => p.kind === 'evento' && !(p.eventDate && isPast({ date: p.eventDate }))))
+  }),
+
+  /** convite de evento → vira uma votação de grupo: "bora nesse?" + 2 alternativas parecidas */
+  http.post('/api/events/:id/group', async ({ params }) => {
+    const ev = placeById.get(params.id as string)
+    if (!ev) return notFound()
+    const text = `Bora no ${ev.name}? ${ev.when ?? ''}`.trim()
+    const criteria: Criteria = { ...parseRequest(text), niches: ev.niches, vibes: ev.vibes.slice(0, 1), unmet: [], source: { engine: 'regras' } }
+    const alts = rank(places.filter((p) => p.id !== ev.id), criteria).slice(0, 2).map((r) => r.place.id)
+    const day = ev.periods[0]?.days[0]
+    const req: RoleRequest = {
+      id: uid('r'), authorId: 'me', text, criteria, createdAt: Date.now(), status: 'aberto',
+      optionIds: [ev.id, ...alts], eventId: ev.id,
+      times: day !== undefined ? [`${DAY_SHORT[day]} ${ev.periods[0].open % 24}h`] : timeOptions(criteria),
+    }
+    await db.requests.add(req)
+    await delay(400)
+    return HttpResponse.json({ id: req.id })
+  }),
+
+  /* ---------- eventos enviados (fase 2: curadoria) ---------- */
+  http.post('/api/events/fit', async ({ request }) => {
+    const draft = sanitizeDraft(await request.json())
+    if (!draft) return HttpResponse.json({ total: 0, matches: 0, top: [] })
+    return HttpResponse.json(fitOf(draft, await db.requests.toArray()))
+  }),
+
+  http.get('/api/submissions', async () => {
+    const all = await db.submissions.orderBy('at').reverse().toArray()
+    const reqs = await db.requests.toArray()
+    return HttpResponse.json(all.map((s) => ({ ...s, fit: fitOf(s, reqs) })))
+  }),
+
+  http.post('/api/submissions', async ({ request }) => {
+    const draft = sanitizeDraft(await request.json())
+    if (!draft) return HttpResponse.json({ error: 'invalid' }, { status: 400 })
+    const slug = draft.name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24)
+    const sub: EventSubmission = { ...draft, id: `ev-u-${slug}-${Math.random().toString(36).slice(2, 6)}`, hue: Math.floor(Math.random() * 360), at: Date.now(), status: 'pendente', origin: 'meu' }
+    await db.submissions.add(sub)
+    await delay(500)
+    return HttpResponse.json(sub)
+  }),
+
+  /** chegou pelo link da curadoria: entra na fila deste aparelho */
+  http.post('/api/submissions/import', async ({ request }) => {
+    const body = (await request.json()) as { id: string; draft: unknown; hue?: number }
+    const draft = sanitizeDraft(body.draft)
+    if (!draft || !/^ev-u-[a-z0-9-]{1,40}$/.test(body.id ?? '')) return HttpResponse.json({ error: 'invalid' }, { status: 400 })
+    const existing = await db.submissions.get(body.id)
+    if (!existing) await db.submissions.add({ ...draft, id: body.id, hue: Number(body.hue ?? (body.draft as any)?.hue) || 200, at: Date.now(), status: 'pendente', origin: 'recebido' })
+    return HttpResponse.json(await db.submissions.get(body.id))
+  }),
+
+  http.post('/api/submissions/:id/status', async ({ params, request }) => {
+    const { status } = (await request.json()) as { status: EventSubmission['status'] }
+    const sub = await db.submissions.get(params.id as string)
+    if (!sub || !['aprovado', 'recusado', 'pendente'].includes(status)) return notFound()
+    await db.submissions.update(sub.id, { status, reviewedAt: Date.now() })
+    if (status === 'aprovado') approveLocally({ ...sub, status })
+    return HttpResponse.json({ ...sub, status })
   }),
 
   http.get('/api/places/:id', async ({ params }) => {
@@ -322,10 +387,10 @@ export const handlers = [
     const counts: Record<string, number> = {}
     for (const e of events) counts[e.name] = (counts[e.name] ?? 0) + 1
     // por origem (first touch): chegadas, votos e cadastros
-    const bySrc: Record<string, { app_open: number; vote_cast: number; onboarding_done: number; request_created: number; story_shared: number }> = {}
+    const bySrc: Record<string, { app_open: number; vote_cast: number; onboarding_done: number; request_created: number; story_shared: number; event_group_created: number }> = {}
     for (const e of events) {
       const src = String((e.props as any)?.src ?? 'direto')
-      const row = (bySrc[src] ??= { app_open: 0, vote_cast: 0, onboarding_done: 0, request_created: 0, story_shared: 0 })
+      const row = (bySrc[src] ??= { app_open: 0, vote_cast: 0, onboarding_done: 0, request_created: 0, story_shared: 0, event_group_created: 0 })
       if (e.name in row) (row as any)[e.name]++
     }
     const niches: Record<string, number> = {}
@@ -345,6 +410,7 @@ export const handlers = [
       profile: await getProfile(),
       events: await db.events.toArray(), feedback: await db.feedback.toArray(), leads: await db.leads.toArray(),
       requests: await db.requests.where('authorId').equals('me').toArray(), reviews: await db.reviews.toArray(),
+      submissions: await db.submissions.toArray(),
     })
   }),
 ]

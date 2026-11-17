@@ -127,3 +127,10 @@ export const places: Place[] = rows.map(
 )
 
 export const placeById = new Map(places.map((p) => [p.id, p]))
+/** os primeiros N lugares são fixos (índices estáveis nos links); depois vêm eventos enviados/aprovados */
+export const SEED_COUNT = places.length
+export function registerPlace(p: Place) {
+  if (placeById.has(p.id)) return
+  places.push(p)
+  placeById.set(p.id, p)
+}

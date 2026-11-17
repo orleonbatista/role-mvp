@@ -138,7 +138,7 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
       <div className="p-4">
         <div className="flex items-baseline justify-between gap-2">
           <p className="font-serif text-[28px] leading-none">{p.name}</p>
-          <span className="flex items-center gap-1 text-sm text-ink/80"><Star size={13} className="fill-accent text-accent" />{p.rating.toFixed(1)}</span>
+          <span className="flex items-center gap-1 text-sm text-ink/80">{p.ratingCount ? <><Star size={13} className="fill-accent text-accent" />{p.rating.toFixed(1)}</> : <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[11px] text-accent">novo</span>}</span>
         </div>
         <p className="mt-1.5 text-xs text-mute">{KIND_LABEL[p.kind]} · {p.hood} · {priceLabel(p.price)} · até {p.capacity} pessoas</p>
         <p className={cx('mt-1 text-[11px]', openStatus(p).open ? 'text-accent' : 'text-faint')}>{p.kind === 'evento' ? p.when : openStatus(p).label}</p>

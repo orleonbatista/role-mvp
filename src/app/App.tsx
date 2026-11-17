@@ -20,6 +20,10 @@ const ReviewPage = lazy(() => import('../features/Review').then((m) => ({ defaul
 const ProfilePage = lazy(() => import('../features/Profile').then((m) => ({ default: m.ProfilePage })))
 const SuggestPage = lazy(() => import('../features/Suggest').then((m) => ({ default: m.SuggestPage })))
 const ImportSuggestion = lazy(() => import('../features/ImportSuggestion').then((m) => ({ default: m.ImportSuggestion })))
+const EventInvite = lazy(() => import('../features/EventInvite').then((m) => ({ default: m.EventInvite })))
+const DivulgarPage = lazy(() => import('../features/Divulgar').then((m) => ({ default: m.DivulgarPage })))
+const ImportSubmission = lazy(() => import('../features/ImportSubmission').then((m) => ({ default: m.ImportSubmission })))
+const CreatorPage = lazy(() => import('../features/CreatorPage').then((m) => ({ default: m.CreatorPage })))
 const TestesPage = lazy(() => import('../features/Testes').then((m) => ({ default: m.TestesPage })))
 
 const TAB_ROUTES = ['/', '/perfil']
@@ -35,9 +39,9 @@ function Fallback() {
 export function App() {
   const location = useLocation()
   const { data: profile, isLoading } = useProfile()
-  const isPublic = ['/r/', '/s/', '/testes'].some((p) => location.pathname.startsWith(p))
+  const isPublic = ['/r/', '/s/', '/e/', '/p/', '/divulgar', '/testes'].some((p) => location.pathname.startsWith(p))
   const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !isPublic
-  const showFeedback = !['/onboarding', '/r/', '/s/', '/i/', '/testes'].some((p) => location.pathname.startsWith(p))
+  const showFeedback = !['/onboarding', '/r/', '/s/', '/i/', '/e/', '/c/', '/p/', '/divulgar', '/testes'].some((p) => location.pathname.startsWith(p))
 
   useEffect(() => {
     const src = captureSource()
@@ -60,6 +64,7 @@ export function App() {
                     ['/onboarding', <Onboarding />], ['/novo', <NewRequest />], ['/pedido/:id', <Results />], ['/r/:id', <VotePage />],
                     ['/lugar/:id', <PlacePage />], ['/avaliar/:id', <ReviewPage />], ['/perfil', <ProfilePage />], ['/testes', <TestesPage />],
                     ['/s/:id', <SuggestPage />], ['/i/:id', <ImportSuggestion />],
+                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />],
                   ].map(([path, el]) => (
                     <Route key={path as string} path={path as string} element={<Suspense fallback={<Fallback />}>{el}</Suspense>} />
                   ))}

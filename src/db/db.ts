@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { Answer, Feedback, Lead, Profile, Review, RoleRequest, TrackEvent, Vote } from '../lib/types'
+import type { Answer, EventSubmission, Feedback, Lead, Profile, Review, RoleRequest, TrackEvent, Vote } from '../lib/types'
 import { seedAnswers, seedRequests, seedVotes } from '../mocks/seeds/people'
 
 class RoleDB extends Dexie {
@@ -12,6 +12,7 @@ class RoleDB extends Dexie {
   events!: Table<TrackEvent, string>
   feedback!: Table<Feedback, string>
   leads!: Table<Lead, string>
+  submissions!: Table<EventSubmission, string>
 
   constructor() {
     super('role-mvp')
@@ -28,6 +29,7 @@ class RoleDB extends Dexie {
       feedback: 'id, at',
       leads: 'id, placeId, at',
     })
+    this.version(3).stores({ submissions: 'id, status, at' })
   }
 }
 

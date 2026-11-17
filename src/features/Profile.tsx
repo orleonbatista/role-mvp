@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 import { Link, useNavigate } from 'react-router'
-import { ArrowUpRight, BarChart3, FlaskConical, RotateCcw, Settings2 } from 'lucide-react'
+import { ArrowUpRight, BarChart3, Megaphone, FlaskConical, RotateCcw, Settings2 } from 'lucide-react'
 import { AnimatedNumber, Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
 import { useDiary, useProfile, useSaveProfile } from '../lib/api'
@@ -126,6 +126,11 @@ export function ProfilePage() {
               <motion.span layout transition={{ type: 'spring', stiffness: 500, damping: 32 }} className={`absolute top-1 size-5 rounded-full bg-bg ${me.demoMode ? 'right-1' : 'left-1'}`} />
             </span>
           </button>
+          <Link to="/divulgar" className="flex items-center gap-3 px-4 py-3.5">
+            <Megaphone size={16} className="text-mute" />
+            <span className="flex-1 text-[14px]">Divulgar um evento</span>
+            <ArrowUpRight size={14} className="text-mute" />
+          </Link>
           <Link to="/testes" className="flex items-center gap-3 px-4 py-3.5">
             <BarChart3 size={16} className="text-mute" />
             <span className="flex-1 text-[14px]">Painel de testes</span>

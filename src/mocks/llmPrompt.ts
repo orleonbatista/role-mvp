@@ -74,7 +74,8 @@ export interface PlaceFact {
   tipo: string
   preco_pessoa: number
   capacidade: number
-  nota: number
+  /** null = evento novo, sem avaliações */
+  nota: number | null
   estilos: string[]
   clima: string[]
   extras: string[]

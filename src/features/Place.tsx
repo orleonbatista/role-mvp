@@ -1,7 +1,11 @@
 import { motion, useScroll, useTransform } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { StoryCard } from '../lib/storyCard'
 import { useNavigate, useParams } from 'react-router'
-import { CalendarCheck, ChevronLeft, Clock, MapPin, Minus, Plus, Star, Users } from 'lucide-react'
+import { CalendarCheck, ChevronLeft, Clock, MapPin, Megaphone, Minus, Plus, Share2, Star, Ticket, Users } from 'lucide-react'
+import { Link } from 'react-router'
+import { PromoteSheet } from './PromoteSheet'
+import { StorySheet } from './StorySheet'
 import { Avatar, Button, Chip, Cover, EmptyState, Page, Skeleton, Tag, cx } from '../ui/primitives'
 import { Sheet } from '../ui/Sheet'
 import { placeIcon } from '../ui/placeIcon'
@@ -22,6 +26,8 @@ export function PlacePage() {
   const { data, isError } = usePlace(id)
   const { data: me } = useProfile()
   const [lead, setLead] = useState(false)
+  const [promote, setPromote] = useState(false)
+  const [story, setStory] = useState<{ link: string; by?: string } | null>(null)
   useEffect(() => { track('place_viewed', { id }) }, [id])
   // usa o seed já carregado para a capa aparecer no mesmo frame (transição compartilhada sem "pulo")
   const place = data?.place ?? placeById.get(id)
@@ -30,6 +36,7 @@ export function PlacePage() {
   const coverScale = useTransform(scrollY, [-100, 0, 300], [1.15, 1, 1.05])
   const coverY = useTransform(scrollY, [0, 300], [0, 90])
   const titleOpacity = useTransform(scrollY, [140, 220], [0, 1])
+  const storyCard = useMemo<StoryCard | null>(() => (story && place ? { kind: 'evento', place, by: story.by } : null), [story, place])
 
   if (!place && isError) return (
     <Page><EmptyState title="Lugar não encontrado" text="Esse endereço não existe (ou saiu do catálogo)." action={<Button onClick={() => nav('/')}>Ir pro início</Button>} /></Page>
@@ -38,7 +45,13 @@ export function PlacePage() {
   const status = openStatus(place)
   const km = distanceKm(me?.hood, place.hood)
 
-  const footer = <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} onClick={() => { setLead(true); track('reserve_intent', { id: place.id, kind: place.kind }) }}>
+  const isEvent = place.kind === 'evento'
+  const footer = place.ticketUrl
+    ? <a href={place.ticketUrl} target="_blank" rel="noreferrer" onClick={() => track('ticket_click', { id: place.id })}
+        className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-accent text-[15px] font-medium text-accent-ink shadow-[0_8px_30px_-8px_rgba(198,255,61,0.55)] active:scale-[0.98]">
+        <Ticket size={16} />Ingresso · {priceLabel(place.price)}
+      </a>
+    : <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} onClick={() => { setLead(true); track('reserve_intent', { id: place.id, kind: place.kind }) }}>
           {place.kind === 'evento' ? `Garantir ingresso · ${priceLabel(place.price)}` : place.privateSpace ? 'Reservar pra grupo' : 'Reservar mesa'}
         </Button>
   const chrome = (
@@ -47,7 +60,12 @@ export function PlacePage() {
         <motion.button whileTap={{ scale: 0.9 }} onClick={() => nav(-1)} className="relative grid size-10 place-items-center rounded-full bg-black/40 backdrop-blur-md" aria-label="Voltar">
           <ChevronLeft size={18} />
         </motion.button>
-        <motion.p style={{ opacity: titleOpacity }} className="relative pb-2 font-serif text-xl">{place.name}</motion.p>
+        <motion.p style={{ opacity: titleOpacity }} className="relative flex-1 truncate pb-2 font-serif text-xl">{place.name}</motion.p>
+        {isEvent && (
+          <motion.button whileTap={{ scale: 0.9 }} onClick={() => setPromote(true)} className="relative grid size-10 place-items-center rounded-full bg-black/40 backdrop-blur-md" aria-label="Divulgar evento">
+            <Share2 size={17} />
+          </motion.button>
+        )}
       </div>
   )
 
@@ -78,7 +96,9 @@ export function PlacePage() {
 
           <motion.div variants={list} initial="initial" animate="animate" className="mt-6 grid grid-cols-3 gap-2">
             {[
-              { k: 'nota', v: place.rating.toFixed(1), icon: <Star size={13} className="fill-accent text-accent" />, sub: `${place.ratingCount} avaliações` },
+              place.ratingCount === 0
+                ? { k: 'nota', v: 'novo', icon: null, sub: 'sem avaliações' }
+                : { k: 'nota', v: place.rating.toFixed(1), icon: <Star size={13} className="fill-accent text-accent" />, sub: `${place.ratingCount} avaliações` },
               { k: 'por pessoa', v: place.price === 0 ? 'Grátis' : `R$ ${place.price}`, icon: null, sub: 'média' },
               { k: 'grupo', v: `${place.capacity}`, icon: <Users size={13} />, sub: 'pessoas' },
             ].map((s) => (
@@ -109,6 +129,21 @@ export function PlacePage() {
           <h2 className="mb-3 mt-8 text-[13px] uppercase tracking-[0.14em] text-mute">Bom para</h2>
           <div className="flex flex-wrap gap-1.5">{place.occasions.map((o) => <Tag key={o}>{occasionLabel(o)}</Tag>)}</div>
 
+          {isEvent && (
+            <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, ease }}
+              className="mt-8 rounded-[24px] border border-accent/25 bg-gradient-to-br from-accent/[0.09] to-transparent p-4">
+              <p className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-accent"><Megaphone size={14} />Vai divulgar?</p>
+              <p className="mt-2 text-[14px] text-ink/85">
+                {place.promoter ? <>Enviado por <b className="font-medium text-ink">{place.promoter}</b> e aprovado pela curadoria. </> : null}
+                Gere a arte do Story e um link que vira votação de grupo, com o seu @.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <Button variant="soft" icon={<Share2 size={15} />} onClick={() => setPromote(true)}>Divulgar</Button>
+                <Link to="/divulgar" className="inline-flex h-11 items-center px-3 text-[13px] text-mute underline-offset-4 hover:text-ink hover:underline">Tem um evento? Envie</Link>
+              </div>
+            </motion.div>
+          )}
+
           <div className="mt-8 grid gap-2 text-sm text-ink/80">
             <p className="flex items-center gap-2"><MapPin size={14} className="text-mute" />{place.address}</p>
             <p className="flex items-center gap-2"><Clock size={14} className="text-mute" />{place.hours}</p>
@@ -136,6 +171,8 @@ export function PlacePage() {
           </div>
         </div>
 
+      {isEvent && <PromoteSheet open={promote} onClose={() => setPromote(false)} place={place} onStory={(link, by) => { setPromote(false); setStory({ link, by }) }} />}
+      {isEvent && <StorySheet open={!!story} onClose={() => setStory(null)} card={storyCard} link={story?.link ?? ''} context="promote" />}
       <LeadSheet open={lead} onClose={() => setLead(false)} place={place} defaultName={me?.name} onDone={() => toast('Pedido enviado! A casa responde em até 2h (simulado)')} />
     </Page>
   )

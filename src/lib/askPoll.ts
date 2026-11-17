@@ -14,7 +14,7 @@ const list = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1
 
 export function factsFor(options: Place[], tally: VoteTally[], hood?: string): PlaceFact[] {
   return options.map((p) => ({
-    nome: p.name, bairro: p.hood, tipo: KIND_LABEL[p.kind], preco_pessoa: p.price, capacidade: p.capacity, nota: p.rating,
+    nome: p.name, bairro: p.hood, tipo: KIND_LABEL[p.kind], preco_pessoa: p.price, capacidade: p.capacity, nota: p.ratingCount ? p.rating : null,
     estilos: p.niches.map(nicheLabel), clima: p.vibes.map(vibeLabel), extras: [...p.tags.map((t) => TAG_TXT[t] ?? t), ...(p.privateSpace ? ['espaço reservável para grupo'] : [])],
     horario: p.kind === 'evento' ? (p.when ?? '') : p.hours, destaques: p.highlights,
     distancia_km: distanceKm(hood, p.hood), votos: tally.find((t) => t.placeId === p.id)?.count ?? 0,
@@ -55,7 +55,8 @@ export function answerByRules(question: string, options: Place[], c: Criteria, t
     return out(options.map((p) => `${p.name}: ${p.kind === 'evento' ? p.when : openStatus(p).label.toLowerCase()}`).join(' · '), options.filter((p) => openStatus(p).open))
   }
   if (has('nota', 'avalia', 'bem avaliad', 'melhor avaliad', 'reputa')) {
-    const s = [...options].sort((a, b) => b.rating - a.rating)
+    const s = [...options].filter((p) => p.ratingCount > 0).sort((a, b) => b.rating - a.rating)
+    if (!s.length) return out('Nenhuma das opções tem avaliação ainda.', [])
     return out(`Melhor nota na comunidade: ${s[0].name} (${s[0].rating.toFixed(1)}, ${s[0].ratingCount} avaliações)${s[1] ? `, depois ${s[1].name} (${s[1].rating.toFixed(1)})` : ''}.`, [s[0]])
   }
   const tagAsk: [string[], string][] = [[['vegan', 'vegetarian'], 'vegano'], [['pet', 'cachorr', 'dog'], 'pet'], [['acessiv', 'cadeirante', 'rampa'], 'acessivel'], [['karaok', 'cantar'], 'karaoke'], [['samba', 'pagod'], 'samba']]

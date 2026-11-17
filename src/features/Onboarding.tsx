@@ -33,7 +33,10 @@ export function Onboarding() {
       hood, niches, vibes, onboarded: true,
     })
     track(me?.onboarded ? 'taste_edited' : 'onboarding_done', { niches, vibes, hood })
-    nav('/', { replace: true })
+    // veio de um convite (ex.: evento divulgado): volta pro que a pessoa estava fazendo
+    let next: string | null = null
+    try { next = localStorage.getItem('role.next'); localStorage.removeItem('role.next') } catch { /* */ }
+    nav(next && next.startsWith('/') ? next : '/', { replace: true })
   }
 
   return (

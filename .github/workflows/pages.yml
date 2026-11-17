@@ -29,6 +29,7 @@ jobs:
           BASE_PATH: /${{ github.event.repository.name }}/
           # endereço atual do túnel até o LLM no PC (llm.json na raiz do repo; lido em tempo de execução)
           VITE_LLM_CONFIG_URL: https://raw.githubusercontent.com/${{ github.repository }}/main/llm.json
+          VITE_EVENTS_URL: https://raw.githubusercontent.com/${{ github.repository }}/main/eventos.json
       # SPA: qualquer rota desconhecida (ex.: /r/abc) cai no app
       - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5

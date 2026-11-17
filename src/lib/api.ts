@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
-  Criteria, DiaryEntry, Feedback, FeedItem, Lead, Person, Place, PlaceDetail, Profile, Ranked, RequestDetail, Review, RoleRequest, TrackEvent,
+  Criteria, DiaryEntry, EventDraft, EventFit, EventSubmission, Feedback, FeedItem, Lead, Person, Place, PlaceDetail, Profile, Ranked, RequestDetail, Review, RoleRequest, TrackEvent,
 } from './types'
 
 /* Cliente HTTP "de verdade": quem responde hoje é o MSW (src/mocks).
@@ -131,7 +131,7 @@ export interface TestesData {
   leads: (Lead & { placeName: string })[]
   niches: Record<string, number>
   unmet: Record<string, number>
-  bySrc: Record<string, { app_open: number; vote_cast: number; onboarding_done: number; request_created: number; story_shared: number }>
+  bySrc: Record<string, { app_open: number; vote_cast: number; onboarding_done: number; request_created: number; story_shared: number; event_group_created: number }>
 }
 export const useTestes = () => useQuery({ queryKey: ['testes'], queryFn: () => req<TestesData>('/testes'), staleTime: 0 })
 export const exportTestes = () => req<unknown>('/testes/export')
@@ -139,3 +139,21 @@ export const exportTestes = () => req<unknown>('/testes/export')
 export const searchPlaces = (q: string, rid: string) => req<Ranked[]>(`/search?q=${encodeURIComponent(q)}&rid=${encodeURIComponent(rid)}`)
 export const addSuggestion = (rid: string, b: { placeId: string; by: string; comment: string; hue?: number }) =>
   post<{ ok: boolean; duplicate: boolean }>(`/requests/${rid}/suggestions`, b)
+
+/* ---------- divulgação de eventos ---------- */
+export const groupFromEvent = (placeId: string) => post<{ id: string }>(`/events/${encodeURIComponent(placeId)}/group`, {})
+export const eventFit = (d: EventDraft) => post<EventFit>('/events/fit', d)
+export type SubmissionDTO = EventSubmission & { fit: EventFit }
+export const useSubmissions = () => useQuery({ queryKey: ['submissions'], queryFn: () => req<SubmissionDTO[]>('/submissions') })
+export function useSubmitEvent() {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (d: EventDraft) => post<EventSubmission>('/submissions', d), onSuccess: () => qc.invalidateQueries({ queryKey: ['submissions'] }) })
+}
+export const importSubmission = (id: string, draft: unknown) => post<EventSubmission>('/submissions/import', { id, draft })
+export function useReviewSubmission() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: EventSubmission['status'] }) => post<EventSubmission>(`/submissions/${id}/status`, { status }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['submissions'] }); qc.invalidateQueries({ queryKey: ['events'] }) },
+  })
+}

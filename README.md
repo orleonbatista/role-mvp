@@ -100,3 +100,21 @@ src/
 - **IA real**: troque `parseRequest`/`rank` por uma chamada a LLM (ex.: Ollama local) mantendo a mesma interface `Criteria` → `Ranked[]`.
 - **Dados de lugares**: substitua `seeds/places.ts` por Google Places + sua camada de tags de vibe/ocasião.
 - **Loja**: empacotar com Capacitor.
+
+## Divulgação de eventos (artistas, produtores, criadores)
+
+**Fase 1 — compartilhar.** Toda página de evento tem "Divulgar": a pessoa informa o @ e recebe
+arte de Story + link `/v/?to=e&id=<evento>&src=cr_<@>`. O link abre o convite `/e/:id`
+("Bora? Chama teu grupo"), que cria uma votação com o evento fixo como 1ª opção + 2 parecidas.
+A origem `cr_<@>` fica na tabela "Por origem" do /testes (coluna *grupos* = votações criadas).
+Link de bio: `/v/?to=p&id=<@>` → `/p/:handle`, página tipo linktree com os eventos daquele @.
+
+**Fase 2 — envio com curadoria.** `/divulgar` é um formulário aberto (sem cadastro). Mostra ao
+vivo em quantos pedidos recentes o evento entraria no top 5. O envio gera um link de curadoria
+(`/v/?to=c&id=…#d=<evento comprimido>`) que vai por WhatsApp/direct. Quem abre vê o evento na
+fila (`/c/:id` e /testes → Fila de eventos) e aprova ou recusa.
+
+Publicar pra todo mundo: aprovar (aparece na hora naquele aparelho) → "Copiar JSON" → adicionar
+ao array em `eventos.json` na raiz do repo. O app lê esse arquivo em tempo de execução
+(`VITE_EVENTS_URL`, via raw.githubusercontent), sem precisar de novo deploy. Eventos com data
+passada somem do feed sozinhos.

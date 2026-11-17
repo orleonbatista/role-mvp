@@ -90,7 +90,7 @@ export function Home() {
       </section>
 
       <section className="mt-9">
-        <SectionTitle>Essa semana</SectionTitle>
+        <SectionTitle aside={<Link to="/divulgar" className="text-xs text-faint transition-colors hover:text-accent">+ divulgar evento</Link>}>Essa semana</SectionTitle>
         <motion.div variants={list} initial="initial" animate="animate" className="grid gap-2 px-5">
           {events.data?.map((e) => (
             <motion.div key={e.id} variants={item}>
