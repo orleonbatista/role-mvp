@@ -27,8 +27,8 @@ export function VotePage() {
 
   // link autossuficiente: se o pedido veio no #p=..., cria localmente antes de buscar
   useEffect(() => {
-    const payload = readPayload(location.hash)
     ;(async () => {
+      const payload = await readPayload(location.hash)
       if (payload && payload.id === id) {
         await importRequest(payload)
         await qc.invalidateQueries({ queryKey: ['request', id] })

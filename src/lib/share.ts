@@ -1,11 +1,11 @@
 import type { RequestDetail } from './types'
+import { places } from '../mocks/seeds/places'
+import { parseRequest, timeOptions, unmetFor } from '../mocks/ranker'
 
-/* Link autossuficiente: o pedido vai junto no fragmento da URL (#p=...), então abre em qualquer aparelho
-   sem backend. O fragmento não é enviado ao servidor. Votos ainda ficam em cada aparelho — agregar
-   votos entre pessoas exige o backend compartilhado (próxima fase). */
-
-const b64url = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-const unb64url = (s: string) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)))
+/* Link autossuficiente e CURTO: o pedido vai comprimido no fragmento (#d=...), que nunca chega ao servidor.
+   Só o essencial viaja (id, texto, opções, autor); critérios e horários são recalculados do texto.
+   Formato v2: deflate-raw(JSON [id, texto, [índices dos lugares], autor, matiz]) em base64url.
+   Links antigos (#p= JSON completo) continuam abrindo. */
 
 export interface SharePayload {
   id: string
@@ -17,23 +17,50 @@ export interface SharePayload {
   createdAt: number
 }
 
-export function shareUrl(d: RequestDetail) {
-  const payload: SharePayload = {
-    id: d.request.id, text: d.request.text, criteria: d.request.criteria,
-    optionIds: d.options.map((o) => o.id), times: d.times,
-    author: { name: d.author.name.split(' ')[0], hue: d.author.hue }, createdAt: d.request.createdAt,
-  }
-  // /v/ é uma página estática com preview (og:*) que redireciona para /r/<id>; o #p= nunca vai ao servidor
-  return `${location.origin}${import.meta.env.BASE_URL}v/?id=${encodeURIComponent(d.request.id)}#p=${b64url(JSON.stringify(payload))}`
+const toB64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const fromB64url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+
+async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream) {
+  const out = new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(stream))
+  return new Uint8Array(await out.arrayBuffer())
+}
+const canCompress = () => typeof CompressionStream !== 'undefined'
+
+export async function shareUrl(d: RequestDetail) {
+  const idx = d.options.map((o) => places.findIndex((p) => p.id === o.id)).filter((i) => i >= 0)
+  const compact = [d.request.id, d.request.text, idx, d.author.name.split(' ')[0], d.author.hue]
+  const json = new TextEncoder().encode(JSON.stringify(compact))
+  const base = `${location.origin}${import.meta.env.BASE_URL}v/?id=${encodeURIComponent(d.request.id)}`
+  if (canCompress()) return `${base}#d=${toB64url(await pipe(json, new CompressionStream('deflate-raw')))}`
+  return `${base}#j=${toB64url(json)}`
 }
 
-export function readPayload(hash: string): SharePayload | null {
-  const m = hash.match(/p=([A-Za-z0-9_-]+)/)
-  if (!m) return null
-  try { return JSON.parse(unb64url(m[1])) } catch { return null }
+function expand(arr: unknown): SharePayload | null {
+  if (!Array.isArray(arr)) return null
+  const [id, text, idx, name, hue] = arr as [string, string, number[], string, number]
+  if (typeof id !== 'string' || typeof text !== 'string') return null
+  const criteria = parseRequest(text)
+  criteria.unmet = unmetFor(criteria, places)
+  return {
+    id, text, criteria, times: timeOptions(criteria),
+    optionIds: (idx ?? []).map((i) => places[i]?.id).filter(Boolean) as string[],
+    author: { name: name || 'Alguém', hue: Number(hue) || 82 }, createdAt: Date.now(),
+  }
+}
+
+export async function readPayload(hash: string): Promise<SharePayload | null> {
+  try {
+    const d = hash.match(/[#&]d=([A-Za-z0-9_-]+)/)
+    if (d) return expand(JSON.parse(new TextDecoder().decode(await pipe(fromB64url(d[1]), new DecompressionStream('deflate-raw')))))
+    const j = hash.match(/[#&]j=([A-Za-z0-9_-]+)/)
+    if (j) return expand(JSON.parse(new TextDecoder().decode(fromB64url(j[1]))))
+    const p = hash.match(/[#&]p=([A-Za-z0-9_-]+)/) // formato v1
+    if (p) return JSON.parse(new TextDecoder().decode(fromB64url(p[1])))
+  } catch { /* link corrompido */ }
+  return null
 }
 
 export function shareText(d: RequestDetail) {
   const names = d.options.slice(0, 3).map((o) => o.name).join(', ')
-  return `Bora decidir o rolê? “${d.request.text}”\nOpções: ${names}. Vota aqui:`
+  return `Bora decidir o rolê? “${d.request.text}”\nOpções: ${names}.\n👉 Vota aqui:`
 }

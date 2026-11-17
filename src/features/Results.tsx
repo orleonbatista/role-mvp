@@ -26,6 +26,8 @@ export function Results() {
   const [story, setStory] = useState(false)
   const loaded = !!data
   const optKey = data?.options.map((o) => o.id).join() ?? ''
+  const [link, setLink] = useState('')
+  useEffect(() => { if (data) shareUrl(data).then(setLink) }, [data?.request.id, optKey]) // eslint-disable-line react-hooks/exhaustive-deps
   // memo: a arte não pode ser refeita a cada polling do pedido
   const storyCard = useMemo(() => (data ? pedidoCard(data) : null), [data?.request.id, optKey]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (loaded) track('results_viewed', { id, confidence: data?.confidence }) }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -101,8 +103,8 @@ export function Results() {
         </motion.div>
       )}
 
-      {data && <ShareSheet open={share} onClose={() => setShare(false)} data={data} onStory={() => { setShare(false); setTimeout(() => setStory(true), 250) }} />}
-      {data && <StorySheet open={story} onClose={() => setStory(false)} card={storyCard} link={withSource(shareUrl(data), 'ig')} context="pedido" />}
+      {data && <ShareSheet open={share} onClose={() => setShare(false)} data={data} link={link} onStory={() => { setShare(false); setTimeout(() => setStory(true), 250) }} />}
+      {data && <StorySheet open={story} onClose={() => setStory(false)} card={storyCard} link={link ? withSource(link, 'ig') : ''} context="pedido" />}
     </Page>
   )
 }
@@ -213,10 +215,10 @@ export function pedidoCard(d: RequestDetail): StoryCard {
   return { kind: 'pedido', text: d.request.text, chips, options: d.options.slice(0, 3), author: d.author.name.split(' ')[0] }
 }
 
-function ShareSheet({ open, onClose, data, onStory }: { open: boolean; onClose: () => void; data: RequestDetail; onStory: () => void }) {
+function ShareSheet({ open, onClose, data, link, onStory }: { open: boolean; onClose: () => void; data: RequestDetail; link: string; onStory: () => void }) {
   const toast = useToast()
   const nav = useNavigate()
-  const url = withSource(shareUrl(data), 'wa')
+  const url = link ? withSource(link, 'wa') : ''
   const text = shareText(data)
   const [copied, setCopied] = useState(false)
   const opts = data.options.slice(0, 3)
@@ -260,7 +262,7 @@ function ShareSheet({ open, onClose, data, onStory }: { open: boolean; onClose: 
           Postar no Story do Instagram
         </button>
         <a
-          href={`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`}
+          href={`https://wa.me/?text=${encodeURIComponent(`${text}\n${url}`)}`}
           target="_blank"
           rel="noreferrer"
           onClick={() => track('share_sent', { via: 'whatsapp' })}
@@ -274,7 +276,7 @@ function ShareSheet({ open, onClose, data, onStory }: { open: boolean; onClose: 
           ) : (
             <Button size="lg" variant="soft" icon={copied ? <Check size={16} /> : <Copy size={16} />}
               onClick={async () => {
-                try { await navigator.clipboard.writeText(`${text} ${url}`) } catch { /* sem clipboard */ }
+                try { await navigator.clipboard.writeText(`${text}\n${url}`) } catch { /* sem clipboard */ }
                 setCopied(true); toast('Link copiado'); track('share_sent', { via: 'copy' }); setTimeout(() => setCopied(false), 1800)
               }}>
               {copied ? 'Copiado' : 'Copiar'}
