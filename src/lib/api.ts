@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
-  Criteria, DiaryEntry, FeedItem, Person, Place, PlaceDetail, Profile, Ranked, RequestDetail, Review, RoleRequest,
+  Criteria, DiaryEntry, Feedback, FeedItem, Lead, Person, Place, PlaceDetail, Profile, Ranked, RequestDetail, Review, RoleRequest, TrackEvent,
 } from './types'
 
 /* Cliente HTTP "de verdade": quem responde hoje é o MSW (src/mocks).
@@ -12,9 +12,15 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
-  if (!res.ok) throw new Error(`${res.status} ${path}`)
+  if (!res.ok) throw new ApiError(res.status, path)
   return res.json() as Promise<T>
 }
+
+export class ApiError extends Error {
+  constructor(public status: number, path: string) { super(`${status} ${path}`) }
+}
+/** não insiste em 404: mostra o estado de "não encontrado" na hora */
+const retry = (n: number, e: unknown) => !(e instanceof ApiError && e.status === 404) && n < 2
 
 const post = <T>(path: string, body: unknown) => req<T>(path, { method: 'POST', body: JSON.stringify(body) })
 
@@ -22,7 +28,7 @@ export const useProfile = () => useQuery({ queryKey: ['me'], queryFn: () => req<
 export const useForYou = () => useQuery({ queryKey: ['for-you'], queryFn: () => req<Ranked[]>('/for-you') })
 export const useEvents = () => useQuery({ queryKey: ['events'], queryFn: () => req<Place[]>('/events') })
 export const useFeed = () => useQuery({ queryKey: ['feed'], queryFn: () => req<FeedItem[]>('/feed') })
-export const usePlace = (id: string) => useQuery({ queryKey: ['place', id], queryFn: () => req<PlaceDetail>(`/places/${id}`) })
+export const usePlace = (id: string) => useQuery({ queryKey: ['place', id], queryFn: () => req<PlaceDetail>(`/places/${id}`), retry })
 export const useDiary = () =>
   useQuery({ queryKey: ['diary'], queryFn: () => req<{ diary: DiaryEntry[]; requests: RoleRequest[] }>('/diary') })
 
@@ -30,7 +36,9 @@ export const useRequest = (id: string) =>
   useQuery({
     queryKey: ['request', id],
     queryFn: () => req<RequestDetail>(`/requests/${id}`),
-    refetchInterval: (q) => ((q.state.data?.pendingAnswers ?? 0) > 0 ? 1200 : 4000),
+    retry,
+    enabled: !!id,
+    refetchInterval: (q) => (q.state.status === 'error' ? false : (q.state.data?.pendingAnswers ?? 0) > 0 ? 1200 : 4000),
   })
 
 export const parseText = (text: string) => post<Criteria>('/parse', { text })
@@ -57,14 +65,14 @@ export function useCreateRequest() {
 export function useVote(requestId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (b: { placeId: string; voter: string }) => post(`/requests/${requestId}/votes`, b),
-    onMutate: async ({ placeId, voter }) => {
+    mutationFn: (b: { placeId: string; voter: string; kind?: 'place' | 'time' }) => post(`/requests/${requestId}/votes`, b),
+    onMutate: async ({ placeId, voter, kind = 'place' }) => {
       // otimista: o placar anima na hora
       await qc.cancelQueries({ queryKey: ['request', requestId] })
       qc.setQueryData<RequestDetail>(['request', requestId], (d) =>
         d && {
           ...d,
-          tally: d.tally.map((t) => {
+          [kind === 'time' ? 'timeTally' : 'tally']: (kind === 'time' ? d.timeTally : d.tally).map((t) => {
             const voters = t.voters.filter((v) => v !== voter)
             if (t.placeId === placeId) voters.push(voter)
             return { ...t, voters, count: voters.length }
@@ -79,7 +87,7 @@ export function useVote(requestId: string) {
 export function useDecide(requestId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (placeId: string) => post(`/requests/${requestId}/decide`, { placeId }),
+    mutationFn: (b: { placeId: string; time?: string }) => post(`/requests/${requestId}/decide`, b),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['request', requestId] }),
   })
 }
@@ -102,3 +110,27 @@ export function useCreateReview() {
     },
   })
 }
+
+export const importRequest = (payload: unknown) => post<{ ok: boolean }>('/requests/import', payload)
+
+export function useCreateLead() {
+  return useMutation({ mutationFn: (l: Omit<Lead, 'id' | 'at'>) => post<Lead>('/leads', l) })
+}
+
+export function useSendFeedback() {
+  return useMutation({ mutationFn: (f: Omit<Feedback, 'id' | 'at'>) => post<Feedback>('/feedback', f) })
+}
+
+export interface TestesData {
+  counts: Record<string, number>
+  total: number
+  firstAt?: number
+  lastAt?: number
+  recent: TrackEvent[]
+  feedback: Feedback[]
+  leads: (Lead & { placeName: string })[]
+  niches: Record<string, number>
+  unmet: Record<string, number>
+}
+export const useTestes = () => useQuery({ queryKey: ['testes'], queryFn: () => req<TestesData>('/testes'), staleTime: 0 })
+export const exportTestes = () => req<unknown>('/testes/export')

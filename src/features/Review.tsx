@@ -2,7 +2,9 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Frown, Heart, Meh, Sparkles } from 'lucide-react'
-import { Avatar, Button, Cover, Page, Skeleton, TopBar, cx } from '../ui/primitives'
+import { Avatar, Button, Cover, EmptyState, Overlay, Page, Skeleton, TopBar, cx } from '../ui/primitives'
+import { placeIcon } from '../ui/placeIcon'
+import { track } from '../lib/track'
 import { useToast } from '../ui/Toast'
 import { ease, spring } from '../ui/motion'
 import { useCreateReview, useRequest } from '../lib/api'
@@ -18,7 +20,7 @@ export function ReviewPage() {
   const { id = '' } = useParams()
   const nav = useNavigate()
   const toast = useToast()
-  const { data } = useRequest(id)
+  const { data, isError } = useRequest(id)
   const create = useCreateReview()
   const [went, setWent] = useState<boolean | null>(null)
   const [placeId, setPlaceId] = useState<string>()
@@ -33,14 +35,16 @@ export function ReviewPage() {
   async function submit() {
     if (!placeId || went === null) return
     const res = await create.mutateAsync({ requestId: id, placeId, went, verdict: went ? verdict : undefined, note })
+    track('review_saved', { went, verdict, credited: !!res.credited })
     setCredited(res.credited)
     if (!res.credited) { toast('Avaliação salva no seu diário'); nav('/perfil') }
   }
 
   const ready = went === false || (went && placeId && verdict)
+  if (isError) return <Page><TopBar /><EmptyState title="Pedido não encontrado" text="Não achei esse rolê neste aparelho." action={<Button onClick={() => nav('/')}>Ir pro início</Button>} /></Page>
 
   return (
-    <Page className="pb-32">
+    <Page className="pb-44">
       <TopBar title="Pós-rolê" />
       {!data ? <Skeleton className="m-5 h-60" /> : (
         <div className="px-5">
@@ -64,7 +68,7 @@ export function ReviewPage() {
                   {data.options.map((p) => (
                     <motion.button key={p.id} whileTap={{ scale: 0.98 }} onClick={() => setPlaceId(p.id)}
                       className={cx('flex items-center gap-3 rounded-[20px] border p-2.5 text-left transition-colors', placeId === p.id ? 'border-accent/70 bg-accent/[0.06]' : 'border-line')}>
-                      <Cover hue={p.hue} className="size-11" rounded="rounded-[12px]" />
+                      <Cover hue={p.hue} icon={placeIcon(p)} iconSize={18} className="size-11" rounded="rounded-[12px]" />
                       <span className="flex-1 text-[15px]">{p.name}</span>
                       <motion.span className="mr-2 size-5 rounded-full border" animate={{ backgroundColor: placeId === p.id ? '#c6ff3d' : 'rgba(0,0,0,0)', borderColor: placeId === p.id ? '#c6ff3d' : 'rgba(255,255,255,.15)' }} />
                     </motion.button>
@@ -106,9 +110,10 @@ export function ReviewPage() {
         <Button size="lg" className="w-full" disabled={!ready || create.isPending} onClick={submit}>Salvar no diário</Button>
       </div>
 
+      <Overlay>
       <AnimatePresence>
         {credited && (
-          <motion.div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg/92 px-8 text-center backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <motion.div className="pointer-events-auto absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg/92 px-8 text-center backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 16 }} className="relative">
               <Avatar name={credited.name} hue={credited.hue} size={96} />
               <motion.span initial={{ scale: 0, y: 10 }} animate={{ scale: 1, y: 0 }} transition={{ delay: 0.35, ...spring }} className="absolute -right-3 -top-2 rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-accent-ink">+15 rep</motion.span>
@@ -122,6 +127,7 @@ export function ReviewPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      </Overlay>
     </Page>
   )
 }

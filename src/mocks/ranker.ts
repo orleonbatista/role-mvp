@@ -1,111 +1,243 @@
-import type { Criteria, Niche, Occasion, Place, Profile, Ranked, Vibe } from '../lib/types'
+import type { Criteria, Niche, Occasion, Place, Profile, Ranked, Tag, Vibe, When } from '../lib/types'
 import { HOODS, nicheLabel, occasionLabel, vibeLabel } from '../lib/labels'
+import { DAY_LONG, DAY_SHORT, distanceKm, isOpenAt } from '../lib/hours'
 
-/* "IA" mock: extração de intenção por palavras-chave + ranking determinístico.
-   Mesma interface que um LLM real teria: texto livre -> critérios -> ranking explicado. */
+/* "IA" local: texto livre -> critérios estruturados -> ranking explicável.
+   Casamento por palavra inteira (não por pedaço), tolerante a 1 erro de digitação,
+   entende dia/horário e admite o que não sabe. */
 
-const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+export const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+const tokenize = (s: string) => norm(s).replace(/[^a-z0-9$ ]+/g, ' ').split(/\s+/).filter(Boolean)
+
+function lev(a: string, b: string) {
+  if (Math.abs(a.length - b.length) > 1) return 2
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+  return dp[a.length][b.length]
+}
+
+/** kw pode ser frase ("ao vivo"), prefixo ("namorad*") ou palavra (tolera 1 erro se tiver 6+ letras) */
+function has(tokens: string[], joined: string, kw: string) {
+  if (kw.includes(' ')) return joined.includes(` ${kw} `)
+  if (kw.endsWith('*')) return tokens.some((t) => t.startsWith(kw.slice(0, -1)))
+  return tokens.some((t) => t === kw || (kw.length >= 6 && lev(t, kw) <= 1))
+}
 
 const NICHE_KW: Record<Niche, string[]> = {
-  listening: ['listening', 'vinil', 'disco', 'som bom', 'hi-fi', 'hifi', 'audiofil'],
-  eletronica: ['eletronica', 'techno', 'house', 'balada', 'pista', ' dj', 'rave', 'dancar'],
-  boteco: ['boteco', 'buteco', 'acepipe', 'petisco', 'torresmo', 'pe-sujo', 'pe sujo', 'chopp', 'cerveja'],
-  gastronomia: ['jantar', 'comer', 'restaurante', 'comida', 'almoco', 'omakase', 'cozinha', 'menu'],
-  drinks: ['drink', 'coquetel', 'cocktail', 'vinho', 'rooftop', 'karaoke'],
-  jazz: ['jazz', 'sax', 'ao vivo', 'blues', 'jam'],
-  'ao-ar-livre': ['ar livre', 'quintal', 'laje', 'terraco', 'rooftop', 'por do sol', 'tarde', 'day party'],
+  listening: ['listening', 'vinil', 'vinis', 'som bom', 'hifi', 'hi fi', 'audiofilo', 'discos'],
+  eletronica: ['eletronica', 'techno', 'tecno', 'house', 'balada', 'pista', 'dj', 'rave', 'danca*', 'dancar'],
+  boteco: ['boteco', 'buteco', 'acepipe*', 'petisco*', 'torresmo', 'pe sujo', 'chopp', 'chope', 'cerveja', 'cerva'],
+  gastronomia: ['jantar', 'comer', 'restaurante', 'comida', 'almoco', 'almocar', 'omakase', 'cozinha', 'menu', 'degustacao'],
+  drinks: ['drink*', 'coquetel*', 'cocktail*', 'vinho*', 'rooftop', 'bar de vinho'],
+  jazz: ['jazz', 'sax', 'ao vivo', 'blues', 'jam', 'musica ao vivo'],
+  'ao-ar-livre': ['ar livre', 'quintal', 'laje', 'terraco', 'rooftop', 'por do sol', 'day party'],
 }
 const VIBE_KW: Record<Vibe, string[]> = {
-  tranquilo: ['tranquilo', 'calmo', 'conversar', 'sossegado', 'silencio'],
-  animado: ['animado', 'agitado', 'dancar', 'festa', 'lotado'],
-  intimista: ['intimista', 'romantico', 'a dois', 'pequeno'],
+  tranquilo: ['tranquilo', 'calmo', 'conversar', 'sossegado', 'silencio', 'ler', 'trabalhar'],
+  animado: ['animado', 'agitado', 'lotado', 'animacao', 'festa'],
+  intimista: ['intimista', 'romantico', 'romantica', 'a dois', 'pequeno', 'aconchegante'],
   underground: ['underground', 'alternativo', 'escondido', 'secreto', 'de verdade'],
-  descolado: ['descolado', 'moderno', 'hype', 'autoral'],
-  raiz: ['raiz', 'simples', 'barato', 'tradicional'],
-  sofisticado: ['sofisticado', 'chique', 'especial', 'elegante', 'fino'],
+  descolado: ['descolado', 'moderno', 'hype', 'autoral', 'diferente'],
+  raiz: ['raiz', 'simples', 'barato', 'barata', 'tradicional', 'roots'],
+  sofisticado: ['sofisticado', 'chique', 'especial', 'elegante', 'fino', 'requintado'],
 }
 const OCC_KW: [Occasion, string[]][] = [
-  ['aniversario', ['aniversario', 'niver', 'comemorar', 'comemoracao']],
-  ['date', ['date', 'encontro', 'romantico', 'namorad', 'a dois']],
-  ['trabalho', ['firma', 'trabalho', 'equipe', 'happy hour', 'happy']],
-  ['esquenta', ['esquenta']],
-  ['solo', ['sozinh', 'solo', 'so eu']],
-  ['amigos', ['amigos', 'galera', 'turma', 'pais', 'familia']],
+  ['aniversario', ['aniversario', 'niver', 'comemorar', 'comemoracao', 'parabens']],
+  ['date', ['date', 'encontro', 'namorad*', 'a dois', 'crush', 'romantico', 'romantica']],
+  ['trabalho', ['firma', 'trabalho', 'equipe', 'happy hour', 'happy', 'empresa', 'time']],
+  ['esquenta', ['esquenta', 'pre balada']],
+  ['solo', ['sozinh*', 'solo', 'so eu']],
+  ['amigos', ['amigos', 'amigas', 'galera', 'turma', 'pais', 'familia', 'mae', 'pai']],
 ]
-const HOOD_ALIAS: Record<string, string> = { paulista: 'Consolação', augusta: 'Consolação', 'bela vista': 'Bixiga', vila: '' }
+const TAG_KW: Record<Tag, string[]> = {
+  vegano: ['vegan*', 'vegetarian*', 'plant based'],
+  samba: ['samba', 'pagode', 'roda de samba'],
+  pet: ['pet', 'cachorro', 'dog', 'cachorra'],
+  acessivel: ['acessivel', 'cadeirante', 'acessibilidade', 'cadeira de rodas'],
+  karaoke: ['karaoke', 'cantar'],
+  funk: ['funk', 'baile'],
+  sertanejo: ['sertanejo', 'modao', 'sertaneja'],
+  'open-bar': ['open bar', 'openbar'],
+}
+const TAG_LABEL: Record<Tag, string> = {
+  vegano: 'opção vegana', samba: 'samba', pet: 'pet friendly', acessivel: 'acessibilidade',
+  karaoke: 'karaokê', funk: 'funk', sertanejo: 'sertanejo', 'open-bar': 'open bar',
+}
+const HOOD_ALIAS: [string, string][] = [['paulista', 'Consolação'], ['augusta', 'Consolação'], ['bela vista', 'Bixiga'], ['vila madalena', 'Vila Madalena'], ['madalena', 'Vila Madalena'], ['vila mariana', 'Vila Mariana'], ['santa cecilia', 'Santa Cecília'], ['vila prudente', 'Vila Prudente'], ['barra funda', 'Barra Funda'], ['itaim bibi', 'Itaim']]
 
-export function parseRequest(text: string): Criteria {
-  const t = ` ${norm(text)} `
-  const niches = (Object.keys(NICHE_KW) as Niche[]).filter((n) => NICHE_KW[n].some((k) => t.includes(k)))
-  const vibes = (Object.keys(VIBE_KW) as Vibe[]).filter((v) => VIBE_KW[v].some((k) => t.includes(k)))
-  const occasion = OCC_KW.find(([, kws]) => kws.some((k) => t.includes(k)))?.[0]
+const DAYS_KW: [number, string[]][] = [
+  [0, ['domingo']], [1, ['segunda']], [2, ['terca']], [3, ['quarta']],
+  [4, ['quinta']], [5, ['sexta', 'sextou']], [6, ['sabado', 'sab', 'fim de semana', 'fds']],
+]
 
-  let budget: number | undefined
-  const b = t.match(/r\$\s*(\d{2,4})/) ?? t.match(/(\d{2,4})\s*(reais|conto|pila)/) ?? t.match(/ate\s+(\d{2,4})\b/)
-  if (b) budget = Number(b[1])
-  if (!budget && /barat/.test(t)) budget = 55
+function parseWhen(tokens: string[], joined: string): When | undefined {
+  const today = new Date().getDay()
+  let day: number | undefined
+  if (tokens.includes('hoje') || tokens.includes('agora')) day = today
+  else if (tokens.includes('amanha') && !joined.includes(' de manha ')) day = (today + 1) % 7
+  else for (const [d, kws] of DAYS_KW) if (kws.some((k) => (k.length <= 3 ? tokens.includes(k) : has(tokens, joined, k)))) { day = d; break }
 
-  let groupSize: number | undefined
-  const g = t.match(/(\d{1,3})\s*(pessoas|amigos|convidados|pax|amigas)/) ?? t.match(/(?:pra|para|somos)\s+(\d{1,3})\b(?!\s*(reais|conto|r\$))/)
-  if (g) groupSize = Number(g[1])
-  if (!groupSize) groupSize = occasion === 'solo' ? 1 : occasion === 'date' ? 2 : t.includes('pais') ? 3 : 4
+  let hour: number | undefined
+  const m = joined.match(/ (\d{1,2}) ?h(?:rs?|oras?)? /) ?? joined.match(/ as (\d{1,2}) /)
+  if (m) hour = Number(m[1])
+  else if (has(tokens, joined, 'almoco') || has(tokens, joined, 'almocar')) hour = 12.5
+  else if (has(tokens, joined, 'cafe da manha')) hour = 9
+  else if (has(tokens, joined, 'tarde') || has(tokens, joined, 'day party')) hour = 16
+  else if (has(tokens, joined, 'madrugada') || joined.includes(' ate de manha ') || joined.includes(' amanhecer ')) hour = 2
+  else if (has(tokens, joined, 'noite') || has(tokens, joined, 'jantar')) hour = 21
 
-  let hood = HOODS.find((h) => t.includes(norm(h)))
-  if (!hood) for (const [alias, h] of Object.entries(HOOD_ALIAS)) if (h && t.includes(alias)) hood = h
-
-  return { occasion, groupSize, budget, hood, niches, vibes }
+  if (day === undefined && hour === undefined) return undefined
+  const dl = day === undefined ? '' : day === today ? 'hoje' : day === (today + 1) % 7 ? 'amanhã' : DAY_LONG[day]
+  const hl = hour === undefined ? '' : hour === 12.5 ? 'no almoço' : hour === 16 ? 'à tarde' : hour === 2 ? 'de madrugada' : hour === 21 && !m ? 'à noite' : `às ${hour}h`
+  return { day, hour, label: [dl, hl].filter(Boolean).join(' ') }
 }
 
+export function parseRequest(text: string): Criteria {
+  const tokens = tokenize(text)
+  const joined = ` ${tokens.join(' ')} `
+  const niches = (Object.keys(NICHE_KW) as Niche[]).filter((n) => NICHE_KW[n].some((k) => has(tokens, joined, k)))
+  const vibes = (Object.keys(VIBE_KW) as Vibe[]).filter((v) => VIBE_KW[v].some((k) => has(tokens, joined, k)))
+  const occasion = OCC_KW.find(([, kws]) => kws.some((k) => has(tokens, joined, k)))?.[0]
+  const tags = (Object.keys(TAG_KW) as Tag[]).filter((t) => TAG_KW[t].some((k) => has(tokens, joined, k)))
+
+  let budget: number | undefined
+  const raw = ` ${norm(text)} `
+  const b = raw.match(/r\$\s*(\d{2,4})/) ?? raw.match(/(\d{2,4})\s*(reais|conto|pila)/) ?? raw.match(/ate\s+(\d{2,4})\b/)
+  if (b) budget = Number(b[1])
+  if (!budget && /\bbarat/.test(raw)) budget = 60
+  if (/sem limite|tanto faz o preco|nao importa o preco/.test(raw)) budget = undefined
+
+  let groupSize: number | undefined
+  const g = raw.match(/(\d{1,3})\s*(pessoas|amigos|amigas|convidados|pax|pessoal)/) ?? raw.match(/(?:pra|para|somos|de)\s+(\d{1,3})\b(?!\s*(reais|conto|r\$|h\b|anos))/)
+  if (g) groupSize = Number(g[1])
+  if (!groupSize) groupSize = occasion === 'solo' ? 1 : occasion === 'date' ? 2 : /\bpais\b/.test(raw) ? 3 : 4
+
+  let hood = HOODS.find((h) => joined.includes(` ${norm(h)} `))
+  if (!hood) hood = HOOD_ALIAS.find(([a]) => joined.includes(` ${a} `))?.[1]
+
+  return { occasion, groupSize, budget, hood, niches, vibes, tags, when: parseWhen(tokens, joined), unmet: [] }
+}
+
+const NICHE_REASON: Record<Niche, string> = {
+  listening: 'Listening bar de verdade', eletronica: 'Pista de eletrônica forte', boteco: 'Boteco com acepipe de respeito',
+  gastronomia: 'Cozinha que vale a ida', drinks: 'Carta de drinks caprichada', jazz: 'Música ao vivo de qualidade',
+  'ao-ar-livre': 'Espaço ao ar livre',
+}
+
+export const isVague = (c: Criteria) => !c.occasion && !c.niches.length && !c.vibes.length && !c.tags.length
+
 export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ranked[] {
+  const bigGroup = c.groupSize >= 10 && (c.occasion === 'aniversario' || c.occasion === 'trabalho')
+  // pontuação máxima possível para os critérios pedidos — base do match calibrado
+  const max =
+    c.niches.length * 3 + c.vibes.length * 1.6 + (c.occasion ? 3 : 0) + (c.groupSize >= 8 ? 2 : 0) + (bigGroup ? 2 : 0) +
+    (c.budget ? 1.5 : 0) + (c.hood ? 2.5 : 0) + c.tags.length * 2.5 + (c.when ? 1.5 : 0) + 2 +
+    (isVague(c) && profile ? profile.niches.length * 1.4 + profile.vibes.length * 0.5 + 0.8 : 0)
+
   const out = places.map((place) => {
     let score = 0
     const why: [number, string][] = []
+    const warn: string[] = []
 
-    for (const n of c.niches) if (place.niches.includes(n)) { score += 3; why.push([3, `É ${nicheLabel(n).toLowerCase()} de verdade`]) }
+    for (const n of c.niches) if (place.niches.includes(n)) { score += 3; why.push([3, NICHE_REASON[n]]) }
     if (!c.niches.length && profile) for (const n of profile.niches) if (place.niches.includes(n)) { score += 1.4; why.push([1.4, `Bate com seu gosto por ${nicheLabel(n).toLowerCase()}`]) }
     for (const v of c.vibes) if (place.vibes.includes(v)) { score += 1.6; why.push([1.6, `Clima ${vibeLabel(v).toLowerCase()}, como você pediu`]) }
-    if (profile) for (const v of profile.vibes) if (place.vibes.includes(v)) score += 0.5
+    if (profile && isVague(c)) for (const v of profile.vibes) if (place.vibes.includes(v)) score += 0.5
+
+    for (const t of c.tags) {
+      if (place.tags.includes(t)) { score += 2.5; why.push([2.7, `Tem ${TAG_LABEL[t]}`]) }
+      else score -= 1
+    }
 
     if (c.occasion) {
       if (place.occasions.includes(c.occasion)) { score += 3; why.push([2.8, `Comunidade aprova pra ${occasionLabel(c.occasion).toLowerCase()}`]) }
       else score -= 1.5
     }
 
-    if (c.groupSize > place.capacity) score -= 7
+    if (c.groupSize > place.capacity) { score -= 7; warn.push(`Comporta até ${place.capacity} pessoas`) }
     else if (c.groupSize >= 8) { score += 2; why.push([2.6, `Cabe seu grupo de ${c.groupSize} (até ${place.capacity})`]) }
+    if (bigGroup) {
+      if (place.kind === 'evento') { score -= 6; warn.push('Evento aberto: não reserva espaço pro grupo') }
+      else if (place.privateSpace) { score += 2; why.push([2.9, 'Tem espaço reservável pro grupo']) }
+    }
 
     if (c.budget) {
       if (place.price <= c.budget) { score += 1.5; why.push([1.5, place.price === 0 ? 'Grátis' : `~R$ ${place.price}/pessoa, dentro do orçamento`]) }
-      else if (place.price > c.budget * 1.25) score -= 4
-      else score -= 1
-    }
+      else if (place.price > c.budget * 1.25) { score -= 4; warn.push(`~R$ ${place.price}/pessoa, acima do orçamento`) }
+      else { score -= 1; warn.push(`~R$ ${place.price}/pessoa, um pouco acima`) }
+    } else if (isVague(c) && place.price > 200) score -= 2
 
     if (c.hood) {
       if (place.hood === c.hood) { score += 2.5; why.push([2.4, `Fica em ${place.hood}`]) }
       else score -= 0.5
-    } else if (profile?.hood && place.hood === profile.hood) { score += 0.8; why.push([0.8, `Perto de você, em ${place.hood}`]) }
+    } else if (profile?.hood) {
+      const km = distanceKm(profile.hood, place.hood)
+      if (km !== undefined && km < 3) { score += 0.8; why.push([0.8, `Perto de você (${place.hood})`]) }
+    }
+
+    if (c.when) {
+      const d = c.when.day ?? 0
+      const h = c.when.hour ?? 21
+      const ok = c.when.day === undefined
+        ? [0, 1, 2, 3, 4, 5, 6].some((x) => isOpenAt(place.periods, x, h)) // só horário: qualquer dia serve
+        : c.when.hour === undefined
+          ? [13, 19, 21, 23].some((x) => isOpenAt(place.periods, d, x)) || isOpenAt(place.periods, (d + 1) % 7, 1)
+          : isOpenAt(place.periods, d, h)
+      if (ok) { score += 1.5; why.push([2.2, place.kind === 'evento' ? `Acontece ${place.when?.toLowerCase()}` : `Aberto ${c.when.label}`]) }
+      else { score -= 6; warn.push(place.kind === 'evento' ? `Só acontece ${place.when}` : c.when.day === undefined ? `Não abre ${c.when.label}` : `Fechado ${c.when.label}`) }
+    }
 
     score += (place.rating - 8) * 1.5
     if (place.rating >= 8.8) why.push([1.2, `Nota ${place.rating.toFixed(1)} na comunidade`])
 
     const reasons = why.sort((a, b) => b[0] - a[0]).map(([, s]) => s).filter((s, i, a) => a.indexOf(s) === i).slice(0, 3)
     if (!reasons.length) reasons.push(place.tagline)
-    return { place, score, reasons, match: 0 }
+    for (const t of c.tags) if (!place.tags.includes(t)) warn.push(`Sem confirmação de ${TAG_LABEL[t]}`)
+    return { place, score, reasons, warnings: warn.slice(0, 2), match: 0 }
   })
 
   out.sort((a, b) => b.score - a.score)
-  const top = out[0]?.score ?? 1
-  for (const r of out) r.match = Math.max(52, Math.min(98, Math.round(70 + (r.score / Math.max(top, 1)) * 27)))
+  for (const r of out) r.match = Math.max(15, Math.min(99, Math.round((r.score / Math.max(max, 1)) * 100)))
   return out
+}
+
+/** termos pedidos que nenhum lugar do catálogo cobre */
+export function unmetFor(c: Criteria, places: Place[]) {
+  return c.tags.filter((t) => !places.some((p) => p.tags.includes(t))).map((t) => TAG_LABEL[t])
+}
+
+export function confidenceOf(c: Criteria, top?: Ranked): 'alta' | 'media' | 'baixa' {
+  if (!top || isVague(c) || top.match < 55) return 'baixa'
+  return top.match >= 75 && !top.warnings.length ? 'alta' : 'media'
 }
 
 export function introFor(c: Criteria, top: Ranked[]): string {
   const parts: string[] = []
   if (c.occasion) parts.push(occasionLabel(c.occasion).toLowerCase())
   if (c.groupSize > 2) parts.push(`${c.groupSize} pessoas`)
+  if (c.when) parts.push(c.when.label)
   if (c.hood) parts.push(`em ${c.hood}`)
   if (c.budget) parts.push(`até R$ ${c.budget}`)
   const what = parts.length ? parts.join(', ') : 'o que você descreveu'
+  const unmet = c.unmet.length ? ` Ainda não tenho ${c.unmet.join(' nem ')} no catálogo, então trouxe o mais próximo.` : ''
+  const conf = confidenceOf(c, top[0])
   const best = top[0]?.place.name
-  return `Entendi: ${what}. Cruzei ${c.niches.length ? c.niches.map((n) => nicheLabel(n).toLowerCase()).join(' + ') : 'seu gosto'} com capacidade, preço e o que a comunidade aprovou. ${best ? `${best} é a aposta mais segura.` : ''}`
+  if (conf === 'baixa' && isVague(c))
+    return `Seu pedido ficou bem aberto, então usei seu gosto e o que está bem avaliado.${unmet} Se disser a ocasião ou o clima, eu acerto mais.`
+  return `Entendi: ${what}. Cruzei ${c.niches.length ? c.niches.map((n) => nicheLabel(n).toLowerCase()).join(' + ') : 'seu gosto'} com capacidade, preço, horário e o que a comunidade aprovou.${unmet} ${best ? (conf === 'alta' ? `${best} é a aposta mais segura.` : `${best} é o que chega mais perto, mas vale olhar os alertas.`) : ''}`
+}
+
+/** opções de horário para votação, a partir do que foi pedido */
+export function timeOptions(c: Criteria): string[] {
+  const days = c.when?.day !== undefined ? [c.when.day] : [5, 6]
+  const hours = c.when?.hour !== undefined
+    ? [c.when.hour === 12.5 ? 12 : Math.floor(c.when.hour), Math.floor(c.when.hour) + 1].map((h) => h % 24)
+    : c.occasion === 'trabalho' ? [18, 19] : c.niches.includes('eletronica') ? [23, 0] : [20, 21]
+  const out: string[] = []
+  for (const d of days) for (const h of hours) out.push(`${DAY_SHORT[d]} ${h}h`)
+  if (days.length === 1 && out.length < 3) out.push(`${DAY_SHORT[(days[0] + 1) % 7]} ${hours[0]}h`)
+  return out.slice(0, 3)
 }

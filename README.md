@@ -33,6 +33,17 @@ Cada visitante tem seus próprios dados no navegador (IndexedDB) — nada é com
 | Estado servidor | TanStack Query (cache, polling das respostas, votos otimistas) |
 | "IA" | `src/mocks/ranker.ts`: extrai ocasião/grupo/bairro/preço/nicho/vibe do texto e ranqueia com motivos |
 
+## Novidades da v2 (pós-avaliação)
+
+- **Link autossuficiente**: o pedido viaja no fragmento da URL (`#p=…`), então o link de votação abre em qualquer celular sem backend. Votos de quem abre o link ficam no aparelho dessa pessoa (placar compartilhado = próxima fase, exige backend).
+- **Votação de horário** além do lugar; "Fechar no X · Sáb 20h".
+- **Compartilhar**: botão direto do WhatsApp (`wa.me`), folha nativa do celular (`navigator.share`) ou copiar.
+- **IA mais honesta**: casamento por palavra inteira + tolerância a 1 erro de digitação, entende dia/horário (hoje, sexta, almoço, madrugada), tags (vegano, samba, pet, acessível, karaokê), espaço reservável para grupos grandes, avisos ("fecha às 23h", "acima do orçamento"), match calibrado pela quantidade de critérios, nível de confiança e "não tenho X no catálogo". Pedido vago → pergunta antes de chutar.
+- **Medição local**: eventos do funil, botão de feedback em todas as telas, "fake door" de reserva (formulário de lead) e **Painel de testes** (`/testes`, link no perfil) com export JSON.
+- **Modo demonstração** (perfil): liga/desliga curadores e amigos simulados — desligue para testes com pessoas reais.
+- **UX**: ícone do tipo de lugar nas capas, aberto agora/abre às, distância aproximada do seu bairro, estados de erro, folhas e celebrações fora da área de rolagem, code-split por tela.
+- **IA via LLM local (opcional)**: `src/mocks/llm.ts` — com `VITE_OLLAMA_URL`/`VITE_OLLAMA_MODEL` num `.env.local` e o Ollama rodando com `OLLAMA_ORIGINS=*`, o LLM complementa a extração de critérios; o ranking continua determinístico. Sem as variáveis, nada muda.
+
 ## Fluxo para testar
 
 1. **Onboarding** → nome, bairro, nichos e vibes.

@@ -2,6 +2,14 @@ export type Niche = 'listening' | 'eletronica' | 'boteco' | 'gastronomia' | 'dri
 export type Vibe = 'tranquilo' | 'animado' | 'intimista' | 'underground' | 'descolado' | 'raiz' | 'sofisticado'
 export type Occasion = 'aniversario' | 'date' | 'amigos' | 'solo' | 'trabalho' | 'esquenta'
 export type PlaceKind = 'bar' | 'restaurante' | 'balada' | 'evento'
+/** atributos pontuais que o usuário pode pedir ("vegano", "samba", "pet") */
+export type Tag = 'vegano' | 'samba' | 'pet' | 'acessivel' | 'karaoke' | 'funk' | 'sertanejo' | 'open-bar'
+
+/** 0 = domingo … 6 = sábado; horas podem passar de 24 (ex.: 26 = 2h da madrugada seguinte) */
+export interface OpenPeriod { days: number[]; open: number; close: number }
+
+/** quando o rolê acontece, extraído do texto */
+export interface When { day?: number; hour?: number; label: string }
 
 export interface Place {
   id: string
@@ -25,6 +33,10 @@ export interface Place {
   address: string
   hours: string
   when?: string
+  tags: Tag[]
+  /** tem área/sala/mesa reservável para grupo */
+  privateSpace: boolean
+  periods: OpenPeriod[]
 }
 
 export interface Person {
@@ -43,6 +55,8 @@ export interface Profile extends Person {
   niches: Niche[]
   vibes: Vibe[]
   onboarded: boolean
+  /** simula curadores e amigos votando; desligar para testes com pessoas reais */
+  demoMode: boolean
 }
 
 export interface Criteria {
@@ -52,6 +66,10 @@ export interface Criteria {
   hood?: string
   niches: Niche[]
   vibes: Vibe[]
+  tags: Tag[]
+  when?: When
+  /** termos pedidos que o catálogo não cobre (ex.: "funk") */
+  unmet: string[]
 }
 
 export interface RoleRequest {
@@ -62,6 +80,13 @@ export interface RoleRequest {
   createdAt: number
   status: 'aberto' | 'decidido'
   decidedPlaceId?: string
+  decidedTime?: string
+  /** snapshot das opções (vem no link compartilhado) */
+  optionIds?: string[]
+  /** opções de horário para votação */
+  times?: string[]
+  /** autor quando o pedido veio de outro aparelho via link */
+  externalAuthor?: { name: string; hue: number }
 }
 
 export interface Answer {
@@ -78,6 +103,8 @@ export interface Answer {
 export interface Vote {
   id: string
   requestId: string
+  kind?: 'place' | 'time'
+  /** placeId (kind=place) ou rótulo do horário (kind=time) */
   placeId: string
   voter: string
   createdAt: number
@@ -100,7 +127,13 @@ export interface Ranked {
   score: number
   match: number
   reasons: string[]
+  /** alertas honestos ("fecha às 23h", "não tem opção vegana") */
+  warnings: string[]
 }
+
+export interface TrackEvent { id: string; name: string; at: number; path: string; props?: Record<string, unknown> }
+export interface Feedback { id: string; at: number; path: string; score: number; text: string }
+export interface Lead { id: string; at: number; placeId: string; requestId?: string; day: string; time: string; people: number; name: string; contact: string; note: string }
 
 /* ---------- DTOs da API mock ---------- */
 export interface FeedItem {
@@ -127,11 +160,15 @@ export interface RequestDetail {
   request: RoleRequest
   author: Person
   intro: string
+  /** baixa = pedido vago ou nada encaixou bem */
+  confidence: 'alta' | 'media' | 'baixa'
   recommendations: Ranked[]
   answers: AnswerDTO[]
   pendingAnswers: number
   options: Place[]
   tally: VoteTally[]
+  times: string[]
+  timeTally: VoteTally[]
 }
 
 export interface PlaceDetail {

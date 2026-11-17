@@ -1,9 +1,11 @@
 import { motion } from 'motion/react'
 import { Link, useNavigate } from 'react-router'
-import { ArrowUpRight, RotateCcw, Settings2 } from 'lucide-react'
+import { ArrowUpRight, BarChart3, FlaskConical, RotateCcw, Settings2 } from 'lucide-react'
 import { AnimatedNumber, Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
-import { useDiary, useProfile } from '../lib/api'
+import { useDiary, useProfile, useSaveProfile } from '../lib/api'
+import { track } from '../lib/track'
+import { placeIcon } from '../ui/placeIcon'
 import { NICHES, VERDICT_LABEL, nicheLabel, timeAgo, vibeLabel } from '../lib/labels'
 import { resetAll } from '../db/db'
 
@@ -11,6 +13,7 @@ export function ProfilePage() {
   const nav = useNavigate()
   const { data: me } = useProfile()
   const { data } = useDiary()
+  const save = useSaveProfile()
   const diary = data?.diary ?? []
   const requests = data?.requests ?? []
 
@@ -82,7 +85,7 @@ export function ProfilePage() {
           {diary.map((d, i) => (
             <motion.div key={d.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05, duration: 0.5, ease }}>
               <Link to={`/lugar/${d.place.id}`} className="flex items-center gap-3 rounded-[20px] bg-surface p-2.5 pr-4">
-                <Cover hue={d.place.hue} className="size-14 shrink-0" rounded="rounded-[14px]" />
+                <Cover hue={d.place.hue} icon={placeIcon(d.place)} iconSize={22} className="size-14 shrink-0" rounded="rounded-[14px]" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px]">{d.place.name}</p>
                   <p className="truncate text-xs text-mute">{d.went ? (d.verdict ? VERDICT_LABEL[d.verdict] : '') : 'não rolou'}{d.note ? ` · ${d.note}` : ''}</p>
@@ -104,6 +107,30 @@ export function ProfilePage() {
               {r.status === 'decidido' ? <Tag tone="accent">decidido</Tag> : <ArrowUpRight size={14} className="text-mute" />}
             </Link>
           ))}
+        </div>
+      </section>
+
+      <section className="mt-9">
+        <SectionTitle>Testes</SectionTitle>
+        <div className="mx-5 divide-y divide-line overflow-hidden rounded-[22px] border border-line">
+          <button
+            onClick={() => { const v = !me.demoMode; save.mutate({ demoMode: v }); track('demo_toggled', { on: v }) }}
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
+          >
+            <FlaskConical size={16} className="text-mute" />
+            <span className="flex-1">
+              <span className="block text-[14px]">Modo demonstração</span>
+              <span className="block text-xs text-mute">Curadores e amigos simulados. Desligue para testes reais.</span>
+            </span>
+            <span className={`relative h-7 w-12 rounded-full transition-colors ${me.demoMode ? 'bg-accent' : 'bg-white/15'}`}>
+              <motion.span layout transition={{ type: 'spring', stiffness: 500, damping: 32 }} className={`absolute top-1 size-5 rounded-full bg-bg ${me.demoMode ? 'right-1' : 'left-1'}`} />
+            </span>
+          </button>
+          <Link to="/testes" className="flex items-center gap-3 px-4 py-3.5">
+            <BarChart3 size={16} className="text-mute" />
+            <span className="flex-1 text-[14px]">Painel de testes</span>
+            <ArrowUpRight size={14} className="text-mute" />
+          </Link>
         </div>
       </section>
 

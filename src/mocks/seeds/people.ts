@@ -1,5 +1,5 @@
-import type { Answer, Person, RoleRequest } from '../../lib/types'
-import { parseRequest } from '../ranker'
+import type { Answer, Person, RoleRequest, Vote } from '../../lib/types'
+import { parseRequest, timeOptions } from '../ranker'
 
 export const people: Person[] = [
   { id: 'u-bia', name: 'Bia Santos', handle: '@biasons', hue: 330, curatorOf: ['listening', 'jazz'], reputation: 842, bio: 'coleciono vinil e opiniões' },
@@ -29,6 +29,7 @@ const seedReq: [id: string, author: string, text: string, hoursAgo: number][] = 
 
 export const seedRequests: RoleRequest[] = seedReq.map(([id, authorId, text, h]) => ({
   id, authorId, text, criteria: parseRequest(text), createdAt: now - h * H, status: 'aberto',
+  times: timeOptions(parseRequest(text)),
 }))
 
 const seedAns: [req: string, user: string, place: string, comment: string, helpful: number][] = [
@@ -52,4 +53,16 @@ export const seedAnswers: Answer[] = seedAns.map(([requestId, userId, placeId, c
   const r = seedRequests.find((x) => x.id === requestId)!
   const t = r.createdAt + (i + 1) * 9 * 60_000
   return { id: `a-seed-${i}`, requestId, userId, placeId, comment, helpful, createdAt: t, visibleAt: t }
+})
+
+/** atividade nos pedidos de exemplo, para o feed não parecer parado */
+const VOTERS = ['Ana', 'Beto', 'Carla', 'Diego', 'Elis', 'Fábio', 'Gabi']
+export const seedVotes: Vote[] = seedRequests.flatMap((r, ri) => {
+  const opts = seedAnswers.filter((a) => a.requestId === r.id).map((a) => a.placeId)
+  if (!opts.length) return []
+  const n = 2 + ((ri * 3) % 5)
+  return VOTERS.slice(0, n).map((voter, i) => ({
+    id: `v-seed-${r.id}-${i}`, requestId: r.id, kind: 'place' as const,
+    placeId: opts[i % 3 === 2 && opts[1] ? 1 : 0], voter, createdAt: r.createdAt + (i + 2) * 600_000,
+  }))
 })

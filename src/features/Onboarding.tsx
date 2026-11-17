@@ -5,7 +5,8 @@ import { ArrowRight, Sparkles } from 'lucide-react'
 import { Button, Chip, Page } from '../ui/primitives'
 import { ease } from '../ui/motion'
 import { HOODS, NICHES, VIBES } from '../lib/labels'
-import { useSaveProfile } from '../lib/api'
+import { useProfile, useSaveProfile } from '../lib/api'
+import { track } from '../lib/track'
 import type { Niche, Vibe } from '../lib/types'
 
 const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
@@ -13,12 +14,14 @@ const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !=
 export function Onboarding() {
   const nav = useNavigate()
   const save = useSaveProfile()
-  const [step, setStep] = useState(0)
+  const { data: me } = useProfile()
+  // editar gosto depois: pula a tela de boas-vindas e já vem preenchido
+  const [step, setStep] = useState(me?.onboarded ? 1 : 0)
   const [dir, setDir] = useState(1)
-  const [name, setName] = useState('')
-  const [hood, setHood] = useState('Pinheiros')
-  const [niches, setNiches] = useState<Niche[]>([])
-  const [vibes, setVibes] = useState<Vibe[]>([])
+  const [name, setName] = useState(me?.name ?? '')
+  const [hood, setHood] = useState(me?.hood ?? 'Pinheiros')
+  const [niches, setNiches] = useState<Niche[]>(me?.niches ?? [])
+  const [vibes, setVibes] = useState<Vibe[]>(me?.vibes ?? [])
 
   const go = (n: number) => { setDir(n > step ? 1 : -1); setStep(n) }
   const canNext = [true, name.trim().length > 1, niches.length > 0, vibes.length > 0][step]
@@ -29,6 +32,7 @@ export function Onboarding() {
       name: name.trim(), handle: '@' + first.toLowerCase().normalize('NFD').replace(/[^a-z]/g, ''),
       hood, niches, vibes, onboarded: true,
     })
+    track(me?.onboarded ? 'taste_edited' : 'onboarding_done', { niches, vibes, hood })
     nav('/', { replace: true })
   }
 

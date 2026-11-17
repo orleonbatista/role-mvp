@@ -1,24 +1,44 @@
 import { AnimatePresence, LayoutGroup, MotionConfig } from 'motion/react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router'
 import { PhoneFrame } from './PhoneFrame'
 import { TabBar } from './TabBar'
+import { FeedbackButton } from './FeedbackButton'
 import { ToastHost } from '../ui/Toast'
+import { Skeleton } from '../ui/primitives'
 import { useProfile } from '../lib/api'
-import { Onboarding } from '../features/Onboarding'
+import { track } from '../lib/track'
 import { Home } from '../features/Home'
-import { NewRequest } from '../features/NewRequest'
-import { Results } from '../features/Results'
-import { VotePage } from '../features/Vote'
-import { PlacePage } from '../features/Place'
-import { ReviewPage } from '../features/Review'
-import { ProfilePage } from '../features/Profile'
+
+// code-split: só a Home vai no bundle inicial; o resto carrega sob demanda
+const Onboarding = lazy(() => import('../features/Onboarding').then((m) => ({ default: m.Onboarding })))
+const NewRequest = lazy(() => import('../features/NewRequest').then((m) => ({ default: m.NewRequest })))
+const Results = lazy(() => import('../features/Results').then((m) => ({ default: m.Results })))
+const VotePage = lazy(() => import('../features/Vote').then((m) => ({ default: m.VotePage })))
+const PlacePage = lazy(() => import('../features/Place').then((m) => ({ default: m.PlacePage })))
+const ReviewPage = lazy(() => import('../features/Review').then((m) => ({ default: m.ReviewPage })))
+const ProfilePage = lazy(() => import('../features/Profile').then((m) => ({ default: m.ProfilePage })))
+const TestesPage = lazy(() => import('../features/Testes').then((m) => ({ default: m.TestesPage })))
 
 const TAB_ROUTES = ['/', '/perfil']
+
+function Fallback() {
+  return (
+    <div className="absolute inset-0 grid content-start gap-3 bg-bg px-5 pt-20">
+      <Skeleton className="h-10 w-2/3" /><Skeleton className="h-40" /><Skeleton className="h-40" />
+    </div>
+  )
+}
 
 export function App() {
   const location = useLocation()
   const { data: profile, isLoading } = useProfile()
-  const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !location.pathname.startsWith('/r/')
+  const isPublic = location.pathname.startsWith('/r/') || location.pathname.startsWith('/testes')
+  const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !isPublic
+  const showFeedback = !location.pathname.startsWith('/onboarding') && !location.pathname.startsWith('/r/') && !location.pathname.startsWith('/testes')
+
+  useEffect(() => { track('app_open', { referrer: document.referrer || undefined }) }, [])
+  useEffect(() => { track('screen', { path: location.pathname }) }, [location.pathname])
 
   return (
     <MotionConfig reducedMotion="user">
@@ -27,22 +47,22 @@ export function App() {
           <LayoutGroup>
             <AnimatePresence initial={false}>
               {needsOnboarding ? (
-                <Navigate to="/onboarding" replace />
+                <Navigate key="redirect" to="/onboarding" replace />
               ) : (
                 <Routes location={location} key={location.pathname}>
-                  <Route path="/onboarding" element={<Onboarding />} />
                   <Route path="/" element={<Home />} />
-                  <Route path="/novo" element={<NewRequest />} />
-                  <Route path="/pedido/:id" element={<Results />} />
-                  <Route path="/r/:id" element={<VotePage />} />
-                  <Route path="/lugar/:id" element={<PlacePage />} />
-                  <Route path="/avaliar/:id" element={<ReviewPage />} />
-                  <Route path="/perfil" element={<ProfilePage />} />
+                  {[
+                    ['/onboarding', <Onboarding />], ['/novo', <NewRequest />], ['/pedido/:id', <Results />], ['/r/:id', <VotePage />],
+                    ['/lugar/:id', <PlacePage />], ['/avaliar/:id', <ReviewPage />], ['/perfil', <ProfilePage />], ['/testes', <TestesPage />],
+                  ].map(([path, el]) => (
+                    <Route key={path as string} path={path as string} element={<Suspense fallback={<Fallback />}>{el}</Suspense>} />
+                  ))}
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               )}
             </AnimatePresence>
           </LayoutGroup>
+          {showFeedback && profile?.onboarded && <FeedbackButton path={location.pathname} />}
           <TabBar visible={TAB_ROUTES.includes(location.pathname) && !!profile?.onboarded} />
         </ToastHost>
       </PhoneFrame>

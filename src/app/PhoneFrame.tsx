@@ -28,6 +28,7 @@ export function PhoneFrame({ children }: { children: ReactNode }) {
       <div className="relative isolate h-dvh w-full overflow-hidden bg-bg sm:h-[844px] sm:max-h-[calc(100dvh-4rem)] sm:w-[390px] sm:rounded-[54px] sm:border sm:border-white/10 sm:shadow-[0_50px_140px_-30px_rgba(0,0,0,0.9),0_0_0_10px_#111113,0_0_0_11px_rgba(255,255,255,0.06)]">
         <div className="pointer-events-none absolute left-1/2 top-2.5 z-[70] hidden h-7 w-28 -translate-x-1/2 rounded-full bg-black sm:block" />
         {children}
+        <div id="overlay-root" className="pointer-events-none absolute inset-0 z-[75]" />
       </div>
     </div>
   )

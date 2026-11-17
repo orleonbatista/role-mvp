@@ -5,6 +5,8 @@ import { Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitiv
 import { ease, item, list } from '../ui/motion'
 import { useEvents, useFeed, useForYou, useProfile } from '../lib/api'
 import { KIND_LABEL, OCCASIONS, occasionLabel, priceLabel, timeAgo } from '../lib/labels'
+import { distanceKm, fmtKm, openStatus } from '../lib/hours'
+import { placeIcon } from '../ui/placeIcon'
 
 function greeting() {
   const h = new Date().getHours()
@@ -69,14 +71,18 @@ export function Home() {
             >
               <Link to={`/lugar/${r.place.id}`} className="group block w-[220px] shrink-0">
                 <div className="relative">
-                  <Cover hue={r.place.hue} layoutId={`cover-${r.place.id}`} className="h-[260px] w-full transition-transform duration-500 group-active:scale-[0.98]" />
-                  <div className="absolute left-3 top-3"><Tag tone="accent">{r.match}% seu gosto</Tag></div>
+                  <Cover hue={r.place.hue} icon={placeIcon(r.place)} iconSize={72} layoutId={`cover-${r.place.id}`} className="h-[260px] w-full transition-transform duration-500 group-active:scale-[0.98]" />
+                  <div className="absolute left-3 top-3 flex gap-1.5">
+                    <Tag tone="accent">{r.match}% seu gosto</Tag>
+                    {openStatus(r.place).open && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-black/40 px-2.5 text-[11px] text-white/90 backdrop-blur-md"><span className="size-1.5 rounded-full bg-accent" />aberto</span>}
+                  </div>
                   <div className="absolute inset-x-0 bottom-0 rounded-b-[28px] bg-gradient-to-t from-black/80 via-black/30 to-transparent p-4 pt-12">
                     <p className="text-[11px] uppercase tracking-[0.12em] text-white/60">{KIND_LABEL[r.place.kind]} · {r.place.hood}</p>
                     <p className="mt-1 font-serif text-[26px] leading-none">{r.place.name}</p>
                   </div>
                 </div>
-                <p className="mt-2.5 line-clamp-2 px-1 text-[13px] leading-snug text-mute">{r.reasons[0]}</p>
+                <p className="mt-2.5 line-clamp-2 px-1 text-[13px] leading-snug text-mute">{r.place.tagline}</p>
+                <p className="mt-1 px-1 text-[11px] text-faint">{priceLabel(r.place.price)}{me?.hood ? ` · ${fmtKm(distanceKm(me.hood, r.place.hood))}` : ''}</p>
               </Link>
             </motion.div>
           ))}
@@ -89,10 +95,10 @@ export function Home() {
           {events.data?.map((e) => (
             <motion.div key={e.id} variants={item}>
               <Link to={`/lugar/${e.id}`} className="flex items-center gap-3 rounded-[20px] bg-surface p-2.5 pr-4 transition-colors hover:bg-surface-2">
-                <Cover hue={e.hue} className="size-14 shrink-0" rounded="rounded-[14px]" />
+                <Cover hue={e.hue} icon={placeIcon(e)} iconSize={22} className="size-14 shrink-0" rounded="rounded-[14px]" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px]">{e.name}</p>
-                  <p className="truncate text-xs text-mute">{e.hood} · {priceLabel(e.price)}</p>
+                  <p className="truncate text-xs text-mute">{e.hood} · {priceLabel(e.price)}{me?.hood ? ` · ${fmtKm(distanceKm(me.hood, e.hood))}` : ''}</p>
                 </div>
                 <span className="flex items-center gap-1 rounded-full bg-white/[0.06] px-2.5 py-1 text-[11px] text-ink/80"><CalendarDays size={11} />{e.when}</span>
               </Link>

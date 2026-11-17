@@ -1,6 +1,8 @@
 import { animate, motion, useMotionValue, useTransform, type HTMLMotionProps } from 'motion/react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ChevronLeft } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import type { LucideIcon } from 'lucide-react'
+import { ChevronLeft, SearchX } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { page, spring } from './motion'
 
@@ -107,7 +109,7 @@ export function Avatar({ name, hue, size = 32 }: { name: string; hue: number; si
 }
 
 /** Capa generativa: gradiente em malha por matiz + granulado. Substitui fotos no mock. */
-export function Cover({ hue, label, className, layoutId, rounded = 'rounded-[28px]' }: { hue: number; label?: string; className?: string; layoutId?: string; rounded?: string }) {
+export function Cover({ hue, label, icon: Icon, iconSize = 56, className, layoutId, rounded = 'rounded-[28px]' }: { hue: number; label?: string; icon?: LucideIcon; iconSize?: number; className?: string; layoutId?: string; rounded?: string }) {
   const h2 = (hue + 45) % 360
   const h3 = (hue + 300) % 360
   return (
@@ -122,6 +124,9 @@ export function Cover({ hue, label, className, layoutId, rounded = 'rounded-[28p
           #101012`,
       }}
     >
+      {Icon && (
+        <Icon aria-hidden size={iconSize} strokeWidth={1.25} className="absolute bottom-[12%] right-[10%] text-white/35 mix-blend-overlay" />
+      )}
       {label && (
         <span className="absolute bottom-2 right-3 font-serif text-[64px] leading-none italic text-white/25 select-none">{label}</span>
       )}
@@ -192,5 +197,22 @@ export function Typing() {
         <motion.span key={i} className="size-1.5 rounded-full bg-mute" animate={{ opacity: [0.3, 1, 0.3], y: [0, -2, 0] }} transition={{ repeat: Infinity, duration: 1, delay: i * 0.15 }} />
       ))}
     </span>
+  )
+}
+
+/** Renderiza fora da área que rola, preso à "tela" do aparelho (sheets, celebrações). */
+export function Overlay({ children }: { children: ReactNode }) {
+  const el = typeof document !== 'undefined' ? document.getElementById('overlay-root') : null
+  return el ? createPortal(children, el) : <>{children}</>
+}
+
+export function EmptyState({ title, text, action }: { title: string; text: string; action?: ReactNode }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center px-8 pt-24 text-center">
+      <span className="grid size-16 place-items-center rounded-full bg-white/[0.05] text-mute"><SearchX size={26} strokeWidth={1.5} /></span>
+      <h2 className="mt-6 font-serif text-[32px] leading-none">{title}</h2>
+      <p className="mt-3 text-sm leading-relaxed text-mute">{text}</p>
+      {action && <div className="mt-8">{action}</div>}
+    </motion.div>
   )
 }

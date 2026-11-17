@@ -1,8 +1,14 @@
 import { motion, useScroll, useTransform } from 'motion/react'
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { CalendarCheck, ChevronLeft, Clock, MapPin, Star, Users } from 'lucide-react'
-import { Avatar, Button, Cover, Page, Skeleton, Tag } from '../ui/primitives'
+import { CalendarCheck, ChevronLeft, Clock, MapPin, Minus, Plus, Star, Users } from 'lucide-react'
+import { Avatar, Button, Chip, Cover, EmptyState, Page, Skeleton, Tag, cx } from '../ui/primitives'
+import { Sheet } from '../ui/Sheet'
+import { placeIcon } from '../ui/placeIcon'
+import { DAY_SHORT, distanceKm, fmtKm, isOpenAt, openStatus } from '../lib/hours'
+import { track } from '../lib/track'
+import { useCreateLead, useProfile } from '../lib/api'
+import type { Place } from '../lib/types'
 import { useToast } from '../ui/Toast'
 import { ease, item, list } from '../ui/motion'
 import { usePlace } from '../lib/api'
@@ -13,7 +19,10 @@ export function PlacePage() {
   const { id = '' } = useParams()
   const nav = useNavigate()
   const toast = useToast()
-  const { data } = usePlace(id)
+  const { data, isError } = usePlace(id)
+  const { data: me } = useProfile()
+  const [lead, setLead] = useState(false)
+  useEffect(() => { track('place_viewed', { id }) }, [id])
   // usa o seed já carregado para a capa aparecer no mesmo frame (transição compartilhada sem "pulo")
   const place = data?.place ?? placeById.get(id)
   const scroller = useRef<HTMLDivElement>(null)
@@ -22,13 +31,18 @@ export function PlacePage() {
   const coverY = useTransform(scrollY, [0, 300], [0, 90])
   const titleOpacity = useTransform(scrollY, [140, 220], [0, 1])
 
+  if (!place && isError) return (
+    <Page><EmptyState title="Lugar não encontrado" text="Esse endereço não existe (ou saiu do catálogo)." action={<Button onClick={() => nav('/')}>Ir pro início</Button>} /></Page>
+  )
   if (!place) return <Page><Skeleton className="m-5 h-80" /></Page>
+  const status = openStatus(place)
+  const km = distanceKm(me?.hood, place.hood)
 
   return (
     <Page className="!overflow-hidden">
       <div ref={scroller} className="no-scrollbar absolute inset-0 overflow-y-auto pb-32">
         <motion.div style={{ scale: coverScale, y: coverY }} className="relative h-[380px] origin-top">
-          <Cover hue={place.hue} layoutId={`cover-${place.id}`} className="h-full w-full" rounded="rounded-none" label={place.name[0]} />
+          <Cover hue={place.hue} icon={placeIcon(place)} iconSize={120} layoutId={`cover-${place.id}`} className="h-full w-full" rounded="rounded-none" />
           <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/20 to-transparent" />
         </motion.div>
 
@@ -40,6 +54,15 @@ export function PlacePage() {
             {place.name}
           </motion.h1>
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }} className="mt-3 text-[15px] text-ink/80">{place.tagline}</motion.p>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.45 }} className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            {place.kind !== 'evento' && (
+              <span className={cx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1', status.open ? 'bg-accent/15 text-accent' : 'bg-white/[0.06] text-mute')}>
+                <span className={cx('size-1.5 rounded-full', status.open ? 'bg-accent' : 'bg-faint')} />{status.label}
+              </span>
+            )}
+            {km !== undefined && <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-mute">{fmtKm(km)} de {me?.hood}</span>}
+            {place.privateSpace && <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-mute">espaço reservável</span>}
+          </motion.div>
 
           <motion.div variants={list} initial="initial" animate="animate" className="mt-6 grid grid-cols-3 gap-2">
             {[
@@ -58,6 +81,7 @@ export function PlacePage() {
           <div className="mt-6 flex flex-wrap gap-1.5">
             {place.niches.map((n) => <Tag key={n} tone="accent">{nicheLabel(n)}</Tag>)}
             {place.vibes.map((v) => <Tag key={v}>{vibeLabel(v)}</Tag>)}
+            {place.tags.map((t) => <Tag key={t}>{({ vegano: 'opção vegana', samba: 'samba', pet: 'pet friendly', acessivel: 'acessível', karaoke: 'karaokê' } as Record<string, string>)[t] ?? t}</Tag>)}
           </div>
 
           <h2 className="mb-3 mt-8 text-[13px] uppercase tracking-[0.14em] text-mute">Por que ir</h2>
@@ -111,10 +135,65 @@ export function PlacePage() {
       </div>
 
       <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ delay: 0.4, type: 'spring', stiffness: 300, damping: 30 }} className="bottom-bar absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-7 pt-10">
-        <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} onClick={() => toast(`Reserva simulada no ${place.name}`)}>
-          {place.kind === 'evento' ? `Garantir ingresso · ${priceLabel(place.price)}` : 'Reservar mesa'}
+        <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} onClick={() => { setLead(true); track('reserve_intent', { id: place.id, kind: place.kind }) }}>
+          {place.kind === 'evento' ? `Garantir ingresso · ${priceLabel(place.price)}` : place.privateSpace ? 'Reservar pra grupo' : 'Reservar mesa'}
         </Button>
       </motion.div>
+      <LeadSheet open={lead} onClose={() => setLead(false)} place={place} defaultName={me?.name} onDone={() => toast('Pedido enviado! A casa responde em até 2h (simulado)')} />
     </Page>
+  )
+}
+
+/** "Fake door" de reserva: mede intenção real e gera o lead que a casa pagaria para receber. */
+function LeadSheet({ open, onClose, place, defaultName, onDone }: { open: boolean; onClose: () => void; place: Place; defaultName?: string; onDone: () => void }) {
+  const create = useCreateLead()
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(Date.now() + i * 86_400_000)
+    return { key: d.toISOString().slice(0, 10), label: i === 0 ? 'Hoje' : i === 1 ? 'Amanhã' : `${DAY_SHORT[d.getDay()]} ${d.getDate()}`, dow: d.getDay() }
+  }).filter((d) => isOpenAt(place.periods, d.dow, Math.max(...place.periods.map((p) => p.open))))
+  const [day, setDay] = useState<string>()
+  const [time, setTime] = useState('20h')
+  const [people, setPeople] = useState(place.privateSpace ? 10 : 2)
+  const [name, setName] = useState(defaultName ?? '')
+  const [contact, setContact] = useState('')
+  const [note, setNote] = useState('')
+  const sel = day ?? days[0]?.key
+  const times = place.kind === 'evento' ? [place.when?.split(', ')[1] ?? '20h'] : place.periods[0].open >= 18 ? ['19h', '20h', '21h', '22h'] : ['12h', '13h', '19h', '20h']
+
+  async function submit() {
+    if (!sel || !name.trim()) return
+    await create.mutateAsync({ placeId: place.id, day: sel, time, people, name: name.trim(), contact: contact.trim(), note: note.trim() })
+    track('lead_submitted', { placeId: place.id, people, hasContact: !!contact.trim() })
+    onClose(); onDone()
+  }
+
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <p className="font-serif text-[28px] leading-none">{place.kind === 'evento' ? 'Garantir lugar' : 'Pedir reserva'}</p>
+      <p className="mt-2 text-sm text-mute">{place.name} recebe o pedido e confirma com você. Nada é cobrado agora.</p>
+      <p className="mb-2 mt-5 text-[12px] uppercase tracking-[0.14em] text-mute">Dia</p>
+      <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5">
+        {days.length ? days.map((d) => <Chip key={d.key} active={sel === d.key} onClick={() => setDay(d.key)}>{d.label}</Chip>) : <span className="text-sm text-faint">Sem datas abertas nesta semana</span>}
+      </div>
+      <p className="mb-2 mt-4 text-[12px] uppercase tracking-[0.14em] text-mute">Horário</p>
+      <div className="flex flex-wrap gap-2">{times.map((t) => <Chip key={t} active={time === t} onClick={() => setTime(t)}>{t}</Chip>)}</div>
+      <div className="mt-4 flex items-center justify-between">
+        <p className="text-[12px] uppercase tracking-[0.14em] text-mute">Pessoas</p>
+        <div className="flex items-center gap-3">
+          <button aria-label="Menos" onClick={() => setPeople((n) => Math.max(1, n - 1))} className="grid size-9 place-items-center rounded-full bg-white/[0.07]"><Minus size={14} /></button>
+          <span className="w-8 text-center font-serif text-2xl">{people}</span>
+          <button aria-label="Mais" onClick={() => setPeople((n) => Math.min(place.capacity, n + 1))} className="grid size-9 place-items-center rounded-full bg-white/[0.07]"><Plus size={14} /></button>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" aria-label="Seu nome" className="h-12 rounded-[16px] border border-line bg-bg px-4 text-[15px] outline-none placeholder:text-faint focus:border-accent/50" />
+        <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="WhatsApp (opcional)" aria-label="WhatsApp" inputMode="tel" className="h-12 rounded-[16px] border border-line bg-bg px-4 text-[15px] outline-none placeholder:text-faint focus:border-accent/50" />
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Observação (ex.: aniversário, bolo)" aria-label="Observação" className="h-12 rounded-[16px] border border-line bg-bg px-4 text-[15px] outline-none placeholder:text-faint focus:border-accent/50" />
+      </div>
+      <Button size="lg" className="mt-4 w-full" disabled={!sel || !name.trim() || create.isPending} onClick={submit}>
+        {create.isPending ? 'Enviando…' : 'Enviar pedido de reserva'}
+      </Button>
+      <p className="mt-2 text-center text-[11px] text-faint">Versão de teste: o pedido fica salvo só neste aparelho.</p>
+    </Sheet>
   )
 }

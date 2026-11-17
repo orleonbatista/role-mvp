@@ -1,8 +1,12 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { Check, Copy, ExternalLink, Heart, Send, Sparkles, Star } from 'lucide-react'
-import { AnimatedNumber, Avatar, Button, Cover, Page, Skeleton, StreamText, Tag, TopBar, Typing, cx } from '../ui/primitives'
+import { AlertTriangle, Check, Copy, ExternalLink, Heart, Send, Share2, Sparkles, Star } from 'lucide-react'
+import { AnimatedNumber, Avatar, Button, Cover, EmptyState, Page, Skeleton, StreamText, Tag, TopBar, Typing, cx } from '../ui/primitives'
+import { placeIcon } from '../ui/placeIcon'
+import { track } from '../lib/track'
+import { shareText, shareUrl } from '../lib/share'
+import { openStatus } from '../lib/hours'
 import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
 import { ease, spring } from '../ui/motion'
@@ -13,9 +17,15 @@ import type { RequestDetail } from '../lib/types'
 export function Results() {
   const { id = '' } = useParams()
   const nav = useNavigate()
-  const { data, isLoading } = useRequest(id)
+  const { data, isLoading, isError } = useRequest(id)
   const [introDone, setIntroDone] = useState(false)
   const [share, setShare] = useState(false)
+  const loaded = !!data
+  useEffect(() => { if (loaded) track('results_viewed', { id, confidence: data?.confidence }) }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (isError) return (
+    <Page><TopBar /><EmptyState title="Pedido não encontrado" text="Esse rolê não existe neste aparelho. Se veio de um link, peça para reenviarem pelo app." action={<Button onClick={() => nav('/')}>Ir pro início</Button>} /></Page>
+  )
 
   return (
     <Page className="pb-32">
@@ -30,6 +40,7 @@ export function Results() {
               {data.request.criteria.occasion && <Tag>{occasionLabel(data.request.criteria.occasion)}</Tag>}
               <Tag>{data.request.criteria.groupSize} {data.request.criteria.groupSize === 1 ? 'pessoa' : 'pessoas'}</Tag>
               {data.request.criteria.hood && <Tag>{data.request.criteria.hood}</Tag>}
+              {data.request.criteria.when && <Tag>{data.request.criteria.when.label}</Tag>}
               {data.request.criteria.budget && <Tag>até R$ {data.request.criteria.budget}</Tag>}
               {data.request.criteria.niches.map((n) => <Tag key={n}>{nicheLabel(n)}</Tag>)}
             </div>
@@ -39,6 +50,9 @@ export function Results() {
             <div className="rounded-[24px] border border-accent/20 bg-accent/[0.05] p-4">
               <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-accent">
                 <Sparkles size={13} /> IA do rolê
+                <span className={cx('ml-auto rounded-full px-2 py-0.5 text-[10px] normal-case tracking-normal', data.confidence === 'alta' ? 'bg-accent/15 text-accent' : data.confidence === 'media' ? 'bg-white/10 text-ink/80' : 'bg-amber-400/15 text-amber-300')}>
+                  confiança {data.confidence === 'media' ? 'média' : data.confidence}
+                </span>
               </div>
               <StreamText text={data.intro} className="text-[15px] leading-relaxed text-ink/90" onDone={() => setIntroDone(true)} />
             </div>
@@ -67,7 +81,7 @@ export function Results() {
       {data && (
         <motion.div initial={{ y: 100 }} animate={{ y: 0, transition: { delay: 0.6, ...spring } }} className="bottom-bar absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-7 pt-10">
           <div className="flex gap-2">
-            <Button size="lg" className="flex-1" onClick={() => setShare(true)} icon={<Send size={16} />}>Mandar pro grupo</Button>
+            <Button size="lg" className="flex-1" onClick={() => { setShare(true); track('share_opened', { id }) }} icon={<Send size={16} />}>Mandar pro grupo</Button>
             <Button size="lg" variant="soft" onClick={() => nav(`/r/${id}`)}>Votar</Button>
           </div>
         </motion.div>
@@ -85,7 +99,7 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
   return (
     <Link to={`/lugar/${p.id}`} className="group block overflow-hidden rounded-[28px] border border-line bg-surface">
       <div className="relative">
-        <Cover hue={p.hue} layoutId={`cover-${p.id}`} className="h-44 w-full" rounded="rounded-none" />
+        <Cover hue={p.hue} icon={placeIcon(p)} iconSize={64} layoutId={`cover-${p.id}`} className="h-44 w-full" rounded="rounded-none" />
         <span className="absolute left-4 top-4 font-serif text-5xl italic leading-none text-white/90 drop-shadow">{rank}</span>
         <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-black/45 px-2.5 py-1 text-xs backdrop-blur-md">
           <span className="relative size-4">
@@ -104,6 +118,7 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
           <span className="flex items-center gap-1 text-sm text-ink/80"><Star size={13} className="fill-accent text-accent" />{p.rating.toFixed(1)}</span>
         </div>
         <p className="mt-1.5 text-xs text-mute">{KIND_LABEL[p.kind]} · {p.hood} · {priceLabel(p.price)} · até {p.capacity} pessoas</p>
+        <p className={cx('mt-1 text-[11px]', openStatus(p).open ? 'text-accent' : 'text-faint')}>{p.kind === 'evento' ? p.when : openStatus(p).label}</p>
         <ul className="mt-3.5 grid gap-2">
           {r.reasons.map((s, i) => (
             <motion.li key={s} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.08, duration: 0.5, ease }} className="flex items-start gap-2 text-[13px] text-ink/85">
@@ -111,6 +126,9 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
             </motion.li>
           ))}
         </ul>
+        {r.warnings.map((w) => (
+          <p key={w} className="mt-2 flex items-start gap-2 text-[13px] text-amber-300/90"><AlertTriangle size={13} className="mt-0.5 shrink-0" />{w}</p>
+        ))}
         {votes > 0 && <p className="mt-3 text-xs text-accent">{votes} {votes === 1 ? 'voto' : 'votos'} do grupo</p>}
       </div>
     </Link>
@@ -177,45 +195,65 @@ function Community({ data }: { data: RequestDetail }) {
 function ShareSheet({ open, onClose, data }: { open: boolean; onClose: () => void; data: RequestDetail }) {
   const toast = useToast()
   const nav = useNavigate()
-  const url = `${location.origin}${import.meta.env.BASE_URL}r/${data.request.id}`
+  const url = shareUrl(data)
+  const text = shareText(data)
   const [copied, setCopied] = useState(false)
   const opts = data.options.slice(0, 3)
+  const canShare = typeof navigator !== 'undefined' && 'share' in navigator
+
+  async function nativeShare() {
+    try {
+      await navigator.share({ title: 'Vota no rolê', text, url })
+      track('share_sent', { via: 'native' })
+    } catch { /* cancelado */ }
+  }
+
   return (
     <Sheet open={open} onClose={onClose}>
       <p className="font-serif text-[28px] leading-none">Mandar pro grupo</p>
-      <p className="mt-2 text-sm text-mute">É assim que o link aparece no WhatsApp. Quem abrir vota sem instalar nada.</p>
+      <p className="mt-2 text-sm text-mute">O link já leva o pedido junto: abre em qualquer celular, sem instalar nada.</p>
 
       <div className="mt-5 rounded-[22px] bg-[#0b141a] p-3">
         <motion.div initial={{ opacity: 0, y: 10, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.15, duration: 0.5, ease }} className="ml-auto max-w-[88%] rounded-[14px] rounded-tr-sm bg-[#005c4b] p-1.5 text-[#e9edef]">
           <div className="overflow-hidden rounded-[10px] bg-black/25">
-            <div className="flex h-24">
-              {opts.map((p) => <Cover key={p.id} hue={p.hue} className="h-full flex-1" rounded="rounded-none" />)}
+            <div className="flex h-20">
+              {opts.map((p) => <Cover key={p.id} hue={p.hue} icon={placeIcon(p)} iconSize={22} className="h-full flex-1" rounded="rounded-none" />)}
             </div>
             <div className="px-2.5 py-2">
               <p className="text-[13px] font-medium leading-tight">Vota no rolê: {opts.map((o) => o.name).join(', ')}</p>
-              <p className="mt-0.5 line-clamp-1 text-[11px] text-white/60">“{data.request.text}”</p>
               <p className="mt-1 text-[11px] text-white/45">{location.host}</p>
             </div>
           </div>
-          <p className="px-1.5 pb-0.5 pt-1.5 text-[13px] text-[#53bdeb] break-all">{url}</p>
+          <p className="px-1.5 pb-0.5 pt-1.5 text-[13px]">{text}</p>
+          <p className="truncate px-1.5 text-[13px] text-[#53bdeb]">{url}</p>
           <p className="pr-1 text-right text-[10px] text-white/50">agora ✓✓</p>
         </motion.div>
       </div>
 
       <div className="mt-5 grid gap-2">
-        <Button
-          size="lg"
-          icon={copied ? <Check size={16} /> : <Copy size={16} />}
-          onClick={async () => {
-            try { await navigator.clipboard.writeText(url) } catch { /* ambiente sem clipboard */ }
-            setCopied(true); toast('Link copiado'); setTimeout(() => setCopied(false), 1800)
-          }}
+        <a
+          href={`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => track('share_sent', { via: 'whatsapp' })}
+          className="inline-flex h-14 items-center justify-center gap-2 rounded-full bg-[#25d366] text-[15px] font-medium text-[#062b14] shadow-[0_8px_30px_-8px_rgba(37,211,102,0.55)] transition-transform active:scale-[0.98]"
         >
-          {copied ? 'Copiado' : 'Copiar link'}
-        </Button>
-        <Button size="lg" variant="soft" icon={<ExternalLink size={16} />} onClick={() => { onClose(); nav(`/r/${data.request.id}`) }}>
-          Abrir página de votação
-        </Button>
+          <Send size={16} /> Enviar no WhatsApp
+        </a>
+        <div className="grid grid-cols-2 gap-2">
+          {canShare ? (
+            <Button size="lg" variant="soft" icon={<Share2 size={16} />} onClick={nativeShare}>Compartilhar</Button>
+          ) : (
+            <Button size="lg" variant="soft" icon={copied ? <Check size={16} /> : <Copy size={16} />}
+              onClick={async () => {
+                try { await navigator.clipboard.writeText(`${text} ${url}`) } catch { /* sem clipboard */ }
+                setCopied(true); toast('Link copiado'); track('share_sent', { via: 'copy' }); setTimeout(() => setCopied(false), 1800)
+              }}>
+              {copied ? 'Copiado' : 'Copiar'}
+            </Button>
+          )}
+          <Button size="lg" variant="soft" icon={<ExternalLink size={16} />} onClick={() => { onClose(); nav(`/r/${data.request.id}`) }}>Votação</Button>
+        </div>
       </div>
     </Sheet>
   )

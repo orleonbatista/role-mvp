@@ -1,4 +1,5 @@
-import type { Niche, Occasion, Place, PlaceKind, Vibe } from '../../lib/types'
+import type { Niche, Occasion, OpenPeriod, Place, PlaceKind, Tag, Vibe } from '../../lib/types'
+import { defaultPeriods, hoursLabel } from '../../lib/hours'
 
 // Lugares fictícios em bairros reais de SP — tudo mock.
 type Row = [
@@ -81,14 +82,48 @@ const rows: Row[] = [
     '20 botecos disputando o melhor torresmo.', ['20 botecos competindo', 'roda de samba', 'voto do público'], 'Sáb, 12h'],
 ]
 
+const TAGS: Record<string, Tag[]> = {
+  'brasa-miuda': ['vegano'], 'cozinha-da-vila': ['vegano', 'acessivel'], 'feira-fina': ['vegano', 'acessivel'],
+  'pe-sujo-primavera': ['samba'], 'ev-festival-torresmo': ['samba', 'acessivel'], 'quintal-amarelo': ['pet', 'acessivel'],
+  'praca-viva': ['pet'], 'karaoke-neon': ['karaoke'], 'nonna-lu': ['acessivel'], 'terraco-ambar': ['acessivel'],
+  'seu-tiao': ['samba'], 'vinhoteca-sete': ['vegano'],
+}
+
+const PERIODS: Record<string, OpenPeriod[]> = {
+  'cafe-silencio': [{ days: [2, 3, 4, 5, 6], open: 9, close: 24 }],
+  'praca-viva': [{ days: [0], open: 12, close: 20 }],
+  'quintal-amarelo': [{ days: [3, 4, 5, 6, 0], open: 16, close: 24 }],
+  'seu-tiao': [{ days: [1, 2, 3, 4, 5, 6], open: 17, close: 24 }],
+  'pe-sujo-primavera': [{ days: [1, 2, 3, 4, 5, 6, 0], open: 11, close: 23 }],
+  'botequim-liberdade': [{ days: [1, 2, 3, 4, 5, 6], open: 16, close: 24 }],
+  'copo-lagoinha': [{ days: [2, 3, 4, 5, 6], open: 12, close: 23 }],
+  'omakase-kaze': [{ days: [3, 4, 5, 6], open: 19, close: 23 }],
+  'porao-do-sax': [{ days: [3, 4, 5, 6], open: 20, close: 26 }],
+  'clandestino-5': [{ days: [4, 5, 6], open: 20, close: 27 }],
+}
+
+const DAY_IDX: Record<string, number> = { Dom: 0, Seg: 1, Ter: 2, Qua: 3, Qui: 4, Sex: 5, Sáb: 6 }
+const PRIVATE_RE = /reserv|salão|camarote|mezanino|privativ|menu fechado|mesa comunitária|laje inteira|área pra|quintal pra|salas/i
+
 export const places: Place[] = rows.map(
-  ([id, name, kind, hood, niches, vibes, occasions, price, capacity, rating, hue, tagline, highlights, when]) => ({
-    id, name, kind, hood, niches, vibes, occasions, price, capacity, rating, hue, tagline, highlights, when,
-    ratingCount: 40 + ((id.length * 37 + hue) % 260),
-    description: `${tagline} ${highlights[0][0].toUpperCase()}${highlights[0].slice(1)}, ${highlights[1]} e ${highlights[2]}.`,
-    address: `${hood}, São Paulo`,
-    hours: kind === 'balada' ? 'Qui–Sáb · 23h–6h' : kind === 'restaurante' ? 'Ter–Dom · 12h–23h' : kind === 'evento' ? (when ?? '') : 'Ter–Dom · 18h–1h',
-  }),
+  ([id, name, kind, hood, niches, vibes, occasions, price, capacity, rating, hue, tagline, highlights, when]) => {
+    let periods = PERIODS[id] ?? defaultPeriods(kind)
+    if (kind === 'evento' && when) {
+      const [d, h] = when.split(', ')
+      const start = Number(h.replace('h', ''))
+      periods = [{ days: [DAY_IDX[d]], open: start, close: start + 6 }]
+    }
+    return {
+      id, name, kind, hood, niches, vibes, occasions, price, capacity, rating, hue, tagline, highlights, when,
+      ratingCount: 40 + ((id.length * 37 + hue) % 260),
+      description: `${tagline} ${highlights[0][0].toUpperCase()}${highlights[0].slice(1)}, ${highlights[1]} e ${highlights[2]}.`,
+      address: `${hood}, São Paulo`,
+      hours: kind === 'evento' ? (when ?? '') : hoursLabel(periods),
+      tags: TAGS[id] ?? [],
+      privateSpace: kind !== 'evento' && highlights.some((h) => PRIVATE_RE.test(h)),
+      periods,
+    }
+  },
 )
 
 export const placeById = new Map(places.map((p) => [p.id, p]))

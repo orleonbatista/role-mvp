@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie'
-import type { Answer, Profile, Review, RoleRequest, Vote } from '../lib/types'
-import { seedAnswers, seedRequests } from '../mocks/seeds/people'
+import type { Answer, Feedback, Lead, Profile, Review, RoleRequest, TrackEvent, Vote } from '../lib/types'
+import { seedAnswers, seedRequests, seedVotes } from '../mocks/seeds/people'
 
 class RoleDB extends Dexie {
   profile!: Table<Profile, string>
@@ -9,6 +9,9 @@ class RoleDB extends Dexie {
   votes!: Table<Vote, string>
   reviews!: Table<Review, string>
   helpful!: Table<{ id: string }, string>
+  events!: Table<TrackEvent, string>
+  feedback!: Table<Feedback, string>
+  leads!: Table<Lead, string>
 
   constructor() {
     super('role-mvp')
@@ -20,6 +23,11 @@ class RoleDB extends Dexie {
       reviews: 'id, placeId, requestId, createdAt',
       helpful: 'id',
     })
+    this.version(2).stores({
+      events: 'id, name, at',
+      feedback: 'id, at',
+      leads: 'id, placeId, at',
+    })
   }
 }
 
@@ -27,9 +35,10 @@ export const db = new RoleDB()
 
 export async function seedIfEmpty() {
   if ((await db.requests.count()) > 0) return
-  await db.transaction('rw', db.requests, db.answers, async () => {
+  await db.transaction('rw', db.requests, db.answers, db.votes, async () => {
     await db.requests.bulkAdd(seedRequests)
     await db.answers.bulkAdd(seedAnswers)
+    await db.votes.bulkAdd(seedVotes)
   })
 }
 
