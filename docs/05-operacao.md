@@ -69,23 +69,40 @@ use `/testes` → "URL do gateway".
   - no desenvolvimento: `.env.local`.
   Ela vai dentro do JavaScript do site, como toda chave de navegador do Google. A proteção é a restrição
   de site, a restrição de API e as cotas.
+- **Faixa de preço da busca:** o app só pede campos da faixa **Pro** (nome, endereço, tipo, localização,
+  faixa de preço, link do Maps). Nota, nº de avaliações, nível de preço e horário seriam faixa Enterprise
+  (1.000 grátis/mês), além de não poderem ser guardados.
 - **Cotas diárias** (APIs e serviços → Places API (New) → Cotas):
-  - SearchText, SearchNearby, GetPlace e GetPhotoMedia: **30 por dia** (≤ 930 por mês, abaixo da menor cota
-    grátis por SKU, de 1.000);
+  - SearchText: **150 por dia** (≤ 4.650 por mês, abaixo das 5.000 grátis da faixa Pro);
+  - SearchNearby, GetPlace e GetPhotoMedia: **30 por dia** (não usados hoje);
   - Autocomplete: **300 por dia** (≤ 9.300, abaixo de 10.000);
   - endpoints que o app não usa: **0**.
   Ao bater o limite, o Google responde 429 e o app mostra "a cota de hoje acabou". Nada é cobrado.
-- **No app:** no máximo 12 buscas por aparelho por dia, cache por busca, e só busca quando a pessoa toca em
+- **No app:** no máximo 20 buscas por aparelho por dia; busca primeiro no catálogo da comunidade, cache por busca, e só busca quando a pessoa toca em
   "Buscar no Google Maps", nunca enquanto digita.
 - **Alerta de orçamento** "role-mvp alerta": R$ 10 por mês, com e-mail a 10%, 90% e 100%. A Places API não
   aceita bloqueio automático por gasto (só Cloud Run, Functions, Gemini e Vertex), por isso as cotas são a
   trava real.
 - **Termos do Google:**
   - mostramos "Dados de lugares: Google Maps" onde aparecem resultados;
-  - guardamos o `place_id` e um resumo curto (nome, bairro, nota) para a opção aparecer na votação dos
-    outros aparelhos;
-  - a página do lugar aponta pro Google Maps.
-  - Para produção: buscar os detalhes de novo pelo `place_id` em vez de guardar o resumo.
+  - do Google guardamos só o `place_id` (permitido sem prazo) e as coordenadas por no máximo 30 dias
+    (o backend apaga sozinho);
+  - nome, bairro, estilo, vibe, ocasião e faixa de preço são **confirmados por quem sugeriu**: conteúdo da
+    comunidade, não do Google;
+  - nota, endereço completo e horário: link "Abrir no Google Maps".
+
+## Catálogo da comunidade
+- **Como entra:** quem sugere um lugar novo do Google confirma "Entendi: Drinks · Tranquilo · Date" com um
+  toque. A IA (ou as regras, com o PC desligado) pré-marca estilo, vibe e ocasião pelo comentário, citando o
+  trecho (mesma regra da extração de pedidos), e a pessoa pode ajustar nome, tags e faixa de preço.
+- **Moderação:**
+  - as regras pegam link, telefone, @, "chama no direct", cupom e textos em caixa alta;
+  - a LLM pega ofensa, propaganda e texto sem relação com o lugar.
+  Suspeito entra na votação daquele pedido, mas só vai pro catálogo depois da curadoria. A fila fica em
+  `/testes` → **Lugares em revisão** (Liberar/Recusar), e exige a chave da curadoria.
+- **Reuso:** todo lugar aprovado é carregado nos aparelhos ao abrir o app. A próxima pessoa que buscar
+  "Pitico" acha no catálogo, com o selo "comunidade", sem gastar busca no Google.
+- **Tabela:** `places` em `role.db` (id `g-<place_id>`, resumo, comentário, status, usos).
 - **Para aumentar o limite:** suba as cotas aos poucos e acompanhe "Faturamento → Relatórios" antes de passar
   da cota grátis.
 

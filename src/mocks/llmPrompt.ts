@@ -105,3 +105,42 @@ export function askBody(model: string, question: string, pedido: string, facts: 
     ],
   }
 }
+
+/* ---------- moderação de lugar sugerido pela comunidade ---------- */
+export const MODERATE_SYSTEM = `Você modera sugestões de lugares (bares, restaurantes, baladas) no app rolê.
+Recebe o nome confirmado pela pessoa e o comentário dela. Responda JSON {"ok": boolean, "motivo": string}.
+ok=false SOMENTE se houver: ofensa ou discurso de ódio; propaganda/spam (pede contato, "chama no direct",
+link, telefone, cupom); conteúdo sexual; ou texto claramente sem relação com um lugar para sair.
+Gíria, palavrão leve de elogio ("bar foda"), comentário curto ou vazio são ok=true.
+"motivo": até 8 palavras, em português, vazio se ok=true.`
+
+export const MODERATE_SCHEMA = {
+  type: 'object',
+  properties: { ok: { type: 'boolean' }, motivo: { type: 'string' } },
+  required: ['ok', 'motivo'],
+}
+
+export function moderateBody(model: string, name: string, comment: string) {
+  return {
+    model,
+    stream: false,
+    keep_alive: '30m',
+    format: MODERATE_SCHEMA,
+    options: { temperature: 0, num_predict: 60 },
+    messages: [
+      { role: 'system', content: MODERATE_SYSTEM },
+      { role: 'user', content: `Nome: "${name.slice(0, 80)}"\nComentário: "${comment.slice(0, 200)}"` },
+    ],
+  }
+}
+
+/** regras que valem com ou sem LLM (PC desligado): sinais claros de spam/propaganda */
+export function moderationRules(name: string, comment: string): string | null {
+  const t = `${name} ${comment}`.toLowerCase()
+  if (/https?:\/\/|www\.|\.com\b|\.com\.br\b/.test(t)) return 'contém link'
+  if (/(\(?\d{2}\)?\s?)?9?\d{4}[-\s]?\d{4}/.test(t)) return 'contém telefone'
+  if (/@[a-z0-9_.]{3,}/.test(t)) return 'contém @ de perfil'
+  if (/(chama|chame|manda|me chama) no (direct|dm|whats|zap|inbox)|cupom|promo[çc][ãa]o|desconto de|sorteio/.test(t)) return 'parece propaganda'
+  if (comment.length > 20 && comment === comment.toUpperCase() && /[A-Z]{12,}/.test(comment)) return 'texto todo em maiúsculas'
+  return null
+}

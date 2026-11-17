@@ -100,7 +100,7 @@ export function PlacePage() {
           <motion.div variants={list} initial="initial" animate="animate" className="mt-6 grid grid-cols-3 gap-2">
             {[
               place.source === 'google'
-                ? { k: 'Google', v: place.ratingCount ? (place.rating / 2).toFixed(1) : '—', icon: <Star size={13} className="fill-accent text-accent" />, sub: place.ratingCount ? `${place.ratingCount} avaliações` : 'sem nota' }
+                ? { k: 'nota', v: '—', icon: null, sub: 'veja no Maps' }
                 : place.ratingCount === 0
                 ? { k: 'nota', v: 'novo', icon: null, sub: 'sem avaliações' }
                 : { k: 'nota', v: place.rating.toFixed(1), icon: <Star size={13} className="fill-accent text-accent" />, sub: `${place.ratingCount} avaliações` },
@@ -162,7 +162,7 @@ export function PlacePage() {
                     <MapPin size={14} className="text-accent" />Abrir no Google Maps
                   </a>
                 )}
-                <p className="mt-1 text-[11px] text-faint">Lugar sugerido pela comunidade. Nota, endereço e horário: <span className="text-mute">Google Maps</span>. Estilo e preço são estimados.</p>
+                <p className="mt-1 text-[11px] text-faint">Lugar do catálogo da comunidade: nome, estilo e faixa de preço vêm de quem sugeriu. Nota, endereço completo e horário: <span className="text-mute">Google Maps</span>.</p>
               </>
             )}
           </div>

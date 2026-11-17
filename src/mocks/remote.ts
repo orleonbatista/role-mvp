@@ -214,3 +214,12 @@ export interface GlobalStats {
   leads: (Lead & { placeName?: string; at: number })[]
   totals: { requests: number; votes: number; suggestions: number; decided: number }
 }
+
+/* ---------- catálogo comunitário de lugares ---------- */
+export const pushCommunityPlace = (p: import('../lib/types').Place, comment: string) =>
+  call<{ ok: boolean; status: 'ok' | 'revisao'; motivo?: string; existing?: boolean }>('POST', '/api/places', { place: snapOf(p), comment, lat: p.lat, lng: p.lng }, { timeout: 12000 })
+export const communityPlaces = () => call<unknown[]>('GET', '/api/places', undefined, { timeout: 3500 })
+export interface PlaceReview { place: unknown[]; comment: string; status: 'ok' | 'revisao' | 'recusado'; motivo?: string; at: number; uses: number }
+export const placesForReview = () => call<PlaceReview[]>('GET', '/api/places/review', undefined, { admin: true })
+export const pushPlaceStatus = (id: string, status: 'ok' | 'recusado') =>
+  call('POST', `/api/places/${encodeURIComponent(id)}/status`, { status }, { admin: true }).then(Boolean)

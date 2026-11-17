@@ -8,7 +8,8 @@ import { cx } from '../ui/primitives'
 import { getLLMOverride, llmStatus, setLLMOverride } from '../mocks/llm'
 import { AnimatedNumber, Button, Page, SectionTitle, Skeleton, Tag, TopBar } from '../ui/primitives'
 import { ease } from '../ui/motion'
-import { exportTestes, useGlobalStats, useSubmissions, useSync, useTestes, type TestesData } from '../lib/api'
+import { exportTestes, useGlobalStats, usePlacesReview, useReviewPlace, useSubmissions, useSync, useTestes, type TestesData } from '../lib/api'
+import { mapsUrlOf } from '../lib/places'
 import { SubmissionReview } from './SubmissionReview'
 import { Link } from 'react-router'
 import { FUNNEL } from '../lib/track'
@@ -70,6 +71,37 @@ function BackendCard() {
           <Button variant="soft" className="h-10 px-3 text-xs" onClick={save}>Salvar</Button>
         </div>
         {st?.admin && <p className="mt-2 text-[12px] text-accent">Curadoria ativa neste aparelho: aprovar publica pra todo mundo.</p>}
+      </div>
+    </section>
+  )
+}
+
+/** catálogo comunitário: lugares que as regras/LLM marcaram (spam, link, ofensa) esperam a curadoria */
+function PlacesReview({ enabled }: { enabled: boolean }) {
+  const { data } = usePlacesReview(enabled)
+  const act = useReviewPlace()
+  const pending = (data ?? []).filter((r) => r.status === 'revisao')
+  if (!enabled) return null
+  return (
+    <section className="mt-8">
+      <SectionTitle aside={<span className="text-xs text-faint">catálogo da comunidade</span>}>Lugares em revisão{pending.length ? ` · ${pending.length}` : ''}</SectionTitle>
+      <div className="grid gap-2.5 px-5">
+        {!pending.length && <p className="rounded-[18px] border border-dashed border-line px-4 py-4 text-center text-[13px] text-faint">Nada pra revisar. Lugares sugeridos sem sinal de spam entram direto.</p>}
+        {pending.map((r) => {
+          const [id, name, , hood] = r.place as [string, string, string, string]
+          return (
+            <div key={id} className="rounded-[20px] border border-amber-400/30 bg-surface p-4">
+              <p className="font-serif text-[20px] leading-tight">{name} <span className="text-[13px] text-mute">· {hood}</span></p>
+              {r.comment && <p className="mt-1 text-[13px] text-ink/80">“{r.comment}”</p>}
+              <p className="mt-1 text-[12px] text-amber-300">{r.motivo ?? 'marcado pela moderação'}</p>
+              <div className="mt-3 flex items-center gap-2">
+                <Button variant="soft" className="h-10 px-4 text-xs" disabled={act.isPending} onClick={() => act.mutate({ id, status: 'recusado' })}>Recusar</Button>
+                <Button className="h-10 px-4 text-xs" disabled={act.isPending} onClick={() => act.mutate({ id, status: 'ok' })}>Liberar</Button>
+                <a href={mapsUrlOf(id)} target="_blank" rel="noreferrer" className="ml-auto text-[12px] text-mute underline-offset-4 hover:underline">ver no Maps</a>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </section>
   )
@@ -151,6 +183,8 @@ export function TestesPage() {
           ))}
         </div>
       </section>
+
+      <PlacesReview enabled={canGlobal} />
 
       <section className="mt-8" id="fila">
         <SectionTitle aside={<Link to="/divulgar" className="text-xs text-faint hover:text-ink">+ enviar</Link>}>

@@ -1,6 +1,5 @@
 import type { Niche, Occasion, OpenPeriod, Place, PlaceKind, Vibe } from './types'
 import { HOODS } from './labels'
-import { hoursLabel } from './hours'
 import { parseRequest } from '../mocks/ranker'
 
 /* Google Places API (New) direto do navegador.
@@ -10,15 +9,16 @@ import { parseRequest } from '../mocks/ranker'
 
 const KEY = import.meta.env.VITE_PLACES_KEY as string | undefined
 const ENDPOINT = 'https://places.googleapis.com/v1/places:searchText'
-// campos pedidos definem o SKU cobrado; nada de fotos/avaliações (cada foto seria 1 chamada extra)
+// Os campos pedidos definem a faixa cobrada: só campos da faixa Pro (5.000 buscas grátis/mês).
+// Nota, nº de avaliações, nível de preço e horário são Enterprise (1.000/mês) e os termos não deixam
+// guardá-los — quem vê nota e horário abre o Google Maps pelo link.
 const FIELDS = [
   'places.id', 'places.displayName', 'places.formattedAddress', 'places.shortFormattedAddress', 'places.location',
-  'places.primaryType', 'places.primaryTypeDisplayName', 'places.types', 'places.rating', 'places.userRatingCount',
-  'places.priceLevel', 'places.priceRange', 'places.regularOpeningHours.periods', 'places.googleMapsUri',
-  'places.addressComponents', 'places.businessStatus',
+  'places.primaryType', 'places.primaryTypeDisplayName', 'places.types', 'places.priceRange',
+  'places.googleMapsUri', 'places.addressComponents', 'places.businessStatus',
 ].join(',')
 const SP = { latitude: -23.5614, longitude: -46.6559 }
-const DEVICE_DAILY = 12
+const DEVICE_DAILY = 20
 
 export const placesEnabled = () => !!KEY
 
@@ -40,11 +40,7 @@ interface GPlace {
   primaryType?: string
   primaryTypeDisplayName?: { text: string }
   types?: string[]
-  rating?: number
-  userRatingCount?: number
-  priceLevel?: string
   priceRange?: { startPrice?: { units?: string }; endPrice?: { units?: string } }
-  regularOpeningHours?: { periods?: { open: { day: number; hour: number; minute?: number }; close?: { day: number; hour: number; minute?: number } }[] }
   googleMapsUri?: string
   addressComponents?: { longText: string; shortText: string; types: string[] }[]
   businessStatus?: string
@@ -63,9 +59,8 @@ const NICHE_BY_TYPE: [RegExp, Niche][] = [
   [/live_music|concert|jazz/, 'jazz'],
   [/park|garden|rooftop|beach/, 'ao-ar-livre'],
 ]
-const PRICE_BY_LEVEL: Record<string, number> = {
-  PRICE_LEVEL_FREE: 0, PRICE_LEVEL_INEXPENSIVE: 45, PRICE_LEVEL_MODERATE: 85, PRICE_LEVEL_EXPENSIVE: 150, PRICE_LEVEL_VERY_EXPENSIVE: 260,
-}
+/** link pro Google Maps montado só com o place_id (que pode ser guardado) */
+export const mapsUrlOf = (placeId: string) => `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(placeId.replace(/^g-/, ''))}`
 const hueOf = (s: string) => [...s].reduce((a, c) => a + c.charCodeAt(0) * 31, 0) % 360
 
 function hoodOf(g: GPlace) {
@@ -76,17 +71,6 @@ function hoodOf(g: GPlace) {
   return HOODS.find((h) => n(sub).includes(n(h)) || n(h).includes(n(sub))) ?? sub
 }
 
-function periodsOf(g: GPlace): OpenPeriod[] {
-  const ps = g.regularOpeningHours?.periods ?? []
-  if (ps.length === 1 && !ps[0].close) return [{ days: [0, 1, 2, 3, 4, 5, 6], open: 0, close: 24 }] // 24h
-  return ps.map((p) => {
-    const open = p.open.hour + (p.open.minute ?? 0) / 60
-    let close = p.close ? p.close.hour + (p.close.minute ?? 0) / 60 : 24
-    if (p.close && p.close.day !== p.open.day) close += 24 // passa da meia-noite
-    if (close <= open) close += 24
-    return { days: [p.open.day], open, close: Math.min(close, 36) }
-  })
-}
 
 /** query ajuda a estimar estilo/vibe: quem buscou "listening bar" quer um listening bar */
 export function toPlace(g: GPlace, query = ''): Place {
@@ -97,17 +81,17 @@ export function toPlace(g: GPlace, query = ''): Place {
   const vibes = (fromQuery?.vibes ?? []).slice(0, 2) as Vibe[]
   const occasions: Occasion[] = kind === 'restaurante' ? ['date', 'amigos', 'aniversario'] : kind === 'balada' ? ['amigos', 'solo', 'aniversario'] : ['amigos', 'date', 'aniversario']
   const range = g.priceRange ? [Number(g.priceRange.startPrice?.units), Number(g.priceRange.endPrice?.units)].filter((x) => x > 0) : []
-  const price = range.length ? Math.round(range.reduce((a, b) => a + b, 0) / range.length) : PRICE_BY_LEVEL[g.priceLevel ?? ''] ?? (kind === 'restaurante' ? 90 : 70)
-  const periods = periodsOf(g)
+  const price = range.length ? Math.round(range.reduce((a, b) => a + b, 0) / range.length) : kind === 'restaurante' ? 90 : 70
   const typeLabel = g.primaryTypeDisplayName?.text ?? (kind === 'balada' ? 'Balada' : kind === 'restaurante' ? 'Restaurante' : 'Bar')
   return {
     id: `g-${g.id}`, name: g.displayName?.text ?? 'Lugar', kind, hood: hoodOf(g), niches: niches.length ? niches : ['drinks'], vibes, occasions,
     price, capacity: kind === 'balada' ? 300 : 40,
-    rating: g.rating ? Math.round(g.rating * 20) / 10 : 8, ratingCount: g.userRatingCount ?? 0, hue: hueOf(g.id),
-    tagline: typeLabel, description: g.formattedAddress ?? '', highlights: [typeLabel, g.shortFormattedAddress ?? ''].filter(Boolean),
-    address: g.formattedAddress ?? '', hours: periods.length ? hoursLabel(periods) : 'Horário não informado', tags: [], privateSpace: false,
-    periods: periods.length ? periods : [{ days: [0, 1, 2, 3, 4, 5, 6], open: 0, close: 24 }],
-    source: 'google', mapsUrl: g.googleMapsUri, lat: g.location?.latitude, lng: g.location?.longitude,
+    // sem nota do Google (não pode ser guardada): neutra no ranking até a comunidade avaliar
+    rating: 8, ratingCount: 0, hue: hueOf(g.id),
+    tagline: typeLabel, description: g.formattedAddress ?? '', highlights: [],
+    address: g.shortFormattedAddress ?? g.formattedAddress ?? '', hours: 'Ver horário no Google Maps', tags: [], privateSpace: false,
+    periods: [{ days: [0, 1, 2, 3, 4, 5, 6], open: 0, close: 24 }],
+    source: 'google', mapsUrl: mapsUrlOf(g.id), lat: g.location?.latitude, lng: g.location?.longitude,
   }
 }
 
@@ -144,21 +128,22 @@ export async function searchGoogle(query: string): Promise<PlacesResult> {
   }
 }
 
-/* ---------- lugar do Google circulando entre aparelhos ----------
-   Só o necessário pra mostrar a opção na votação. Guardamos o place_id (permitido pelos termos) e um resumo
-   curto; a página do lugar sempre aponta pro Google Maps para os dados completos e atualizados. */
-export type PlaceSnap = [id: string, name: string, kind: PlaceKind, hood: string, niches: Niche[], price: number, rating: number, ratingCount: number, mapsUrl: string]
-export const snapOf = (p: Place): PlaceSnap => [p.id, p.name, p.kind, p.hood, p.niches, p.price, p.rating, p.ratingCount, p.mapsUrl ?? '']
+/* ---------- lugar do catálogo comunitário circulando entre aparelhos ----------
+   Do Google só o place_id (permitido guardar). Nome, bairro, estilo, vibe, ocasião e faixa de preço são os que
+   a pessoa confirmou ao sugerir: conteúdo da comunidade. Nota/horário: link pro Google Maps. */
+export type PlaceSnap = [id: string, name: string, kind: PlaceKind, hood: string, niches: Niche[], price: number, vibes: Vibe[], occasions: Occasion[]]
+export const snapOf = (p: Place): PlaceSnap => [p.id, p.name, p.kind, p.hood, p.niches, p.price, p.vibes, p.occasions]
 export function fromSnap(s: unknown): Place | null {
   if (!Array.isArray(s) || typeof s[0] !== 'string' || !/^g-[A-Za-z0-9_-]{5,120}$/.test(s[0])) return null
-  const [id, name, kind, hood, niches, price, rating, ratingCount, mapsUrl] = s as PlaceSnap
+  const [id, name, kind, hood, niches, price, vibes, occasions] = s as PlaceSnap
   const k: PlaceKind = ['bar', 'restaurante', 'balada', 'evento'].includes(kind) ? kind : 'bar'
   const periods: OpenPeriod[] = [{ days: [0, 1, 2, 3, 4, 5, 6], open: 0, close: 24 }]
+  const arr = (v: unknown, n: number) => (Array.isArray(v) ? v.map(String).slice(0, n) : [])
+  const occ = arr(occasions, 3) as Occasion[]
   return {
-    id, name: String(name).slice(0, 80), kind: k, hood: String(hood).slice(0, 40), niches: (Array.isArray(niches) ? niches : []).slice(0, 3) as Niche[],
-    vibes: [], occasions: ['amigos'], price: Number(price) || 0, capacity: 40, rating: Number(rating) || 8, ratingCount: Number(ratingCount) || 0,
-    hue: hueOf(id), tagline: 'Google Maps', description: '', highlights: [], address: hood, hours: 'Ver horário no Google Maps',
-    tags: [], privateSpace: false, periods, source: 'google',
-    mapsUrl: /^https:\/\/(maps\.google\.com|www\.google\.com\/maps|maps\.app\.goo\.gl)/.test(String(mapsUrl)) ? String(mapsUrl) : undefined,
+    id, name: String(name).slice(0, 80), kind: k, hood: String(hood).slice(0, 40), niches: arr(niches, 3) as Niche[],
+    vibes: arr(vibes, 2) as Vibe[], occasions: occ.length ? occ : ['amigos'], price: Number(price) || 0, capacity: 40, rating: 8, ratingCount: 0,
+    hue: hueOf(id), tagline: 'Sugerido pela comunidade', description: '', highlights: [], address: String(hood).slice(0, 40), hours: 'Ver horário no Google Maps',
+    tags: [], privateSpace: false, periods, source: 'google', mapsUrl: mapsUrlOf(id),
   }
 }

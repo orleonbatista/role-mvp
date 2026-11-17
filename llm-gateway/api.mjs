@@ -39,6 +39,10 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY, device TEXT NOT NULL, name TEXT NOT NULL, src TEXT, path TEXT, props TEXT, at INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS places (
+    id TEXT PRIMARY KEY, snap TEXT NOT NULL, comment TEXT, status TEXT NOT NULL DEFAULT 'ok', motivo TEXT,
+    device TEXT NOT NULL, at INTEGER NOT NULL, uses INTEGER NOT NULL DEFAULT 1, lat REAL, lng REAL, coords_at INTEGER, reviewed_at INTEGER
+  );
   CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY, device TEXT NOT NULL, data TEXT NOT NULL, at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS leads (id TEXT PRIMARY KEY, device TEXT NOT NULL, data TEXT NOT NULL, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_votes_req ON votes(request_id);
@@ -64,10 +68,12 @@ const int = (v, d = 0) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : 
 const json = (v, max) => { const s = JSON.stringify(v ?? null); return s.length <= max ? s : null }
 const parse = (s) => { try { return JSON.parse(s) } catch { return null } }
 
-/** resumo de lugar do Google: [id, nome, tipo, bairro, estilos, preço, nota, nº avaliações, link do Maps] */
+/** lugar do catálogo comunitário: [id (g-<place_id>), nome, tipo, bairro, estilos, preço, vibes, ocasiões].
+ *  Do Google só o place_id; o resto é o que a pessoa confirmou. */
+const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map((x) => str(x, 20))
 function snap(v) {
   if (!Array.isArray(v) || !/^g-[A-Za-z0-9_-]{5,120}$/.test(String(v[0]))) return null
-  return [String(v[0]), str(v[1], 80), str(v[2], 12), str(v[3], 40), (Array.isArray(v[4]) ? v[4] : []).slice(0, 3).map((x) => str(x, 20)), int(v[5]), Number(v[6]) || 0, int(v[7]), str(v[8], 300)]
+  return [String(v[0]), str(v[1], 80), ['bar', 'restaurante', 'balada', 'evento'].includes(v[2]) ? v[2] : 'bar', str(v[3], 40), list(v[4], 3), int(v[5]), list(v[6], 2), list(v[7], 3)]
 }
 
 function isAdmin(req) {
@@ -93,6 +99,14 @@ const q = {
   setSub: db.prepare('UPDATE submissions SET status = ?, reviewed_at = ? WHERE id = ?'),
   published: db.prepare("SELECT data, at FROM submissions WHERE status = 'aprovado' ORDER BY at"),
   insEv: db.prepare('INSERT OR IGNORE INTO events (id, device, name, src, path, props, at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+  getPlace: db.prepare('SELECT * FROM places WHERE id = ?'),
+  insPlace: db.prepare('INSERT INTO places (id, snap, comment, status, motivo, device, at, lat, lng, coords_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+  usePlace: db.prepare('UPDATE places SET uses = uses + 1 WHERE id = ?'),
+  okPlaces: db.prepare("SELECT snap FROM places WHERE status = 'ok' ORDER BY uses DESC, at DESC LIMIT 500"),
+  reviewPlaces: db.prepare("SELECT * FROM places WHERE status != 'ok' OR motivo IS NOT NULL ORDER BY at DESC LIMIT 200"),
+  setPlace: db.prepare('UPDATE places SET status = ?, reviewed_at = ? WHERE id = ?'),
+  // termos do Google: coordenadas só por 30 dias
+  expireCoords: db.prepare('UPDATE places SET lat = NULL, lng = NULL, coords_at = NULL WHERE coords_at < ?'),
   insFb: db.prepare('INSERT OR IGNORE INTO feedback (id, device, data, at) VALUES (?, ?, ?, ?)'),
   insLead: db.prepare('INSERT OR IGNORE INTO leads (id, device, data, at) VALUES (?, ?, ?, ?)'),
 }
@@ -134,6 +148,25 @@ function stats() {
   }
 }
 
+/** catálogo comunitário: chamado pelo server.mjs depois da moderação (regras + LLM) */
+export function insertPlace(body, device, verdict) {
+  if (!RE.device.test(device)) return bad('device')
+  const sp = snap(body.place)
+  if (!sp) return bad('place')
+  const existing = q.getPlace.get(sp[0])
+  if (existing) { q.usePlace.run(sp[0]); return ok({ ok: true, status: existing.status, existing: true }) }
+  const now = Date.now()
+  const status = verdict.ok ? 'ok' : 'revisao'
+  const lat = Number(body.lat), lng = Number(body.lng)
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng)
+  q.insPlace.run(sp[0], JSON.stringify(sp), str(body.comment, 200), status, verdict.motivo || null, device, now, hasCoords ? lat : null, hasCoords ? lng : null, hasCoords ? now : null)
+  return ok({ ok: true, status, motivo: verdict.motivo || undefined })
+}
+export const placeForModeration = (body) => {
+  const sp = snap(body.place)
+  return sp ? { name: sp[1], comment: str(body.comment, 200), exists: !!q.getPlace.get(sp[0]) } : null
+}
+
 /* ---------- roteamento ---------- */
 const ok = (body) => [200, body]
 const bad = (error, status = 400) => [status, { error }]
@@ -147,6 +180,23 @@ export function handleApi(method, path, req, body) {
   let m
 
   if (method === 'GET' && path === '/api/health') return ok({ ok: true, db: true, at: now })
+
+  /* ---- catálogo comunitário ---- */
+  if (method === 'GET' && path === '/api/places') {
+    q.expireCoords.run(now - 30 * 86_400_000)
+    return ok(q.okPlaces.all().map((r) => parse(r.snap)))
+  }
+  if (method === 'GET' && path === '/api/places/review') {
+    if (!isAdmin(req)) return bad('admin', 401)
+    return ok(q.reviewPlaces.all().map((r) => ({ place: parse(r.snap), comment: r.comment, status: r.status, motivo: r.motivo, at: r.at, uses: r.uses })))
+  }
+  if ((m = path.match(/^\/api\/places\/(g-[A-Za-z0-9_-]{5,120})\/status$/)) && write) {
+    if (!isAdmin(req)) return bad('admin', 401)
+    const status = ['ok', 'recusado'].includes(body.status) ? body.status : null
+    if (!status) return bad('status')
+    const upd = q.setPlace.run(status, now, m[1])
+    return upd.changes ? ok({ ok: true }) : bad('not_found', 404)
+  }
 
   // eventos aprovados = publicados pra todo mundo (substitui o eventos.json manual)
   if (method === 'GET' && path === '/api/events') return ok(q.published.all().map((r) => ({ ...parse(r.data), status: 'aprovado' })))

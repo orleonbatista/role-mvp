@@ -3,8 +3,8 @@
 //  - Dados: /api/* (api.mjs, SQLite) com pedidos, votos, sugestões, curadoria e métricas compartilhados entre aparelhos.
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
-import { askBody, ollamaBody } from '../src/mocks/llmPrompt.ts'
-import { adminKeyFile, dataDir, handleApi } from './api.mjs'
+import { askBody, moderateBody, moderationRules, ollamaBody } from '../src/mocks/llmPrompt.ts'
+import { adminKeyFile, dataDir, handleApi, insertPlace, placeForModeration } from './api.mjs'
 
 const PORT = Number(process.env.PORT ?? 8787)
 const OLLAMA = process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434'
@@ -49,6 +49,21 @@ function apiLimited(ip, write) {
   return false
 }
 
+/** moderação pela LLM (fila de 1 na GPU, 8s); se falhar, deixa passar — as regras já pegaram o óbvio */
+async function moderateLLM(name, comment) {
+  const job = queue.then(async () => {
+    const r = await fetch(`${OLLAMA}/api/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(moderateBody(MODEL, name, comment)), signal: AbortSignal.timeout(8000),
+    })
+    if (!r.ok) throw new Error(`ollama ${r.status}`)
+    const j = JSON.parse((await r.json()).message?.content ?? '{}')
+    return { ok: j.ok !== false, motivo: j.ok === false ? String(j.motivo ?? 'conteúdo suspeito').slice(0, 60) : '' }
+  })
+  queue = job.catch(() => {})
+  try { return await job } catch { return { ok: true, motivo: '' } }
+}
+
 function send(res, status, body, origin) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -78,6 +93,20 @@ const server = http.createServer(async (req, res) => {
       let raw = ''
       for await (const chunk of req) { raw += chunk; if (raw.length > 16_000) return send(res, 413, { error: 'too_large' }, origin) }
       try { body = JSON.parse(raw || '{}') } catch { return send(res, 400, { error: 'bad_json' }, origin) }
+    }
+    // catálogo comunitário: regras + LLM decidem se o lugar entra direto ou vai pra revisão da curadoria
+    if (write && path === '/api/places') {
+      const m = placeForModeration(body)
+      if (!m) return send(res, 400, { error: 'place' }, origin)
+      let verdict = { ok: true, motivo: '' }
+      if (!m.exists) {
+        const rule = moderationRules(m.name, m.comment)
+        if (rule) verdict = { ok: false, motivo: rule }
+        else if (m.comment.trim()) verdict = await moderateLLM(m.name, m.comment)
+      }
+      const [status, out] = insertPlace(body, String(req.headers['x-device'] ?? ''), verdict)
+      console.log(`[${new Date().toLocaleTimeString('pt-BR')}] lugar ${status} ${out.status ?? ''} "${m.name}" ${verdict.motivo ? '(' + verdict.motivo + ')' : ''}`)
+      return send(res, status, out, origin)
     }
     try {
       const [status, out] = handleApi(req.method, path, req, body)

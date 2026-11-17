@@ -39,8 +39,10 @@ Inventário do MVP (nov/2026). Entre parênteses, a rota da tela.
   - **Fechar no X · horário** (só o autor): celebração + arte de Story "fechado". Todo mundo vê o banner **Fechado**.
   - Convite "Tem um rolê pra decidir?" pra quem chegou pelo link.
 - **Sugerir** (`/s/:id`, pública): vê os critérios do pedido, busca no catálogo com % de encaixe e avisos
-  e, se não achar, **busca no Google Maps** (qualquer lugar de SP, com nota do Google e atribuição);
-  escolhe, põe nome e comentário. Com backend → entra na votação de todos; sem → gera link de retorno
+  (inclui o **catálogo da comunidade**) e, se não achar, **busca no Google Maps** (qualquer lugar de SP, com
+  atribuição). Lugar novo: a IA pré-marca estilo/vibe/ocasião pelo comentário e a pessoa confirma ("Entendi:
+  …", "Ajustar"); o lugar entra no catálogo de todos ou, se suspeito, vai pra revisão. Escolhe, põe nome e
+  comentário. Com backend → entra na votação de todos; sem → gera link de retorno
   pro autor (WhatsApp/direct).
 - **Importar sugestão** (`/i/:id`): o autor toca no link de retorno e a sugestão entra na votação.
 
@@ -63,6 +65,7 @@ Inventário do MVP (nov/2026). Entre parênteses, a rota da tela.
 ## Medição e testes
 - **Rastreamento** de eventos de produto (local + backend), origem de primeiro toque (`?src=`), feedback
   (botão flutuante), leads da reserva (fake door).
+- **Lugares em revisão** (`/testes`, com a chave): lugares que as regras/LLM marcaram, com Liberar/Recusar.
 - **Painel de testes** (`/testes`): status do backend e da IA, chave da curadoria, alternância **Todos os
   aparelhos / Este aparelho**, funil do loop, fila de eventos, tabela por origem (inclui divulgadores e
   grupos gerados), feedback, leads, últimos eventos, exportar JSON.

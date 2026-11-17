@@ -32,3 +32,11 @@ Formato curto: **decisão**, **por quê**, **trade-off**.
 13. **Modo demo ligado por padrão, mas desligado na prática quando há placar ao vivo.** Mostra o produto
     vivo para quem testa sozinho sem poluir votações reais. *Trade-off:* testes com o backend fora do
     ar ainda simulam amigos.
+14. **Catálogo da comunidade em cima do Google, guardando só o `place_id`.** Os termos do Google só permitem
+    guardar o ID (e coordenadas por 30 dias); o resto vem de quem sugeriu. Ganha: catálogo que cresce com o
+    uso e tags reais de estilo/vibe. *Trade-off:* um toque a mais pra confirmar ao sugerir.
+15. **LLM como assistente do cadastro, não como juíza.** Pré-preenche tags (citando o trecho) e marca suspeitos;
+    quem decide é a pessoa (tags) e a curadoria (suspeitos). Sem LLM, regras. *Trade-off:* curadoria manual
+    pros casos marcados.
+16. **Busca do Google só com campos da faixa Pro.** 5× mais buscas grátis (5.000/mês) que a Enterprise. *Trade-off:*
+    sem nota/horário na busca — o link pro Maps cobre.

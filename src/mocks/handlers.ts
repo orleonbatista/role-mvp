@@ -12,6 +12,8 @@ import { KIND_LABEL, nicheLabel, occasionLabel } from '../lib/labels'
 import { DAY_SHORT } from '../lib/hours'
 import { approveLocally, fitOf, isPast, sanitizeDraft } from './extraEvents'
 import * as remote from './remote'
+import { moderationRules } from './llmPrompt'
+import { rememberPlace } from './gplaces'
 
 const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`
 const latency = () => delay(160 + Math.random() * 200)
@@ -254,6 +256,37 @@ export const handlers = [
     )
     await latency()
     return HttpResponse.json(items)
+  }),
+
+  /** lugar novo pro catálogo comunitário: LLM (ou regras) lê o comentário e pré-preenche estilo/vibe/ocasião */
+  http.post('/api/places/analyze', async ({ request }) => {
+    const { comment = '', name = '', niches = [], occasions = [] } = (await request.json()) as { comment?: string; name?: string; niches?: string[]; occasions?: string[] }
+    const c = comment.trim() ? await analyze(comment.slice(0, 200)) : null
+    const uniq = <T,>(a: T[]) => [...new Set(a)]
+    return HttpResponse.json({
+      niches: uniq([...(c?.niches ?? []), ...niches]).slice(0, 3),
+      vibes: (c?.vibes ?? []).slice(0, 2),
+      occasions: uniq([...(c?.occasion ? [c.occasion] : []), ...occasions]).slice(0, 3),
+      engine: c?.source?.engine === 'llm' ? 'llm' : 'regras',
+      flag: moderationRules(name, comment),
+    })
+  }),
+
+  /** confirma o lugar no catálogo comunitário (local + backend, que modera) */
+  http.post('/api/places/community', async ({ request }) => {
+    const { place, comment = '' } = (await request.json()) as { place: import('../lib/types').Place; comment?: string }
+    if (!place?.id?.startsWith('g-')) return HttpResponse.json({ error: 'place' }, { status: 400 })
+    const known = placeById.get(place.id)
+    if (known) Object.assign(known, { name: place.name, niches: place.niches, vibes: place.vibes, occasions: place.occasions, price: place.price })
+    await rememberPlace(known ?? place)
+    const r = await remote.pushCommunityPlace(known ?? place, comment)
+    return HttpResponse.json(r ?? { ok: true, status: 'local' })
+  }),
+
+  http.get('/api/catalog/review', async () => HttpResponse.json(remote.getAdminKey() ? (await remote.placesForReview()) ?? [] : [])),
+  http.post('/api/catalog/:id/status', async ({ params, request }) => {
+    const { status } = (await request.json()) as { status: 'ok' | 'recusado' }
+    return HttpResponse.json({ ok: await remote.pushPlaceStatus(params.id as string, status) })
   }),
 
   http.post('/api/parse', async ({ request }) => {

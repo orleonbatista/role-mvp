@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
-  Criteria, DiaryEntry, EventDraft, EventFit, EventSubmission, Feedback, FeedItem, Lead, Person, Place, PlaceDetail, Profile, Ranked, RequestDetail, Review, RoleRequest, TrackEvent,
+  Criteria, DiaryEntry, EventDraft, Niche, Occasion, Vibe, EventFit, EventSubmission, Feedback, FeedItem, Lead, Person, Place, PlaceDetail, Profile, Ranked, RequestDetail, Review, RoleRequest, TrackEvent,
 } from './types'
 
 /* Cliente HTTP "de verdade": quem responde hoje é o MSW (src/mocks).
@@ -161,3 +161,17 @@ export function useReviewSubmission() {
 /* ---------- backend compartilhado (PC) ---------- */
 export const useSync = () => useQuery({ queryKey: ['sync'], queryFn: () => req<{ online: boolean; admin: boolean }>('/sync'), staleTime: 30_000, refetchInterval: 60_000 })
 export const useGlobalStats = (enabled: boolean) => useQuery({ queryKey: ['testes-global'], queryFn: () => req<import('../mocks/remote').GlobalStats | null>('/testes/global'), enabled, refetchInterval: 15_000 })
+
+/* ---------- catálogo comunitário ---------- */
+export interface PlaceAnalysis { niches: Niche[]; vibes: Vibe[]; occasions: Occasion[]; engine: 'llm' | 'regras'; flag: string | null }
+export const analyzePlace = (b: { comment: string; name: string; niches: Niche[]; occasions: Occasion[] }) => post<PlaceAnalysis>('/places/analyze', b)
+export const confirmCommunityPlace = (place: Place, comment: string) =>
+  post<{ ok: boolean; status: 'ok' | 'revisao' | 'local'; motivo?: string; existing?: boolean }>('/places/community', { place, comment })
+export const usePlacesReview = (enabled: boolean) => useQuery({ queryKey: ['places-review'], queryFn: () => req<import('../mocks/remote').PlaceReview[]>('/catalog/review'), enabled, refetchInterval: 20_000 })
+export function useReviewPlace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'ok' | 'recusado' }) => post<{ ok: boolean }>(`/catalog/${encodeURIComponent(id)}/status`, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['places-review'] }),
+  })
+}
