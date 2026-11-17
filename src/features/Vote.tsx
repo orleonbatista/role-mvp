@@ -95,8 +95,15 @@ export function VotePage() {
     <Page><EmptyState title="Rolê não encontrado" text="Esse link está incompleto ou expirou. Peça para reenviarem pelo botão “Mandar pro grupo”." action={<Button onClick={() => nav('/')}>Conhecer o rolê.</Button>} /></Page>
   )
 
+  const footer = data && leader && total >= 2 && !decided && !external ? (
+            <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} disabled={decide.isPending}
+              onClick={async () => { await decide.mutateAsync({ placeId: leader.id, time: leaderTime }); track('decided', { placeId: leader.id, time: leaderTime }); setCelebrate(true) }}>
+              Fechar no {leader.name}{leaderTime ? ` · ${leaderTime}` : ''}
+            </Button>
+  ) : null
+
   return (
-    <Page className="pb-36">
+    <Page className="pb-8" footer={footer}>
       <div className="flex items-center justify-between px-5 pt-14">
         <span className="font-serif text-xl italic">rolê<span className="text-accent">.</span></span>
         <button onClick={() => (history.length > 1 ? nav(-1) : nav('/'))} className="grid size-9 place-items-center rounded-full bg-white/[0.06]" aria-label="Fechar"><X size={16} /></button>
@@ -212,16 +219,6 @@ export function VotePage() {
         </>
       )}
 
-      <AnimatePresence>
-        {data && leader && total >= 2 && !decided && !external && (
-          <motion.div initial={{ y: 120, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 120, opacity: 0 }} transition={spring} className="bottom-bar absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-7 pt-10">
-            <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} disabled={decide.isPending}
-              onClick={async () => { await decide.mutateAsync({ placeId: leader.id, time: leaderTime }); track('decided', { placeId: leader.id, time: leaderTime }); setCelebrate(true) }}>
-              Fechar no {leader.name}{leaderTime ? ` · ${leaderTime}` : ''}
-            </Button>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <Overlay>
         <AnimatePresence>

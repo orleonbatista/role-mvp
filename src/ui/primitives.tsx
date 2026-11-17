@@ -1,5 +1,5 @@
-import { animate, motion, useMotionValue, useTransform, type HTMLMotionProps } from 'motion/react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { AnimatePresence, animate, motion, useMotionValue, useTransform, type HTMLMotionProps } from 'motion/react'
+import { useEffect, useState, type ReactNode, type Ref } from 'react'
 import { createPortal } from 'react-dom'
 import type { LucideIcon } from 'lucide-react'
 import { ChevronLeft, SearchX } from 'lucide-react'
@@ -8,17 +8,47 @@ import { page, spring } from './motion'
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ')
 
-/** Tela: camada absoluta com rolagem própria — permite transições sobrepostas e elementos compartilhados. */
-export function Page({ children, className, tabbed }: { children: ReactNode; className?: string; tabbed?: boolean }) {
+/** Tela: camada absoluta com rolagem própria — permite transições sobrepostas e elementos compartilhados.
+ *  `footer`: barra de ações que OCUPA espaço no layout (o conteúdo rola acima dela, nunca por baixo).
+ *  `chrome`: elementos fixos sobre a tela (ex.: barra de topo transparente), fora da área de rolagem. */
+export function Page({ children, className, tabbed, footer, chrome, scrollRef }: {
+  children: ReactNode; className?: string; tabbed?: boolean
+  footer?: ReactNode; chrome?: ReactNode; scrollRef?: Ref<HTMLDivElement>
+}) {
+  const layout = footer !== undefined || chrome !== undefined || scrollRef !== undefined
+  if (!layout) {
+    return (
+      <motion.main
+        variants={page}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        className={cx('absolute inset-0 overflow-y-auto overflow-x-hidden no-scrollbar bg-bg', tabbed ? 'pb-28' : 'pb-10', className)}
+      >
+        {children}
+      </motion.main>
+    )
+  }
   return (
-    <motion.main
-      variants={page}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      className={cx('absolute inset-0 overflow-y-auto overflow-x-hidden no-scrollbar bg-bg', tabbed ? 'pb-28' : 'pb-10', className)}
-    >
-      {children}
+    <motion.main variants={page} initial="initial" animate="animate" exit="exit" className="absolute inset-0 flex flex-col overflow-hidden bg-bg">
+      <div ref={scrollRef} className={cx('no-scrollbar relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden', tabbed ? 'pb-28' : 'pb-8', className)}>
+        {children}
+      </div>
+      {chrome}
+      <AnimatePresence initial={false}>
+        {footer ? (
+          <motion.footer
+            key="footer"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            className="relative z-20 shrink-0 overflow-hidden border-t border-white/[0.06] bg-bg/90 backdrop-blur-xl"
+          >
+            <div className="px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3">{footer}</div>
+          </motion.footer>
+        ) : null}
+      </AnimatePresence>
     </motion.main>
   )
 }

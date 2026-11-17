@@ -43,8 +43,10 @@ export function ReviewPage() {
   const ready = went === false || (went && placeId && verdict)
   if (isError) return <Page><TopBar /><EmptyState title="Pedido não encontrado" text="Não achei esse rolê neste aparelho." action={<Button onClick={() => nav('/')}>Ir pro início</Button>} /></Page>
 
+  const footer = <Button size="lg" className="w-full" disabled={!ready || create.isPending} onClick={submit}>Salvar no diário</Button>
+
   return (
-    <Page className="pb-44">
+    <Page footer={footer}>
       <TopBar title="Pós-rolê" />
       {!data ? <Skeleton className="m-5 h-60" /> : (
         <div className="px-5">
@@ -106,9 +108,6 @@ export function ReviewPage() {
         </div>
       )}
 
-      <div className="bottom-bar absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-7 pt-10">
-        <Button size="lg" className="w-full" disabled={!ready || create.isPending} onClick={submit}>Salvar no diário</Button>
-      </div>
 
       <Overlay>
       <AnimatePresence>

@@ -36,8 +36,15 @@ export function Results() {
     <Page><TopBar /><EmptyState title="Pedido não encontrado" text="Esse rolê não existe neste aparelho. Se veio de um link, peça para reenviarem pelo app." action={<Button onClick={() => nav('/')}>Ir pro início</Button>} /></Page>
   )
 
+  const footer = data ? (
+          <div className="flex gap-2">
+            <Button size="lg" className="flex-1" onClick={() => { setShare(true); track('share_opened', { id }) }} icon={<Send size={16} />}>Mandar pro grupo</Button>
+            <Button size="lg" variant="soft" onClick={() => nav(`/r/${id}`)}>Votar</Button>
+          </div>
+  ) : null
+
   return (
-    <Page className="pb-32">
+    <Page footer={footer}>
       <TopBar title={data?.author.id === 'me' ? 'Seu pedido' : data?.author.handle} />
       {isLoading || !data ? (
         <div className="grid gap-3 px-5 pt-4"><Skeleton className="h-20" /><Skeleton className="h-72" /><Skeleton className="h-72" /></div>
@@ -94,14 +101,6 @@ export function Results() {
         </>
       )}
 
-      {data && (
-        <motion.div initial={{ y: 100 }} animate={{ y: 0, transition: { delay: 0.6, ...spring } }} className="bottom-bar absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-7 pt-10">
-          <div className="flex gap-2">
-            <Button size="lg" className="flex-1" onClick={() => { setShare(true); track('share_opened', { id }) }} icon={<Send size={16} />}>Mandar pro grupo</Button>
-            <Button size="lg" variant="soft" onClick={() => nav(`/r/${id}`)}>Votar</Button>
-          </div>
-        </motion.div>
-      )}
 
       {data && <ShareSheet open={share} onClose={() => setShare(false)} data={data} link={link} onStory={() => { setShare(false); setTimeout(() => setStory(true), 250) }} />}
       {data && <StorySheet open={story} onClose={() => setStory(false)} card={storyCard} link={link ? withSource(link, 'ig') : ''} context="pedido" />}

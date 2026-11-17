@@ -38,9 +38,21 @@ export function PlacePage() {
   const status = openStatus(place)
   const km = distanceKm(me?.hood, place.hood)
 
+  const footer = <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} onClick={() => { setLead(true); track('reserve_intent', { id: place.id, kind: place.kind }) }}>
+          {place.kind === 'evento' ? `Garantir ingresso · ${priceLabel(place.price)}` : place.privateSpace ? 'Reservar pra grupo' : 'Reservar mesa'}
+        </Button>
+  const chrome = (
+      <div className="absolute inset-x-0 top-0 z-20 flex h-24 items-end gap-3 px-4 pb-3">
+        <motion.div style={{ opacity: titleOpacity }} className="absolute inset-0 border-b border-line bg-bg/80 backdrop-blur-xl" />
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => nav(-1)} className="relative grid size-10 place-items-center rounded-full bg-black/40 backdrop-blur-md" aria-label="Voltar">
+          <ChevronLeft size={18} />
+        </motion.button>
+        <motion.p style={{ opacity: titleOpacity }} className="relative pb-2 font-serif text-xl">{place.name}</motion.p>
+      </div>
+  )
+
   return (
-    <Page className="!overflow-hidden">
-      <div ref={scroller} className="no-scrollbar absolute inset-0 overflow-y-auto pb-32">
+    <Page scrollRef={scroller} chrome={chrome} footer={footer}>
         <motion.div style={{ scale: coverScale, y: coverY }} className="relative h-[380px] origin-top">
           <Cover hue={place.hue} icon={placeIcon(place)} iconSize={120} layoutId={`cover-${place.id}`} className="h-full w-full" rounded="rounded-none" />
           <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/20 to-transparent" />
@@ -123,22 +135,7 @@ export function PlacePage() {
             ))}
           </div>
         </div>
-      </div>
 
-      {/* barra superior que ganha título ao rolar */}
-      <div className="absolute inset-x-0 top-0 z-20 flex h-24 items-end gap-3 px-4 pb-3">
-        <motion.div style={{ opacity: titleOpacity }} className="absolute inset-0 border-b border-line bg-bg/80 backdrop-blur-xl" />
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => nav(-1)} className="relative grid size-10 place-items-center rounded-full bg-black/40 backdrop-blur-md" aria-label="Voltar">
-          <ChevronLeft size={18} />
-        </motion.button>
-        <motion.p style={{ opacity: titleOpacity }} className="relative pb-2 font-serif text-xl">{place.name}</motion.p>
-      </div>
-
-      <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ delay: 0.4, type: 'spring', stiffness: 300, damping: 30 }} className="bottom-bar absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-7 pt-10">
-        <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} onClick={() => { setLead(true); track('reserve_intent', { id: place.id, kind: place.kind }) }}>
-          {place.kind === 'evento' ? `Garantir ingresso · ${priceLabel(place.price)}` : place.privateSpace ? 'Reservar pra grupo' : 'Reservar mesa'}
-        </Button>
-      </motion.div>
       <LeadSheet open={lead} onClose={() => setLead(false)} place={place} defaultName={me?.name} onDone={() => toast('Pedido enviado! A casa responde em até 2h (simulado)')} />
     </Page>
   )

@@ -73,10 +73,31 @@ export function NewRequest() {
     nav(`/pedido/${id}`, { replace: true })
   }
 
+  const footer = (
+        <motion.button
+          whileTap={{ scale: 0.98 }}
+          disabled={text.trim().length < 6 || create.isPending}
+          onClick={() => submit()}
+          className={cx(
+            'relative flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-full font-medium transition-all duration-500',
+            text.trim().length >= 6 ? 'bg-accent text-accent-ink shadow-[0_10px_40px_-10px_rgba(198,255,61,0.7)]' : 'bg-white/[0.06] text-faint',
+          )}
+        >
+          {create.isPending ? (
+            <>
+              <motion.span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent" animate={{ x: ['-100%', '100%'] }} transition={{ repeat: Infinity, duration: 1 }} />
+              <span className="relative">Procurando o rolê…</span>
+            </>
+          ) : (
+            <>{clarify ? 'Buscar com esses filtros' : 'Encontrar o rolê'} <ArrowUp size={16} /></>
+          )}
+        </motion.button>
+  )
+
   return (
-    <Page>
+    <Page footer={footer}>
       <TopBar title="Novo pedido" />
-      <div className="px-5 pb-28 pt-2">
+      <div className="px-5 pt-2">
         <motion.div layoutId="composer" transition={{ type: 'spring', stiffness: 300, damping: 34 }} className="relative rounded-[28px] border border-line bg-surface p-4">
           <div className="relative">
             <textarea
@@ -161,26 +182,6 @@ export function NewRequest() {
         </motion.div>
       </div>
 
-      <div className="bottom-bar absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg via-bg/90 to-transparent px-5 pb-8 pt-10">
-        <motion.button
-          whileTap={{ scale: 0.98 }}
-          disabled={text.trim().length < 6 || create.isPending}
-          onClick={() => submit()}
-          className={cx(
-            'relative flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-full font-medium transition-all duration-500',
-            text.trim().length >= 6 ? 'bg-accent text-accent-ink shadow-[0_10px_40px_-10px_rgba(198,255,61,0.7)]' : 'bg-white/[0.06] text-faint',
-          )}
-        >
-          {create.isPending ? (
-            <>
-              <motion.span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent" animate={{ x: ['-100%', '100%'] }} transition={{ repeat: Infinity, duration: 1 }} />
-              <span className="relative">Procurando o rolê…</span>
-            </>
-          ) : (
-            <>{clarify ? 'Buscar com esses filtros' : 'Encontrar o rolê'} <ArrowUp size={16} /></>
-          )}
-        </motion.button>
-      </div>
     </Page>
   )
 }
