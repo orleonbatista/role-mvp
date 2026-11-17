@@ -92,3 +92,4 @@ Cada fase só avança quando os critérios da anterior forem cumpridos.
 | 6 | Painel da casa (responder pedidos de grupo) | B | G |
 | 7 | Editar e apagar pedido e evento | B | P |
 | 8 | Reputação de curadores por nicho | B | M |
+| 9 | Cadastro rico pela IA: ao se cadastrar, enriquecer os 20–30 lugares da base mais próximos e no gosto da pessoa (OSM + site do lugar + foto Mapillary), com descrição e tags pela IA, marcado "rascunho da IA" até alguém confirmar; foto da comunidade ao indicar (análise de vibe com modelo de visão); fotos no PC agora e no Cloudflare R2 depois. Nada do Google é guardado além do `place_id` | B | G |
