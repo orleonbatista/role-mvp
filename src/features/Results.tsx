@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { AlertTriangle, Check, Copy, ExternalLink, Heart, Send, Share2, Sparkles, Star } from 'lucide-react'
+import { AlertTriangle, Check, Copy, ExternalLink, Heart, MapPinPlus, Send, Share2, Sparkles, Star } from 'lucide-react'
 import { AnimatedNumber, Avatar, Button, Cover, EmptyState, Page, Skeleton, StreamText, Tag, TopBar, Typing, cx } from '../ui/primitives'
 import { placeIcon } from '../ui/placeIcon'
 import { track } from '../lib/track'
@@ -16,12 +16,20 @@ import { ease, spring } from '../ui/motion'
 import { useHelpful, useRequest } from '../lib/api'
 import { KIND_LABEL, nicheLabel, occasionLabel, priceLabel } from '../lib/labels'
 import type { RequestDetail } from '../lib/types'
+import { isCommunity } from '../mocks/seeds/places'
 
 export function Results() {
   const { id = '' } = useParams()
   const nav = useNavigate()
   const { data, isLoading, isError } = useRequest(id)
   const [introDone, setIntroDone] = useState(false)
+  // lacuna de curadoria: recomendação veio da base (OSM) ou o melhor curado encaixa mal → IA convida a comunidade
+  const recs = data?.recommendations ?? []
+  const curatedGood = recs.some((r) => r.place.curation !== 'base' && r.match >= 55)
+  const gap = !!data && recs.some((r) => r.place.curation === 'base')
+  const crit = data?.request.criteria
+  const gapLabel = crit ? [crit.niches[0] ? nicheLabel(crit.niches[0]).toLowerCase() : crit.occasion ? `lugar pra ${occLabel(crit.occasion).toLowerCase()}` : 'lugar assim', crit.hood ? `em ${crit.hood}` : ''].filter(Boolean).join(' ') : ''
+  useEffect(() => { if (gap && introDone) track('curation_invite_shown', { id, curatedGood }) }, [gap, introDone]) // eslint-disable-line react-hooks/exhaustive-deps
   const [share, setShare] = useState(false)
   const [story, setStory] = useState(false)
   const [storySugira, setStorySugira] = useState(false)
@@ -77,6 +85,11 @@ export function Results() {
                 </span>
               </div>
               <StreamText text={data.intro} className="text-[15px] leading-relaxed text-ink/90" onDone={() => setIntroDone(true)} />
+              {introDone && gap && (
+                <p className="mt-2 text-[13px] leading-relaxed text-ink/75">
+                  {curatedGood ? 'Completei com lugares reais da cidade que ninguém daqui curou ainda (marcados).' : 'A comunidade ainda não curou nada que encaixe bem nisso. Mostrei lugares reais da cidade, sem curadoria: confira antes de ir.'}
+                </p>
+              )}
               {data.request.criteria.source && (
                 <p className="mt-2 text-[11px] text-faint">
                   {data.request.criteria.source.engine === 'llm'
@@ -98,6 +111,20 @@ export function Results() {
                 : [0, 1, 2].map((i) => <Skeleton key={i} className="h-[300px] rounded-[28px]" />)}
             </AnimatePresence>
           </section>
+
+          {introDone && gap && (
+            <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.6, ease }}
+              className="mx-5 mt-5 rounded-[24px] border border-dashed border-accent/40 bg-accent/[0.04] p-4">
+              <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-accent"><MapPinPlus size={13} />Falta curadoria aqui</p>
+              <p className="mt-2 text-[14px] leading-relaxed text-ink/90">
+                Ninguém da comunidade indicou {gapLabel} ainda. Conhece algum que valha? Sua indicação entra nesta votação e no catálogo do rolê.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button icon={<MapPinPlus size={15} />} onClick={() => { track('curation_invite_click', { id }); nav(`/s/${id}`) }}>Indicar um lugar</Button>
+                <Button variant="soft" icon={<Share2 size={15} />} onClick={() => { track('curation_invite_share', { id }); setShare(true) }}>Pedir aos amigos</Button>
+              </div>
+            </motion.section>
+          )}
 
           <Community data={data} />
 
@@ -124,6 +151,8 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
       <div className="relative">
         <Cover hue={p.hue} icon={placeIcon(p)} iconSize={64} layoutId={`cover-${p.id}`} className="h-44 w-full" rounded="rounded-none" />
         <span className="absolute left-4 top-4 font-serif text-5xl italic leading-none text-white/90 drop-shadow">{rank}</span>
+        {p.curation === 'base' && <span className="absolute bottom-3 left-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] text-ink/90 backdrop-blur-md">sem curadoria · OpenStreetMap</span>}
+        {isCommunity(p) && <span className="absolute bottom-3 left-3 rounded-full bg-accent/90 px-2.5 py-1 text-[11px] font-medium text-accent-ink">curado pela comunidade</span>}
         <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-black/45 px-2.5 py-1 text-xs backdrop-blur-md">
           <span className="relative size-4">
             <svg viewBox="0 0 20 20" className="size-4 -rotate-90">
@@ -138,10 +167,14 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
       <div className="p-4">
         <div className="flex items-baseline justify-between gap-2">
           <p className="font-serif text-[28px] leading-none">{p.name}</p>
-          <span className="flex items-center gap-1 text-sm text-ink/80">{p.ratingCount ? <><Star size={13} className="fill-accent text-accent" />{p.rating.toFixed(1)}</> : <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[11px] text-accent">novo</span>}</span>
+          <span className="flex items-center gap-1 text-sm text-ink/80">{p.ratingCount ? <><Star size={13} className="fill-accent text-accent" />{p.rating.toFixed(1)}</> : p.curation === 'base' ? null : <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[11px] text-accent">novo</span>}</span>
         </div>
-        <p className="mt-1.5 text-xs text-mute">{KIND_LABEL[p.kind]} · {p.hood} · {priceLabel(p.price)} · até {p.capacity} pessoas</p>
-        <p className={cx('mt-1 text-[11px]', openStatus(p).open ? 'text-accent' : 'text-faint')}>{p.kind === 'evento' ? p.when : openStatus(p).label}</p>
+        {p.source
+          ? <p className="mt-1.5 text-xs text-mute">{p.tagline === 'Sugerido pela comunidade' ? KIND_LABEL[p.kind] : p.tagline} · {p.hood} · {priceLabel(p.price)}{p.curation === 'base' ? ' (estimado)' : ''} · horário no Maps</p>
+          : <>
+              <p className="mt-1.5 text-xs text-mute">{KIND_LABEL[p.kind]} · {p.hood} · {priceLabel(p.price)} · até {p.capacity} pessoas</p>
+              <p className={cx('mt-1 text-[11px]', openStatus(p).open ? 'text-accent' : 'text-faint')}>{p.kind === 'evento' ? p.when : openStatus(p).label}</p>
+            </>}
         <ul className="mt-3.5 grid gap-2">
           {r.reasons.map((s, i) => (
             <motion.li key={s} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.08, duration: 0.5, ease }} className="flex items-start gap-2 text-[13px] text-ink/85">

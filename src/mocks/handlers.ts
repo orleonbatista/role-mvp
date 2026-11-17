@@ -1,17 +1,18 @@
 import { delay, http, HttpResponse } from 'msw'
 import { db } from '../db/db'
 import type {
-  Answer, AnswerDTO, Criteria, DiaryEntry, EventSubmission, Feedback, FeedItem, Lead, Person, PlaceDetail, Profile, RequestDetail, Review,
+  Answer, AnswerDTO, Criteria, DiaryEntry, EventSubmission, Feedback, FeedItem, Lead, Person, Place, PlaceDetail, Profile, RequestDetail, Review,
   RoleRequest, Verdict, Vote, VoteTally,
 } from '../lib/types'
 import { confidenceOf, introFor, parseRequest, rank, timeOptions, unmetFor } from './ranker'
 import { refineWithLLM } from './llm'
 import { people } from './seeds/people'
-import { placeById, places } from './seeds/places'
+import { isCurated, placeById, places } from './seeds/places'
 import { KIND_LABEL, nicheLabel, occasionLabel } from '../lib/labels'
-import { DAY_SHORT } from '../lib/hours'
+import { DAY_SHORT, distanceKm } from '../lib/hours'
 import { approveLocally, fitOf, isPast, sanitizeDraft } from './extraEvents'
 import * as remote from './remote'
+import { track } from '../lib/track'
 import { moderationRules } from './llmPrompt'
 import { rememberPlace } from './gplaces'
 
@@ -44,7 +45,7 @@ async function analyze(text: string, overrides?: Partial<Criteria>) {
 
 /** Curadores simulados: só quem entende do assunto responde, com texto que cita a ocasião. */
 function simulateAnswers(req: RoleRequest, profile: Profile | undefined): Answer[] {
-  const ranked = rank(places, req.criteria, profile).filter((r) => r.score > 0)
+  const ranked = rank(places.filter(isCurated), req.criteria, profile).filter((r) => r.score > 0)
   const top = ranked.slice(0, 3).map((r) => r.place.id)
   const pool = ranked.slice(1, 10)
   const topic = req.criteria.niches.length ? req.criteria.niches : ranked[0]?.place.niches ?? []
@@ -82,6 +83,19 @@ function tallyOf(votes: Vote[], ids: string[]): VoteTally[] {
   })
 }
 
+/* ---------- curadoria em camadas ----------
+   1º o que a comunidade curou (com encaixe bom); se não fecha 3, completa com o melhor que houver — inclusive
+   lugares reais da base (OSM) "sem curadoria", que a tela marca e usa pra convidar a comunidade a curar. */
+const CURATED_OK = 55
+const live = (p: Place) => !(p.eventDate && isPast({ date: p.eventDate }))
+function rankLayered(c: Criteria, profile: Profile | null | undefined, exclude = new Set<string>(), n = 3) {
+  const cur = rank(places.filter((p) => isCurated(p) && live(p) && !exclude.has(p.id)), c, profile)
+  const good = cur.filter((r) => r.match >= CURATED_OK)
+  if (good.length >= n) return good.slice(0, n)
+  const base = rank(places.filter((p) => !isCurated(p) && !exclude.has(p.id)), c, profile)
+  return [...good, ...[...cur.filter((r) => r.match < CURATED_OK), ...base].sort((a, b) => b.match - a.match)].slice(0, n)
+}
+
 async function authorInfo() {
   const p = await getProfile()
   return { name: p?.name ?? 'Alguém', hue: p?.hue ?? 200 }
@@ -94,8 +108,8 @@ async function buildDetail(id: string): Promise<RequestDetail | null> {
   const author = await personById(request.authorId, request)
   const pinned = request.eventId ? placeById.get(request.eventId) : undefined
   const ranked = pinned
-    ? [rank([pinned], request.criteria)[0], ...rank(places.filter((p) => p.id !== pinned.id), request.criteria, request.authorId === 'me' ? profile : null)].slice(0, 3)
-    : rank(places, request.criteria, request.authorId === 'me' ? profile : null).slice(0, 3)
+    ? [rank([pinned], request.criteria)[0], ...rankLayered(request.criteria, request.authorId === 'me' ? profile : null, new Set([pinned.id]), 2)]
+    : rankLayered(request.criteria, request.authorId === 'me' ? profile : null)
   const now = Date.now()
   const all = await db.answers.where('requestId').equals(id).toArray()
   const visible = all.filter((a) => a.visibleAt <= now).sort((a, b) => b.helpful - a.helpful || a.createdAt - b.createdAt)
@@ -134,7 +148,7 @@ export const handlers = [
     const cur = await getProfile()
     const next: Profile = {
       id: 'me', name: 'Você', handle: '@voce', hue: 82, curatorOf: [], reputation: 0, hood: 'Pinheiros',
-      niches: [], vibes: [], onboarded: false, demoMode: true, ...cur, ...body,
+      niches: [], vibes: [], onboarded: false, demoMode: false, ...cur, ...body,
     }
     next.curatorOf = next.niches.slice(0, 2)
     await db.profile.put(next)
@@ -146,7 +160,11 @@ export const handlers = [
     const profile = await getProfile()
     const c: Criteria = { groupSize: 2, niches: [], vibes: [], tags: [], unmet: [] }
     await latency()
-    return HttpResponse.json(rank(places.filter((p) => p.kind !== 'evento'), c, profile).slice(0, 8))
+    // só curado, por gosto + perto do bairro de quem acessa
+    const ranked = rank(places.filter((p) => isCurated(p) && p.kind !== 'evento'), c, profile)
+      .map((r) => ({ r, s: r.score - (distanceKm(profile?.hood, r.place.hood) ?? 4) * 0.6 }))
+      .sort((a, b) => b.s - a.s).map((x) => x.r)
+    return HttpResponse.json(ranked.slice(0, 8))
   }),
 
   http.get('/api/events', async () => {
@@ -160,7 +178,7 @@ export const handlers = [
     if (!ev) return notFound()
     const text = `Bora no ${ev.name}? ${ev.when ?? ''}`.trim()
     const criteria: Criteria = { ...parseRequest(text), niches: ev.niches, vibes: ev.vibes.slice(0, 1), unmet: [], source: { engine: 'regras' } }
-    const alts = rank(places.filter((p) => p.id !== ev.id), criteria).slice(0, 2).map((r) => r.place.id)
+    const alts = rankLayered(criteria, null, new Set([ev.id]), 2).map((r) => r.place.id)
     const day = ev.periods[0]?.days[0]
     const req: RoleRequest = {
       id: uid('r'), authorId: 'me', text, criteria, createdAt: Date.now(), status: 'aberto',
@@ -275,7 +293,7 @@ export const handlers = [
   /** confirma o lugar no catálogo comunitário (local + backend, que modera) */
   http.post('/api/places/community', async ({ request }) => {
     const { place, comment = '' } = (await request.json()) as { place: import('../lib/types').Place; comment?: string }
-    if (!place?.id?.startsWith('g-')) return HttpResponse.json({ error: 'place' }, { status: 400 })
+    if (!/^(g|o)-/.test(place?.id ?? '')) return HttpResponse.json({ error: 'place' }, { status: 400 })
     const known = placeById.get(place.id)
     if (known) Object.assign(known, { name: place.name, niches: place.niches, vibes: place.vibes, occasions: place.occasions, price: place.price })
     await rememberPlace(known ?? place)
@@ -304,9 +322,13 @@ export const handlers = [
       id: uid('r'), authorId: 'me', text: body.text.trim(), criteria, createdAt: Date.now(), status: 'aberto',
       times: timeOptions(criteria),
     }
-    const answers = (profile?.demoMode ?? true) ? simulateAnswers(req, profile) : []
+    const answers = profile?.demoMode ? simulateAnswers(req, profile) : []
     // snapshot das opções de voto: top 3 da IA + indicações dos curadores
-    req.optionIds = [...rank(places, criteria, profile).slice(0, 3).map((r) => r.place.id), ...answers.map((a) => a.placeId)]
+    const top = rankLayered(criteria, profile)
+    // métrica-chave da curadoria: pedido atendido com lugar curado (encaixe bom) ou caiu na base
+    const servedByCurated = top.some((r) => isCurated(r.place) && r.match >= CURATED_OK)
+    track(servedByCurated ? 'request_curated' : 'request_uncurated', { best: top[0]?.match, niches: criteria.niches, hood: criteria.hood })
+    req.optionIds = [...top.map((r) => r.place.id), ...answers.map((a) => a.placeId)]
       .filter((x, i, arr) => arr.indexOf(x) === i).slice(0, 4)
     await db.requests.add(req)
     await db.answers.bulkAdd(answers)
@@ -338,7 +360,8 @@ export const handlers = [
       ? places.filter((p) => [p.name, p.hood, p.tagline, ...p.niches.map(nicheLabel), KIND_LABEL[p.kind]].some((f) => n(f).includes(q)))
       : places
     await delay(120)
-    return HttpResponse.json(rank(pool, c).slice(0, 12))
+    // sem busca: o que mais encaixa, curado primeiro; com busca: tudo que bate com o texto (base marcada)
+    return HttpResponse.json(q ? rank(pool, c).sort((a, b) => Number(isCurated(b.place)) - Number(isCurated(a.place)) || b.match - a.match).slice(0, 12) : rankLayered(c, null, new Set(), 12))
   }),
 
   /** sugestão que voltou pelo link de retorno: entra como opção da votação */

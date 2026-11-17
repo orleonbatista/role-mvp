@@ -2,7 +2,7 @@ import type { EventDraft, EventFit, EventSubmission, Place, RoleRequest } from '
 import { DAY_SHORT } from '../lib/hours'
 import { db } from '../db/db'
 import { rank } from './ranker'
-import { placeById, places, registerPlace } from './seeds/places'
+import { isCurated, placeById, places, registerPlace } from './seeds/places'
 
 /* Eventos que não vêm do seed: enviados por artistas/produtores/criadores e aprovados pela curadoria.
    Fonte global: eventos.json no repositório (lido em tempo de execução, como o llm.json) — publicar = commit.
@@ -66,7 +66,7 @@ export function fitOf(draft: EventDraft, requests: RoleRequest[]): EventFit {
   const p = toPlace({ ...draft, id: 'preview', hue: 0, at: 0, status: 'pendente', origin: 'meu' })
   // critério: em quantos pedidos ele entraria no top 5, competindo com o catálogo inteiro
   const scored = requests.map((r) => {
-    const ranked = rank([...places.filter((x) => x.id !== p.id), p], r.criteria)
+    const ranked = rank([...places.filter((x) => x.id !== p.id && isCurated(x)), p], r.criteria)
     const pos = ranked.findIndex((x) => x.place.id === 'preview') + 1
     return { text: r.text, match: (ranked[pos - 1]?.match ?? 0) / 100, pos }
   }).sort((a, b) => a.pos - b.pos)

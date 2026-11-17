@@ -14,6 +14,7 @@ import { track } from '../lib/track'
 import type { Niche, Occasion, Ranked, Vibe } from '../lib/types'
 import { placesEnabled, searchGoogle, searchesLeftToday } from '../lib/places'
 import { rank } from '../mocks/ranker'
+import { isCommunity, placeById } from '../mocks/seeds/places'
 
 const PRICES = [{ v: 40, l: 'até R$ 50' }, { v: 75, l: 'R$ 50–100' }, { v: 130, l: 'R$ 100+' }]
 const toggle = <T,>(a: T[], v: T, max: number) => (a.includes(v) ? a.filter((x) => x !== v) : a.length >= max ? [...a.slice(1), v] : [...a, v])
@@ -65,7 +66,8 @@ export function SuggestPage() {
 
   // lugar novo do Google → vira lugar do catálogo comunitário: a pessoa confirma nome/estilo/vibe/ocasião/preço,
   // pré-preenchidos pela IA a partir do comentário (ou por regras, com o PC desligado)
-  const isNew = picked?.place.source === 'google' && !picked.place.tagline.startsWith('Sugerido')
+  // lugar real ainda não curado (base OSM ou resultado do Google) → quem sugere confirma e ele vira curado
+  const isNew = !!picked?.place.source && !isCommunity(placeById.get(picked.place.id) ?? picked.place)
   const [conf, setConf] = useState<Confirm | null>(null)
   const [ai, setAi] = useState<{ engine: string; flag: string | null; busy: boolean }>({ engine: '', flag: null, busy: false })
   const [editing, setEditing] = useState(false)
@@ -112,7 +114,7 @@ export function SuggestPage() {
     setSending(true)
     setReview(null)
     if (isNew && conf) {
-      const final = { ...picked.place, name: conf.name.trim() || picked.place.name, niches: conf.niches, vibes: conf.vibes, occasions: conf.occasions, price: conf.price, tagline: 'Sugerido pela comunidade' }
+      const final = { ...picked.place, name: conf.name.trim() || picked.place.name, niches: conf.niches, vibes: conf.vibes, occasions: conf.occasions, price: conf.price, tagline: 'Sugerido pela comunidade', curation: undefined }
       const r = await confirmCommunityPlace(final, comment.trim()).catch(() => null)
       track('community_place', { status: r?.status, engine: ai.engine, existing: r?.existing })
       if (r?.status === 'revisao') setReview(r.motivo ?? 'conteúdo a revisar')
@@ -141,9 +143,12 @@ export function SuggestPage() {
         className={cx('flex items-center gap-3 rounded-[20px] border p-2.5 pr-3 text-left transition-colors', on ? 'border-accent bg-accent/[0.07]' : 'border-line bg-surface/60', already && 'opacity-50')}>
         <Cover hue={r.place.hue} icon={placeIcon(r.place)} iconSize={20} className="size-14 shrink-0" rounded="rounded-[14px]" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px]">{r.place.name}{!google && r.place.source === 'google' && <span className="ml-1.5 rounded-full bg-white/[0.06] px-1.5 py-0.5 align-middle text-[10px] text-mute">comunidade</span>}</p>
+          <p className="truncate text-[15px]">{r.place.name}
+            {!google && isCommunity(r.place) && <span className="ml-1.5 rounded-full bg-accent/15 px-1.5 py-0.5 align-middle text-[10px] text-accent">comunidade</span>}
+            {!google && r.place.curation === 'base' && <span className="ml-1.5 rounded-full bg-white/[0.06] px-1.5 py-0.5 align-middle text-[10px] text-mute">sem curadoria</span>}
+          </p>
           <p className="truncate text-xs text-mute">
-            {google ? `${r.place.tagline} · ${r.place.hood}` : `${KIND_LABEL[r.place.kind]} · ${r.place.hood} · ${priceLabel(r.place.price)}`}
+            {google || r.place.curation === 'base' ? `${r.place.tagline} · ${r.place.hood}` : `${KIND_LABEL[r.place.kind]} · ${r.place.hood} · ${priceLabel(r.place.price)}`}
             {google && r.place.ratingCount > 0 ? ` · ★ ${(r.place.rating / 2).toFixed(1)} (${r.place.ratingCount})` : ''}
           </p>
           {r.warnings[0]
@@ -226,6 +231,7 @@ export function SuggestPage() {
             {results?.length === 0 && <p className="py-4 text-center text-sm text-mute">Não achei no catálogo do rolê.{placesEnabled() ? ' Busca no Google Maps aqui embaixo ↓' : ''}</p>}
             <AnimatePresence initial={false}>
               {results?.map((r) => row(r))}
+              {results?.some((r) => r.place.curation === 'base') && <p key="osm" className="text-right text-[11px] text-faint">“sem curadoria”: lugares reais © colaboradores do OpenStreetMap</p>}
             </AnimatePresence>
           </div>
 

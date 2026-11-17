@@ -61,6 +61,21 @@ public/       og.jpg, ícones
 docs/         esta documentação
 ```
 
+## Camadas de lugares
+
+| Camada | Origem | Onde vive | Aparece |
+|---|---|---|---|
+| Fictício (demo) | `seeds/places.ts` | código | só com o modo demo ligado (`/testes`) |
+| Curado | comunidade (`/indicar`, sugestões confirmadas) + eventos aprovados | backend (`places`, `submissions`) + cache local (`gplaces`) | feed, Pra você, 1ª opção da IA |
+| Base | OpenStreetMap (`public/base-sp.json`, gerado por `llm-gateway/tools/fetch-osm.mjs`) | arquivo estático (~34 KB gzip) | só como reserva da IA, marcado "sem curadoria"; e na busca de indicar/sugerir |
+
+Ordem de carga no boot (`main.tsx`): demo (se ligado) → curados (eventos, comunidade) → base. O `registerPlace`
+promove um lugar da base a curado quando alguém o confirma (mesmo id `o-<n|w|r><osm id>`).
+
+**Ranking em camadas** (`rankLayered`): curados com encaixe ≥ 55% primeiro; se não fecha 3, completa com o
+melhor do resto (curados fracos ou base), por encaixe. Lugares externos não ganham nem perdem por horário,
+porque o horário não é confirmado.
+
 ## Entendimento do pedido (ranker + LLM)
 
 1. **Regras** (`ranker.ts › parseRequest`): reconhece palavras inteiras, tolera 1 erro de digitação

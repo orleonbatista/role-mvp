@@ -1,5 +1,5 @@
 import type { EventDraft, RequestDetail } from './types'
-import { SEED_COUNT, placeById, places } from '../mocks/seeds/places'
+import { placeById, places, seedCount } from '../mocks/seeds/places'
 import { parseRequest, timeOptions, unmetFor } from '../mocks/ranker'
 import { adoptSnaps, snapsFor } from '../mocks/gplaces'
 import { snapOf } from './places'
@@ -31,9 +31,9 @@ const canCompress = () => typeof CompressionStream !== 'undefined'
 /** lugar do seed vai como índice (curto); evento enviado pela comunidade vai pelo id */
 const refOf = (id: string): number | string => {
   const i = places.findIndex((p) => p.id === id)
-  return i < 0 ? -1 : i < SEED_COUNT ? i : id
+  return i < 0 ? -1 : i < seedCount() ? i : id
 }
-const idOf = (r: unknown) => (typeof r === 'string' ? (placeById.has(r) ? r : undefined) : places[r as number]?.id)
+const idOf = (r: unknown) => (typeof r === 'string' ? (placeById.has(r) ? r : undefined) : (r as number) < seedCount() ? places[r as number]?.id : undefined)
 
 export async function shareUrl(d: RequestDetail) {
   const idx = d.options.map((o) => refOf(o.id)).filter((i) => i !== -1)
@@ -84,7 +84,7 @@ const b64 = (s: string) => toB64url(new TextEncoder().encode(s))
 /** link de retorno: leva o pedido (#d=) + a sugestão (&g=) de volta ao autor */
 export function returnUrl(voteLink: string, placeId: string, by: string, comment: string, hue: number) {
   const p = placeById.get(placeId)
-  const g = b64(JSON.stringify([refOf(placeId), by.slice(0, 30), comment.slice(0, 140), hue, ...(p?.source === 'google' ? [snapOf(p)] : [])]))
+  const g = b64(JSON.stringify([refOf(placeId), by.slice(0, 30), comment.slice(0, 140), hue, ...(p?.source ? [snapOf(p)] : [])]))
   return voteLink.replace('/v/?', '/v/?to=i&').replace(/[?&]src=[^&#]*/, '') + `&g=${g}`
 }
 

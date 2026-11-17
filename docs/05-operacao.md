@@ -106,7 +106,21 @@ use `/testes` → "URL do gateway".
 - **Para aumentar o limite:** suba as cotas aos poucos e acompanhe "Faturamento → Relatórios" antes de passar
   da cota grátis.
 
-## Curadoria
+## Base de lugares reais (OpenStreetMap)
+- **Atualizar:** no PC, `node llm-gateway\tools\fetch-osm.mjs`. Ele consulta o Overpass (com espelhos e
+  novas tentativas), gera `public/base-sp.json` e o app passa a usar a nova base no próximo deploy.
+- **Mais bairros:** edite `HOODS` no script e em `src/lib/hours.ts` (coordenadas) e `src/lib/labels.ts`
+  (lista).
+- **Licença ODbL:** manter o crédito "© colaboradores do OpenStreetMap" onde a base aparece (já está nas
+  telas).
+
+## Modo demo
+- Desligado por padrão. Quem já usava a versão antiga foi migrado pra desligado.
+- Ligar/desligar em `/testes` → **Modo demonstração**. A página recarrega e passa a mostrar ou esconder
+  lugares, pedidos e curadores fictícios.
+- Nunca deixar ligado nos testes com amigos: o conteúdo fictício se mistura ao real.
+
+## Curadoria de eventos
 1. Abra `llm-gateway\data\admin-key.txt` no PC e copie a chave.
 2. No celular de quem cura: `/testes` → **Chave da curadoria** → colar → Salvar. Aparece "Curadoria
    ativa neste aparelho".

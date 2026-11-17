@@ -7,7 +7,9 @@ import '@fontsource/instrument-serif/400.css'
 import '@fontsource/instrument-serif/400-italic.css'
 import './index.css'
 import { startMocks } from './mocks/browser'
-import { seedIfEmpty } from './db/db'
+import { demoOn, purgeSeeds, seedIfEmpty } from './db/db'
+import { registerDemoSeeds } from './mocks/seeds/places'
+import { loadBase } from './mocks/base'
 import { loadExtraEvents } from './mocks/extraEvents'
 import { loadGooglePlaces } from './mocks/gplaces'
 import { App } from './app/App'
@@ -16,8 +18,10 @@ const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, ref
 
 async function boot() {
   await startMocks()
-  await seedIfEmpty()
+  // ordem importa: fictícios (só demo) primeiro, depois curados (comunidade, eventos), por último a base OSM
+  if (await demoOn()) { registerDemoSeeds(); await seedIfEmpty() } else await purgeSeeds()
   await Promise.all([loadExtraEvents(), loadGooglePlaces()])
+  await loadBase()
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <QueryClientProvider client={qc}>

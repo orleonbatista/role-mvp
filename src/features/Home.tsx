@@ -59,7 +59,14 @@ export function Home() {
       </div>
 
       <section className="mt-9">
-        <SectionTitle>Pra você</SectionTitle>
+        <SectionTitle aside={<span className="text-xs text-faint">curado pela comunidade</span>}>Pra você</SectionTitle>
+        {forYou.data?.length === 0 && (
+          <Link to="/fundador" className="mx-5 block rounded-[24px] border border-dashed border-accent/40 bg-accent/[0.05] p-5">
+            <p className="font-serif text-[26px] leading-none">O rolê está começando<span className="text-accent">.</span></p>
+            <p className="mt-2 text-[14px] text-ink/80">Aqui só entra lugar que alguém da comunidade conhece e indicou. Seja um dos primeiros curadores: indique 3 lugares que você ama{me?.hood ? ` perto de ${me.hood}` : ''}.</p>
+            <span className="mt-3 inline-flex items-center gap-1.5 text-[14px] font-medium text-accent">Virar curador fundador →</span>
+          </Link>
+        )}
         <div className="no-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1">
           {forYou.isLoading && [0, 1].map((i) => <Skeleton key={i} className="h-[260px] w-[220px] shrink-0 rounded-[28px]" />)}
           {forYou.data?.map((r, i) => (
@@ -74,7 +81,7 @@ export function Home() {
                   <Cover hue={r.place.hue} icon={placeIcon(r.place)} iconSize={72} layoutId={`cover-${r.place.id}`} className="h-[260px] w-full transition-transform duration-500 group-active:scale-[0.98]" />
                   <div className="absolute left-3 top-3 flex gap-1.5">
                     <Tag tone="accent">{r.match}% seu gosto</Tag>
-                    {openStatus(r.place).open && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-black/40 px-2.5 text-[11px] text-white/90 backdrop-blur-md"><span className="size-1.5 rounded-full bg-accent" />aberto</span>}
+                    {openStatus(r.place).open && !r.place.source && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-black/40 px-2.5 text-[11px] text-white/90 backdrop-blur-md"><span className="size-1.5 rounded-full bg-accent" />aberto</span>}
                   </div>
                   <div className="absolute inset-x-0 bottom-0 rounded-b-[28px] bg-gradient-to-t from-black/80 via-black/30 to-transparent p-4 pt-12">
                     <p className="text-[11px] uppercase tracking-[0.12em] text-white/60">{KIND_LABEL[r.place.kind]} · {r.place.hood}</p>
@@ -92,6 +99,11 @@ export function Home() {
       <section className="mt-9">
         <SectionTitle aside={<Link to="/divulgar" className="text-xs text-faint transition-colors hover:text-accent">+ divulgar evento</Link>}>Essa semana</SectionTitle>
         <motion.div variants={list} initial="initial" animate="animate" className="grid gap-2 px-5">
+          {events.data?.length === 0 && (
+            <p className="rounded-[20px] border border-dashed border-line px-4 py-4 text-center text-[13px] text-faint">
+              Nenhum evento divulgado ainda. É artista, produtor ou casa? <Link to="/divulgar" className="text-accent">Divulgue o seu</Link>.
+            </p>
+          )}
           {events.data?.map((e) => (
             <motion.div key={e.id} variants={item}>
               <Link to={`/lugar/${e.id}`} className="flex items-center gap-3 rounded-[20px] bg-surface p-2.5 pr-4 transition-colors hover:bg-surface-2">
@@ -108,9 +120,10 @@ export function Home() {
       </section>
 
       <section className="mt-9">
-        <SectionTitle aside={<span className="text-xs text-faint">ao vivo</span>}>A comunidade pede</SectionTitle>
+        <SectionTitle aside={me?.demoMode ? <span className="text-xs text-faint">demo</span> : undefined}>{me?.demoMode ? "A comunidade pede" : "Seus pedidos"}</SectionTitle>
         <motion.div variants={list} initial="initial" animate="animate" className="grid gap-3 px-5">
           {feed.isLoading && [0, 1, 2].map((i) => <Skeleton key={i} className="h-28" />)}
+          {feed.data?.length === 0 && <p className="rounded-[20px] border border-dashed border-line px-4 py-4 text-center text-[13px] text-faint">Seus pedidos e as votações que você abrir aparecem aqui.</p>}
           {feed.data?.map(({ request, author, answers, votes, topPlace }) => (
             <motion.div key={request.id} variants={item} layout>
               <Link to={`/pedido/${request.id}`} className="block rounded-[24px] border border-line bg-surface/60 p-4 transition-colors hover:bg-surface">

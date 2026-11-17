@@ -28,7 +28,11 @@ Cada fase só avança quando os critérios da anterior forem cumpridos.
 | Sugerir **qualquer** lugar (busca no Google Maps) | ✅ |
 | Organizador também buscar no Google ao montar o pedido | ⏭ |
 | Túnel com URL fixa (Cloudflare named tunnel + domínio) ou backend gerenciado | ⏭ |
-| Rodada de teste com 3 a 5 grupos reais (modo demo desligado) | ⏭ |
+| Duas camadas: curado (visível) + base real OSM (reserva da IA, "sem curadoria") | ✅ |
+| Fictício só no modo demo (desligado por padrão) | ✅ |
+| Convite da IA quando falta curadoria + modo curador fundador (`/indicar`, `/fundador`) | ✅ |
+| **Recrutar 5 a 10 curadores fundadores e curar 50 lugares em 2 ou 3 bairros** | ⏭ agora |
+| Rodada de teste com 3 a 5 grupos reais | ⏭ depois da curadoria inicial |
 
 **Critérios para avançar** (ver [métricas](06-metricas.md)):
 

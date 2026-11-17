@@ -122,6 +122,16 @@ ao array em `eventos.json` na raiz do repo. O app lê esse arquivo em tempo de e
 (`VITE_EVENTS_URL`, via raw.githubusercontent), sem precisar de novo deploy. Eventos com data
 passada somem do feed sozinhos.
 
+## Curadoria em duas camadas
+
+- **Curado** (visível): lugares indicados pela comunidade em `/indicar` ou confirmados ao sugerir. O feed, o
+  "Pra você" (gosto + distância do bairro) e a 1ª opção da IA usam só essa camada.
+- **Base** (invisível): 1.267 lugares reais de 12 bairros vindos do OpenStreetMap (`public/base-sp.json`,
+  gerado por `node llm-gateway/tools/fetch-osm.mjs`, licença ODbL). A IA só usa quando falta curado, marca
+  "sem curadoria" e convida a comunidade a indicar.
+- **Curador fundador:** `/fundador` mostra o que falta curar (estilo × bairro) e gera o link de convite.
+- **Modo demo** (fictício): desligado por padrão; liga/desliga em `/testes`.
+
 ## Backend compartilhado (SQLite no PC, mesmo túnel)
 
 O `llm-gateway/server.mjs` também serve `/api/*` (`llm-gateway/api.mjs`, `node:sqlite`, sem dependências).

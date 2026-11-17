@@ -8,7 +8,7 @@ import { cx } from '../ui/primitives'
 import { getLLMOverride, llmStatus, setLLMOverride } from '../mocks/llm'
 import { AnimatedNumber, Button, Page, SectionTitle, Skeleton, Tag, TopBar } from '../ui/primitives'
 import { ease } from '../ui/motion'
-import { exportTestes, useGlobalStats, usePlacesReview, useReviewPlace, useSubmissions, useSync, useTestes, type TestesData } from '../lib/api'
+import { exportTestes, useProfile, useSaveProfile, useGlobalStats, usePlacesReview, useReviewPlace, useSubmissions, useSync, useTestes, type TestesData } from '../lib/api'
 import { mapsUrlOf } from '../lib/places'
 import { SubmissionReview } from './SubmissionReview'
 import { Link } from 'react-router'
@@ -72,6 +72,28 @@ function BackendCard() {
         </div>
         {st?.admin && <p className="mt-2 text-[12px] text-accent">Curadoria ativa neste aparelho: aprovar publica pra todo mundo.</p>}
       </div>
+    </section>
+  )
+}
+
+/** modo demo: lugares/pedidos/curadores fictícios, só pra apresentar o app (recarrega pra trocar o catálogo) */
+function DemoCard() {
+  const { data: me } = useProfile()
+  const save = useSaveProfile()
+  if (!me) return null
+  return (
+    <section className="mt-7">
+      <SectionTitle>Modo demonstração</SectionTitle>
+      <button onClick={async () => { await save.mutateAsync({ demoMode: !me.demoMode }); location.reload() }}
+        className="mx-5 flex w-[calc(100%-2.5rem)] items-center gap-3 rounded-[20px] border border-line p-4 text-left">
+        <span className="flex-1">
+          <span className="block text-[14px]">{me.demoMode ? 'Ligado: conteúdo fictício visível' : 'Desligado: só conteúdo real'}</span>
+          <span className="block text-xs text-mute">Lugares, pedidos e curadores fictícios para apresentar o app. Deixe desligado nos testes com amigos.</span>
+        </span>
+        <span className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${me.demoMode ? 'bg-accent' : 'bg-white/15'}`}>
+          <span className={`absolute top-1 size-5 rounded-full bg-bg ${me.demoMode ? 'right-1' : 'left-1'}`} />
+        </span>
+      </button>
     </section>
   )
 }
@@ -156,6 +178,7 @@ export function TestesPage() {
 
       <BackendCard />
       <LLMCard />
+      <DemoCard />
 
       <section className="mt-7">
         <SectionTitle>Funil do loop</SectionTitle>
@@ -177,8 +200,27 @@ export function TestesPage() {
             )
           })}
         </div>
+        <div className="mx-5 mt-4 grid grid-cols-2 gap-2">
+          {(() => {
+            const a = data.counts.request_curated ?? 0, b = data.counts.request_uncurated ?? 0
+            return (
+              <>
+                <div className="rounded-[18px] bg-surface p-3">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-mute">pedidos com curado</p>
+                  <p className="mt-1 font-serif text-[28px] leading-none text-accent">{a + b ? Math.round((a / (a + b)) * 100) : 0}%</p>
+                  <p className="mt-1 text-[11px] text-faint">{a} de {a + b} pedidos</p>
+                </div>
+                <div className="rounded-[18px] bg-surface p-3">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-mute">lugares curados</p>
+                  <p className="mt-1 font-serif text-[28px] leading-none">{data.counts.community_place ?? 0}</p>
+                  <p className="mt-1 text-[11px] text-faint">indicações confirmadas</p>
+                </div>
+              </>
+            )
+          })()}
+        </div>
         <div className="mt-4 flex flex-wrap gap-1.5 px-5">
-          {['clarify_shown', 'reserve_intent', 'lead_submitted', 'story_opened', 'story_shared', 'cta_new_request', 'vote_page_opened', 'feedback_sent'].map((k) => (
+          {['clarify_shown', 'curation_invite_shown', 'curation_invite_click', 'fundador_invite', 'indicar_opened', 'reserve_intent', 'lead_submitted', 'story_shared', 'cta_new_request', 'vote_page_opened', 'feedback_sent'].map((k) => (
             <Tag key={k}>{k}: {data.counts[k] ?? 0}</Tag>
           ))}
         </div>

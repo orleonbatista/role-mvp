@@ -32,6 +32,18 @@ As ferramentas que existem resolvem pedaços:
 - **Quem faz o evento divulga dentro do fluxo.** Artistas, produtores e casas compartilham eventos com
   um link que vira votação de grupo e carrega o @ deles, o que permite medir quem trouxe quem.
 
+## Curadoria em duas camadas
+
+- **Curado (o que o app mostra):** só entra lugar que alguém da comunidade conhece e indicou, confirmando
+  estilo, vibe, ocasião e faixa de preço; ou que ganhou votos e avaliações. Feed, "Pra você" e a primeira
+  resposta da IA usam essa camada, ordenada por gosto e distância do bairro de quem acessa.
+- **Base (invisível, pra IA trabalhar):** ~1.270 lugares reais de 12 bairros de SP vindos do OpenStreetMap,
+  mais a busca do Google. A IA só recorre a ela quando nada curado encaixa, e marca **"sem curadoria"**.
+- **Lacuna vira convite:** quando falta curadoria, a IA pergunta "ninguém indicou jazz em Pinheiros ainda,
+  conhece algum?". Os curadores fundadores atacam as lacunas pelo painel "o que falta curar".
+- **Nada fictício:** lugares, pedidos e curadores inventados só existem no modo demo, que fica desligado e
+  serve apenas pra apresentações.
+
 ## Público inicial
 
 - **Núcleo:** 22 a 38 anos em São Paulo, que sai em grupo pelo menos uma vez por semana e organiza

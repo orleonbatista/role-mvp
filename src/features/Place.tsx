@@ -44,8 +44,9 @@ export function PlacePage() {
   if (!place) return <Page><Skeleton className="m-5 h-80" /></Page>
   const status = openStatus(place)
   // lugar do Google visto por outro aparelho: só o resumo viaja (sem horário/capacidade)
-  const google = place.source === 'google'
-  const noHours = google && place.hours.startsWith('Ver horário')
+  const google = !!place.source // lugar real (Google/OSM): horário e capacidade não são nossos
+  const base = place.curation === 'base'
+  const noHours = google
   const km = distanceKm(me?.hood, place.hood)
 
   const isEvent = place.kind === 'evento'
@@ -154,7 +155,7 @@ export function PlacePage() {
           <div className="mt-8 grid gap-2 text-sm text-ink/80">
             <p className="flex items-center gap-2"><MapPin size={14} className="text-mute" />{place.address}</p>
             <p className="flex items-center gap-2"><Clock size={14} className="text-mute" />{place.hours}</p>
-            {place.source === 'google' && (
+            {google && (
               <>
                 {place.mapsUrl && (
                   <a href={place.mapsUrl} target="_blank" rel="noreferrer" onClick={() => track('maps_open', { id: place.id })}
@@ -162,7 +163,15 @@ export function PlacePage() {
                     <MapPin size={14} className="text-accent" />Abrir no Google Maps
                   </a>
                 )}
-                <p className="mt-1 text-[11px] text-faint">Lugar do catálogo da comunidade: nome, estilo e faixa de preço vêm de quem sugeriu. Nota, endereço completo e horário: <span className="text-mute">Google Maps</span>.</p>
+                {base ? (
+                  <div className="mt-3 rounded-[18px] border border-dashed border-accent/40 bg-accent/[0.04] p-3">
+                    <p className="text-[13px] text-ink/90">Ainda <b className="font-medium">sem curadoria</b>: é um lugar real, mas ninguém da comunidade indicou. Estilo e preço são estimados.</p>
+                    <Link to={`/indicar?id=${encodeURIComponent(place.id)}`} className="mt-2 inline-flex text-[13px] font-medium text-accent">Conhece? Indicar pro rolê →</Link>
+                    <p className="mt-2 text-[11px] text-faint">Dados: © colaboradores do OpenStreetMap</p>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-[11px] text-faint">Lugar do catálogo da comunidade: nome, estilo e faixa de preço vêm de quem sugeriu. Nota, endereço completo e horário: <span className="text-mute">Google Maps</span>.</p>
+                )}
               </>
             )}
           </div>

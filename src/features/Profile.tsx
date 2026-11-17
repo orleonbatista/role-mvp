@@ -1,10 +1,9 @@
 import { motion } from 'motion/react'
 import { Link, useNavigate } from 'react-router'
-import { ArrowUpRight, BarChart3, Megaphone, FlaskConical, RotateCcw, Settings2 } from 'lucide-react'
+import { ArrowUpRight, BarChart3, MapPinPlus, Megaphone, RotateCcw, Settings2, Sparkles } from 'lucide-react'
 import { AnimatedNumber, Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
-import { useDiary, useProfile, useSaveProfile } from '../lib/api'
-import { track } from '../lib/track'
+import { useDiary, useProfile } from '../lib/api'
 import { placeIcon } from '../ui/placeIcon'
 import { NICHES, VERDICT_LABEL, nicheLabel, timeAgo, vibeLabel } from '../lib/labels'
 import { resetAll } from '../db/db'
@@ -13,7 +12,7 @@ export function ProfilePage() {
   const nav = useNavigate()
   const { data: me } = useProfile()
   const { data } = useDiary()
-  const save = useSaveProfile()
+
   const diary = data?.diary ?? []
   const requests = data?.requests ?? []
 
@@ -111,21 +110,21 @@ export function ProfilePage() {
       </section>
 
       <section className="mt-9">
-        <SectionTitle>Testes</SectionTitle>
+        <SectionTitle>Curadoria</SectionTitle>
         <div className="mx-5 divide-y divide-line overflow-hidden rounded-[22px] border border-line">
-          <button
-            onClick={() => { const v = !me.demoMode; save.mutate({ demoMode: v }); track('demo_toggled', { on: v }) }}
-            className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
-          >
-            <FlaskConical size={16} className="text-mute" />
+          <Link to="/indicar" className="flex items-center gap-3 px-4 py-3.5">
+            <MapPinPlus size={16} className="text-accent" />
             <span className="flex-1">
-              <span className="block text-[14px]">Modo demonstração</span>
-              <span className="block text-xs text-mute">Curadores e amigos simulados. Desligue para testes reais.</span>
+              <span className="block text-[14px]">Indicar um lugar</span>
+              <span className="block text-xs text-mute">Entra no catálogo curado pela comunidade</span>
             </span>
-            <span className={`relative h-7 w-12 rounded-full transition-colors ${me.demoMode ? 'bg-accent' : 'bg-white/15'}`}>
-              <motion.span layout transition={{ type: 'spring', stiffness: 500, damping: 32 }} className={`absolute top-1 size-5 rounded-full bg-bg ${me.demoMode ? 'right-1' : 'left-1'}`} />
-            </span>
-          </button>
+            <ArrowUpRight size={14} className="text-mute" />
+          </Link>
+          <Link to="/fundador" className="flex items-center gap-3 px-4 py-3.5">
+            <Sparkles size={16} className="text-mute" />
+            <span className="flex-1 text-[14px]">Curador fundador · o que falta curar</span>
+            <ArrowUpRight size={14} className="text-mute" />
+          </Link>
           <Link to="/divulgar" className="flex items-center gap-3 px-4 py-3.5">
             <Megaphone size={16} className="text-mute" />
             <span className="flex-1 text-[14px]">Divulgar um evento</span>

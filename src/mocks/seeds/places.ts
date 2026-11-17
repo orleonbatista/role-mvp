@@ -105,7 +105,8 @@ const PERIODS: Record<string, OpenPeriod[]> = {
 const DAY_IDX: Record<string, number> = { Dom: 0, Seg: 1, Ter: 2, Qua: 3, Qui: 4, Sex: 5, Sáb: 6 }
 const PRIVATE_RE = /reserv|salão|camarote|mezanino|privativ|menu fechado|mesa comunitária|laje inteira|área pra|quintal pra|salas/i
 
-export const places: Place[] = rows.map(
+/** lugares FICTÍCIOS: só entram no registro com o modo demo ligado (apresentações) */
+export const seedPlaces: Place[] = rows.map(
   ([id, name, kind, hood, niches, vibes, occasions, price, capacity, rating, hue, tagline, highlights, when]) => {
     let periods = PERIODS[id] ?? defaultPeriods(kind)
     if (kind === 'evento' && when) {
@@ -126,11 +127,27 @@ export const places: Place[] = rows.map(
   },
 )
 
-export const placeById = new Map(places.map((p) => [p.id, p]))
-/** os primeiros N lugares são fixos (índices estáveis nos links); depois vêm eventos enviados/aprovados */
-export const SEED_COUNT = places.length
+/** registro de lugares do app: [fictícios do demo] + curados (comunidade, eventos) + base (OpenStreetMap) */
+export const places: Place[] = []
+export const placeById = new Map<string, Place>()
+let seeds = 0
+/** os primeiros N lugares (fictícios, só no demo) vão como índice curto nos links; o resto vai pelo id */
+export const seedCount = () => seeds
+export function registerDemoSeeds() {
+  if (seeds) return
+  for (const p of seedPlaces) { places.push(p); placeById.set(p.id, p) }
+  seeds = seedPlaces.length
+}
 export function registerPlace(p: Place) {
-  if (placeById.has(p.id)) return
+  const cur = placeById.get(p.id)
+  if (cur) {
+    // um lugar da base que alguém curou: vira curado (dados da comunidade substituem os da base)
+    if (cur.curation === 'base' && p.curation !== 'base') Object.assign(cur, p, { curation: undefined })
+    return
+  }
   places.push(p)
   placeById.set(p.id, p)
 }
+export const isCurated = (p: Place) => p.curation !== 'base'
+/** lugar do catálogo da comunidade (veio do Google/OSM e alguém confirmou) */
+export const isCommunity = (p: Place) => !!p.source && p.curation !== 'base'

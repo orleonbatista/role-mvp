@@ -8,11 +8,23 @@ Inventário do MVP (nov/2026). Entre parênteses, a rota da tela.
 - **Perfil** (`/perfil`): gostos, diário de rolês, modo demo (amigos e curadores simulados, liga/desliga),
   atalhos pra Divulgar evento e Painel de testes, zerar dados locais.
 
+## Curadoria
+- **Indicar um lugar** (`/indicar`, pública): busca no catálogo (curados + base real do OSM) e no Google;
+  escolhe e escreve como é. A IA marca estilo, vibe e ocasião ("Entendi: …"), a pessoa ajusta e o lugar
+  entra no catálogo curado (ou vai pra revisão, se suspeito). Aceita `?n=<estilo>&h=<bairro>` (lacuna) e
+  `?id=<lugar>` (vindo de "Conhece? Indicar").
+- **Curador fundador** (`/fundador`, pública): missão, contadores (curados × esperando), convite por
+  WhatsApp, **o que falta curar** (estilo × bairro, priorizando o gosto e o bairro de quem vê, com os
+  lugares reais esperando) e curadoria por bairro.
+- **Convite da IA nos resultados:** quando a recomendação vem da base, aparece o card "Falta curadoria aqui"
+  com "Indicar um lugar" e "Pedir aos amigos".
+
 ## Descoberta
-- **Home** (`/`): campo "Descreve o rolê…", atalhos de ocasião (Aniversário, Date, Com amigos, Happy hour,
-  Esquenta, Solo), carrossel **Pra você** (match % com seu gosto), **Essa semana** (eventos, inclusive
-  enviados e aprovados) e **A comunidade pede** (pedidos recentes).
-- **Lugar/evento** (`/lugar/:id`): capa, nota (ou "novo" para evento sem avaliação), preço, capacidade,
+- **Home** (`/`): campo "Descreve o rolê…", atalhos de ocasião, **Pra você** (só curados, por gosto + perto
+  do seu bairro; vazio = convite pra virar curador fundador), **Essa semana** (só eventos divulgados e
+  aprovados) e **Seus pedidos**.
+- **Lugar/evento** (`/lugar/:id`, pública): lugar sem curadoria mostra "Conhece? Indicar pro rolê" e o
+  crédito do OpenStreetMap. Os demais: capa, nota (ou "novo" para evento sem avaliação), preço, capacidade,
   horário de funcionamento com "aberto agora", distância do seu bairro, destaques, avaliações.
   - Reserva em grupo (**fake door**: coleta o pedido pra medir interesse; ainda não reserva).
   - Evento com link de ingresso: botão de ingresso.

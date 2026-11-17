@@ -128,6 +128,17 @@ teu grupo" → votação com o evento como 1ª opção
   - Agora, com a chave, o painel mostra todos os aparelhos: funil, origem, divulgadores,
     feedback, leads e totais (pedidos, votos, sugestões, fechados).
 
+## J12 · Curador fundador
+Convite no WhatsApp (`/v/?to=f`) → `/fundador` → "O que falta curar" (ex.: Jazz em Pinheiros, com 3 lugares
+reais esperando) → `/indicar` com os candidatos → escolhe → comentário → "Entendi: …" → Adicionar ao rolê
+
+- ✅ Indicar leva menos de 1 minuto por lugar: a IA marca as tags e a base já traz o lugar real.
+- ✅ O lugar curado aparece no "Pra você" de outros aparelhos (com backend) e passa a ser a 1ª opção da IA.
+- ✅ Os resultados sem curadoria convidam a comunidade a curar, o que fecha o loop.
+- 🔧 **Lugares sem curadoria apareciam com "Aberto sexta", "Comunidade aprova" e "Música de qualidade",
+  afirmações sem base.** Agora os motivos são neutros ("Jazz & ao vivo, pelo tipo do lugar") e vem junto
+  "Ninguém da comunidade avaliou ainda". O horário fica pro link do Maps.
+
 ---
 
 ## Gaps abertos, por prioridade

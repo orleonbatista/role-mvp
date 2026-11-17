@@ -41,8 +41,10 @@ export interface Place {
   promoter?: string
   ticketUrl?: string
   eventDate?: string
-  /** lugar vindo do Google Maps (Places API New): nota/horário/preço são do Google, estilo é estimado */
-  source?: 'google'
+  /** origem externa: Google (só place_id) ou OpenStreetMap (base); sem isso = catálogo próprio/evento */
+  source?: 'google' | 'osm'
+  /** 'base' = lugar real ainda sem curadoria (a IA usa como reserva, não aparece no feed) */
+  curation?: 'base'
   mapsUrl?: string
   lat?: number
   lng?: number

@@ -20,6 +20,17 @@ SQLite do PC. Cada evento leva junto:
 | 6 | `decided` | O app realmente decide o rolê? |
 | 7 | `review_saved` | Foram, e o loop de qualidade fecha? |
 
+## Curadoria (a métrica que define se o app funciona)
+
+| Métrica | Evento | Meta |
+|---|---|---|
+| Pedidos atendidos com lugar curado | `request_curated` ÷ (`request_curated` + `request_uncurated`) | 30% na 2ª semana, 60% no 2º mês |
+| Lugares curados | `community_place` | 50 nos bairros-foco nas 2 primeiras semanas |
+| Convite → indicação | `curation_invite_click` ÷ `curation_invite_shown` | ≥ 10% |
+| Fundadores ativos | aparelhos com ≥ 3 `community_place` | 5 a 10 |
+
+Os dois primeiros aparecem em `/testes`, em cards próprios.
+
 ## Eventos de apoio
 - **Viralidade:**
   - `vote_page_opened` (com `viaLink`), `vote_reshared`, `cta_new_request` (votante que vira

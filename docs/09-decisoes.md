@@ -40,3 +40,12 @@ Formato curto: **decisão**, **por quê**, **trade-off**.
     pros casos marcados.
 16. **Busca do Google só com campos da faixa Pro.** 5× mais buscas grátis (5.000/mês) que a Enterprise. *Trade-off:*
     sem nota/horário na busca — o link pro Maps cobre.
+17. **Curadoria em duas camadas (curado visível, base invisível).** Mostrar 1.270 lugares do OSM faria do rolê
+    um mapa pior; mostrar só o curado mantém a proposta. A base serve à IA como reserva, sempre marcada.
+    *Trade-off:* feed pequeno no começo, compensado pelo modo curador fundador.
+18. **Base do OpenStreetMap, não do Google.** A licença ODbL permite guardar e redistribuir com crédito; o Google
+    só permite guardar o `place_id`. *Trade-off:* sem foto, nota e quase sem horário; balada mal coberta.
+19. **Nada fictício fora do demo.** Conteúdo inventado misturado ao real destrói a confiança e polui as métricas
+    do teste.
+20. **Sem afirmação sem lastro.** Lugar sem curadoria não recebe "aberto agora", "comunidade aprova" nem elogio:
+    só o que se sabe (tipo, bairro) e "ninguém avaliou ainda".

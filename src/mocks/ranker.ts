@@ -144,7 +144,9 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
     const why: [number, string][] = []
     const warn: string[] = []
 
-    for (const n of c.niches) if (place.niches.includes(n)) { score += 3; why.push([3, NICHE_REASON[n]]) }
+    // lugar sem curadoria: estilo veio do tipo/nome no OpenStreetMap — o motivo diz isso, sem elogio inventado
+    const base = place.curation === 'base'
+    for (const n of c.niches) if (place.niches.includes(n)) { score += 3; why.push([3, base ? `${nicheLabel(n)}, pelo tipo do lugar` : NICHE_REASON[n]]) }
     if (!c.niches.length && profile) for (const n of profile.niches) if (place.niches.includes(n)) { score += 1.4; why.push([1.4, `Bate com seu gosto por ${nicheLabel(n).toLowerCase()}`]) }
     for (const v of c.vibes) if (place.vibes.includes(v)) { score += 1.6; why.push([1.6, `Clima ${vibeLabel(v).toLowerCase()}, como você pediu`]) }
     if (profile && isVague(c)) for (const v of profile.vibes) if (place.vibes.includes(v)) score += 0.5
@@ -155,7 +157,7 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
     }
 
     if (c.occasion) {
-      if (place.occasions.includes(c.occasion)) { score += 3; why.push([2.8, `Comunidade aprova pra ${OCC_PHRASE[c.occasion]}`]) }
+      if (place.occasions.includes(c.occasion)) { score += 3; if (!base) why.push([2.8, `Comunidade aprova pra ${OCC_PHRASE[c.occasion]}`]) }
       else score -= 1.5
     }
 
@@ -180,7 +182,8 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
       if (km !== undefined && km < 3) { score += 0.8; why.push([0.8, `Perto de você (${place.hood})`]) }
     }
 
-    if (c.when) {
+    // lugar real (Google/OSM) sem horário confirmado: não afirma "aberto" nem penaliza — a tela manda ver no Maps
+    if (c.when && !place.source) {
       const d = c.when.day ?? 0
       const h = c.when.hour ?? 21
       const ok = c.when.day === undefined
@@ -197,6 +200,7 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
 
     const reasons = why.sort((a, b) => b[0] - a[0]).map(([, s]) => s).filter((s, i, a) => a.indexOf(s) === i).slice(0, 3)
     if (!reasons.length) reasons.push(place.tagline)
+    if (base) reasons.push('Ninguém da comunidade avaliou ainda')
     for (const t of c.tags) if (!place.tags.includes(t)) warn.push(`Sem confirmação de ${TAG_LABEL[t]}`)
     return { place, score, reasons, warnings: warn.slice(0, 2), match: 0 }
   })

@@ -38,6 +38,30 @@ class RoleDB extends Dexie {
 
 export const db = new RoleDB()
 
+/** modo demo (lugares, pedidos e curadores fictícios): desligado por padrão; liga no /testes pra apresentar.
+ *  Migração v2: quem usava a versão antiga (demo ligado por padrão) passa a ver só conteúdo real. */
+export async function demoOn() {
+  const p = await db.profile.get('me')
+  try {
+    if (!localStorage.getItem('role.demo.v2')) {
+      localStorage.setItem('role.demo.v2', '1')
+      if (p?.demoMode) { await db.profile.update('me', { demoMode: false }); return false }
+    }
+  } catch { /* */ }
+  return !!p?.demoMode
+}
+
+/** tira do aparelho os pedidos/respostas/votos fictícios do demo */
+export async function purgeSeeds() {
+  const ids = seedRequests.map((r) => r.id)
+  if (!(await db.requests.where('id').anyOf(ids).count())) return
+  await db.transaction('rw', db.requests, db.answers, db.votes, async () => {
+    await db.requests.bulkDelete(ids)
+    await db.answers.where('requestId').anyOf(ids).delete()
+    await db.votes.where('requestId').anyOf(ids).delete()
+  })
+}
+
 export async function seedIfEmpty() {
   if ((await db.requests.count()) > 0) return
   await db.transaction('rw', db.requests, db.answers, db.votes, async () => {

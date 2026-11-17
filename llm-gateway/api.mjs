@@ -60,7 +60,7 @@ const RE = {
   sub: /^ev-u-[a-z0-9-]{1,40}$/,
   device: /^[a-z0-9-]{8,40}$/,
   // catálogo (ex.: jazz-laje) ou Google Places (g-ChIJ...)
-  place: /^(?:[a-z0-9-]{2,60}|g-[A-Za-z0-9_-]{5,120})$/,
+  place: /^(?:[a-z0-9-]{2,60}|g-[A-Za-z0-9_-]{5,120}|o-[nwr]\d{1,14})$/,
   evName: /^[a-z_]{2,40}$/,
 }
 const str = (v, n) => String(v ?? '').slice(0, n)
@@ -72,7 +72,7 @@ const parse = (s) => { try { return JSON.parse(s) } catch { return null } }
  *  Do Google só o place_id; o resto é o que a pessoa confirmou. */
 const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map((x) => str(x, 20))
 function snap(v) {
-  if (!Array.isArray(v) || !/^g-[A-Za-z0-9_-]{5,120}$/.test(String(v[0]))) return null
+  if (!Array.isArray(v) || !/^(g-[A-Za-z0-9_-]{5,120}|o-[nwr]\d{1,14})$/.test(String(v[0]))) return null
   return [String(v[0]), str(v[1], 80), ['bar', 'restaurante', 'balada', 'evento'].includes(v[2]) ? v[2] : 'bar', str(v[3], 40), list(v[4], 3), int(v[5]), list(v[6], 2), list(v[7], 3)]
 }
 
@@ -190,7 +190,7 @@ export function handleApi(method, path, req, body) {
     if (!isAdmin(req)) return bad('admin', 401)
     return ok(q.reviewPlaces.all().map((r) => ({ place: parse(r.snap), comment: r.comment, status: r.status, motivo: r.motivo, at: r.at, uses: r.uses })))
   }
-  if ((m = path.match(/^\/api\/places\/(g-[A-Za-z0-9_-]{5,120})\/status$/)) && write) {
+  if ((m = path.match(/^\/api\/places\/(g-[A-Za-z0-9_-]{5,120}|o-[nwr]\d{1,14})\/status$/)) && write) {
     if (!isAdmin(req)) return bad('admin', 401)
     const status = ['ok', 'recusado'].includes(body.status) ? body.status : null
     if (!status) return bad('status')
@@ -237,8 +237,9 @@ export function handleApi(method, path, req, body) {
     if (!RE.place.test(placeId)) return bad('place')
     const by = str(body.by, 40).trim() || 'Alguém'
     const id = `rs-${randomBytes(5).toString('hex')}`
-    const ps = placeId.startsWith('g-') ? snap(body.place) : null
-    if (placeId.startsWith('g-') && (!ps || ps[0] !== placeId)) return bad('place_snapshot')
+    const ext = placeId.startsWith('g-') || placeId.startsWith('o-')
+    const ps = ext ? snap(body.place) : null
+    if (ext && (!ps || ps[0] !== placeId)) return bad('place_snapshot')
     const ins = q.sug.run(id, m[1], placeId, by, str(body.comment, 200) || 'Sugeri esse aqui!', int(body.hue, 200), device, now, ps ? JSON.stringify(ps) : null)
     // a sugestão vira opção da votação pra todo mundo (máx. 6 opções; as mais antigas da IA saem primeiro)
     const data = parse(r.data)

@@ -139,7 +139,7 @@ export const pushVote = (rid: string, kind: 'place' | 'time', value: string, vot
   call('POST', `/api/requests/${encodeURIComponent(rid)}/votes`, { kind, value, voter }).then(Boolean)
 export const pushSuggestion = (rid: string, b: { placeId: string; by: string; comment: string; hue?: number }) => {
   const p = placeById.get(b.placeId)
-  return call('POST', `/api/requests/${encodeURIComponent(rid)}/suggestions`, { ...b, place: p?.source === 'google' ? snapOf(p) : undefined }).then(Boolean)
+  return call('POST', `/api/requests/${encodeURIComponent(rid)}/suggestions`, { ...b, place: p?.source ? snapOf(p) : undefined }).then(Boolean)
 }
 export const pushDecision = (rid: string, placeId: string, time?: string) =>
   call('POST', `/api/requests/${encodeURIComponent(rid)}/decide`, { placeId, time }).then(Boolean)

@@ -59,8 +59,10 @@ const NICHE_BY_TYPE: [RegExp, Niche][] = [
   [/live_music|concert|jazz/, 'jazz'],
   [/park|garden|rooftop|beach/, 'ao-ar-livre'],
 ]
-/** link pro Google Maps montado só com o place_id (que pode ser guardado) */
-export const mapsUrlOf = (placeId: string) => `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(placeId.replace(/^g-/, ''))}`
+/** link pro Google Maps sem custo: pelo place_id (lugar do Google) ou pela busca nome + bairro (lugar do OSM) */
+export const mapsUrlOf = (id: string, name = '', hood = '') => id.startsWith('g-')
+  ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(id.replace(/^g-/, ''))}`
+  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name} ${hood} São Paulo`)}`
 const hueOf = (s: string) => [...s].reduce((a, c) => a + c.charCodeAt(0) * 31, 0) % 360
 
 function hoodOf(g: GPlace) {
@@ -134,7 +136,7 @@ export async function searchGoogle(query: string): Promise<PlacesResult> {
 export type PlaceSnap = [id: string, name: string, kind: PlaceKind, hood: string, niches: Niche[], price: number, vibes: Vibe[], occasions: Occasion[]]
 export const snapOf = (p: Place): PlaceSnap => [p.id, p.name, p.kind, p.hood, p.niches, p.price, p.vibes, p.occasions]
 export function fromSnap(s: unknown): Place | null {
-  if (!Array.isArray(s) || typeof s[0] !== 'string' || !/^g-[A-Za-z0-9_-]{5,120}$/.test(s[0])) return null
+  if (!Array.isArray(s) || typeof s[0] !== 'string' || !/^(g-[A-Za-z0-9_-]{5,120}|o-[nwr]\d{1,14})$/.test(s[0])) return null
   const [id, name, kind, hood, niches, price, vibes, occasions] = s as PlaceSnap
   const k: PlaceKind = ['bar', 'restaurante', 'balada', 'evento'].includes(kind) ? kind : 'bar'
   const periods: OpenPeriod[] = [{ days: [0, 1, 2, 3, 4, 5, 6], open: 0, close: 24 }]
@@ -144,6 +146,6 @@ export function fromSnap(s: unknown): Place | null {
     id, name: String(name).slice(0, 80), kind: k, hood: String(hood).slice(0, 40), niches: arr(niches, 3) as Niche[],
     vibes: arr(vibes, 2) as Vibe[], occasions: occ.length ? occ : ['amigos'], price: Number(price) || 0, capacity: 40, rating: 8, ratingCount: 0,
     hue: hueOf(id), tagline: 'Sugerido pela comunidade', description: '', highlights: [], address: String(hood).slice(0, 40), hours: 'Ver horário no Google Maps',
-    tags: [], privateSpace: false, periods, source: 'google', mapsUrl: mapsUrlOf(id),
+    tags: [], privateSpace: false, periods, source: id.startsWith('o-') ? 'osm' : 'google', mapsUrl: mapsUrlOf(id, String(name), String(hood)),
   }
 }

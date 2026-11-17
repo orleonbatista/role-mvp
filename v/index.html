@@ -30,11 +30,13 @@
         if (!id) {
           try { var m = location.hash.match(/p=([A-Za-z0-9_-]+)/); id = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))))).id } catch (e) {}
         }
-        var to = { s: 's/', i: 'i/', e: 'e/', c: 'c/', p: 'p/' }[q.get('to')] || 'r/'
+        var t = q.get('to')
+        var to = { s: 's/', i: 'i/', e: 'e/', c: 'c/', p: 'p/' }[t] || 'r/'
         q.delete('id'); q.delete('to')
+        if (t === 'f') { id = null } // convite de curador fundador: /fundador
         var base = location.pathname.replace(/v\/?(index\.html)?$/, '')
         var qs = q.toString()
-        location.replace(base + (id ? to + encodeURIComponent(id) : '') + (qs ? '?' + qs : '') + location.hash)
+        location.replace(base + (t === 'f' ? 'fundador' : id ? to + encodeURIComponent(id) : '') + (qs ? '?' + qs : '') + location.hash)
       })()
     </script>
   </head>
