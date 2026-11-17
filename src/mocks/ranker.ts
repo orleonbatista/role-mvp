@@ -127,6 +127,8 @@ const NICHE_REASON: Record<Niche, string> = {
   'ao-ar-livre': 'Espaço ao ar livre',
 }
 
+const OCC_PHRASE: Record<Occasion, string> = { aniversario: 'aniversário', date: 'date', amigos: 'ir com amigos', trabalho: 'happy hour', esquenta: 'esquenta', solo: 'ir sozinho' }
+
 export const isVague = (c: Criteria) => !c.occasion && !c.niches.length && !c.vibes.length && !c.tags.length
 
 export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ranked[] {
@@ -153,7 +155,7 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
     }
 
     if (c.occasion) {
-      if (place.occasions.includes(c.occasion)) { score += 3; why.push([2.8, `Comunidade aprova pra ${occasionLabel(c.occasion).toLowerCase()}`]) }
+      if (place.occasions.includes(c.occasion)) { score += 3; why.push([2.8, `Comunidade aprova pra ${OCC_PHRASE[c.occasion]}`]) }
       else score -= 1.5
     }
 

@@ -42,7 +42,22 @@ Cada visitante tem seus próprios dados no navegador (IndexedDB) — nada é com
 - **Medição local**: eventos do funil, botão de feedback em todas as telas, "fake door" de reserva (formulário de lead) e **Painel de testes** (`/testes`, link no perfil) com export JSON.
 - **Modo demonstração** (perfil): liga/desliga curadores e amigos simulados — desligue para testes com pessoas reais.
 - **UX**: ícone do tipo de lugar nas capas, aberto agora/abre às, distância aproximada do seu bairro, estados de erro, folhas e celebrações fora da área de rolagem, code-split por tela.
-- **IA via LLM local (opcional)**: `src/mocks/llm.ts` — com `VITE_OLLAMA_URL`/`VITE_OLLAMA_MODEL` num `.env.local` e o Ollama rodando com `OLLAMA_ORIGINS=*`, o LLM complementa a extração de critérios; o ranking continua determinístico. Sem as variáveis, nada muda.
+- **IA via LLM local (opcional)**: veja a seção abaixo.
+
+## LLM local (Ollama na sua GPU)
+
+Testado com **qwen2.5:7b** numa RTX 2070 8 GB: roda 100% na GPU, ~1,3–1,8 s por pedido depois de carregado (a 1ª chamada leva alguns segundos para subir o modelo).
+
+1. Instale o Ollama (`winget install Ollama.Ollama`) e baixe o modelo: `ollama pull qwen2.5:7b`.
+2. Crie `.env.local` na raiz com `VITE_OLLAMA_MODEL=qwen2.5:7b`.
+3. `npm run dev`. O app chama `/ollama/*` e o proxy do Vite repassa ao Ollama local (sem CORS; funciona também do celular no Wi-Fi).
+
+Como funciona (`src/mocks/llm.ts`):
+- O LLM só **extrai critérios** (ocasião, pessoas, orçamento, nichos, vibes, tags) com saída JSON por schema; o **ranking continua determinístico** e explicável.
+- **Extração ancorada**: cada critério vem com o trecho exato do pedido que o justifica; o que não aparece no texto é descartado (corta alucinação de modelo pequeno). Tags exigem vocabulário da própria tag (ex.: "acessível" só com cadeirante/rampa).
+- União com o parser por regras: regras garantem números, bairro e dia/horário; o LLM soma gírias e contexto ("minha mina" → date, "pagodinho" → samba, "sem barulho" → tranquilo).
+- Se o Ollama estiver desligado ou demorar >15 s, cai para as regras sem quebrar nada. A tela de resultado mostra qual motor entendeu o pedido.
+- No site publicado (GitHub Pages) não há proxy: lá vale só o parser por regras.
 
 ## Fluxo para testar
 

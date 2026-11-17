@@ -30,6 +30,7 @@ async function personById(id: string, req?: RoleRequest): Promise<Person> {
 
 async function analyze(text: string, overrides?: Partial<Criteria>) {
   let c = parseRequest(text)
+  c.source = { engine: 'regras' }
   c = await refineWithLLM(text, c)
   for (const [k, v] of Object.entries(overrides ?? {})) if (v !== undefined && !(Array.isArray(v) && !v.length)) (c as any)[k] = v
   c.unmet = unmetFor(c, places)

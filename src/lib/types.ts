@@ -70,6 +70,8 @@ export interface Criteria {
   when?: When
   /** termos pedidos que o catálogo não cobre (ex.: "funk") */
   unmet: string[]
+  /** quem extraiu os critérios: só regras, ou regras + LLM local */
+  source?: { engine: 'regras' | 'llm'; model?: string; ms?: number }
 }
 
 export interface RoleRequest {

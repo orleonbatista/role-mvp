@@ -55,6 +55,13 @@ export function Results() {
                 </span>
               </div>
               <StreamText text={data.intro} className="text-[15px] leading-relaxed text-ink/90" onDone={() => setIntroDone(true)} />
+              {data.request.criteria.source && (
+                <p className="mt-2 text-[11px] text-faint">
+                  {data.request.criteria.source.engine === 'llm'
+                    ? `entendido por ${data.request.criteria.source.model} rodando na sua GPU · ${((data.request.criteria.source.ms ?? 0) / 1000).toFixed(1)}s`
+                    : 'entendido pelo parser local (regras)'}
+                </p>
+              )}
             </div>
           </section>
 
