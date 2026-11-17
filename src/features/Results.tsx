@@ -5,7 +5,7 @@ import { AlertTriangle, Check, Copy, ExternalLink, Heart, Send, Share2, Sparkles
 import { AnimatedNumber, Avatar, Button, Cover, EmptyState, Page, Skeleton, StreamText, Tag, TopBar, Typing, cx } from '../ui/primitives'
 import { placeIcon } from '../ui/placeIcon'
 import { track } from '../lib/track'
-import { shareText, shareUrl } from '../lib/share'
+import { shareText, shareUrl, suggestUrl } from '../lib/share'
 import { withSource, type StoryCard } from '../lib/storyCard'
 import { StorySheet } from './StorySheet'
 import { occasionLabel as occLabel } from '../lib/labels'
@@ -24,12 +24,18 @@ export function Results() {
   const [introDone, setIntroDone] = useState(false)
   const [share, setShare] = useState(false)
   const [story, setStory] = useState(false)
+  const [storySugira, setStorySugira] = useState(false)
   const loaded = !!data
   const optKey = data?.options.map((o) => o.id).join() ?? ''
   const [link, setLink] = useState('')
   useEffect(() => { if (data) shareUrl(data).then(setLink) }, [data?.request.id, optKey]) // eslint-disable-line react-hooks/exhaustive-deps
   // memo: a arte não pode ser refeita a cada polling do pedido
   const storyCard = useMemo(() => (data ? pedidoCard(data) : null), [data?.request.id, optKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const sugiraCard = useMemo<StoryCard | null>(() => {
+    if (!data) return null
+    const p = pedidoCard(data) as Extract<StoryCard, { kind: 'pedido' }>
+    return { kind: 'sugira', text: p.text, chips: p.chips, current: data.options.map((o) => o.name), author: p.author }
+  }, [data?.request.id, optKey]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (loaded) track('results_viewed', { id, confidence: data?.confidence }) }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isError) return (
@@ -102,7 +108,8 @@ export function Results() {
       )}
 
 
-      {data && <ShareSheet open={share} onClose={() => setShare(false)} data={data} link={link} onStory={() => { setShare(false); setTimeout(() => setStory(true), 250) }} />}
+      {data && <ShareSheet open={share} onClose={() => setShare(false)} data={data} link={link} onStory={() => { setShare(false); setTimeout(() => setStory(true), 250) }} onStorySugira={() => { setShare(false); setTimeout(() => setStorySugira(true), 250) }} />}
+      {data && <StorySheet open={storySugira} onClose={() => setStorySugira(false)} card={sugiraCard} link={link ? withSource(suggestUrl(link), 'ig') : ''} context="sugestoes" />}
       {data && <StorySheet open={story} onClose={() => setStory(false)} card={storyCard} link={link ? withSource(link, 'ig') : ''} context="pedido" />}
     </Page>
   )
@@ -173,11 +180,15 @@ function Community({ data }: { data: RequestDetail }) {
               <div className="flex items-center gap-2.5">
                 <Avatar name={a.user.name} hue={a.user.hue} size={30} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px]">{a.user.handle}</p>
-                  <p className="truncate text-[11px] text-mute">curador · {a.user.curatorOf.map(nicheLabel).join(', ').toLowerCase()} · {a.user.reputation} rep</p>
+                  <p className="text-[13px]">{a.kind === 'sugestao' ? a.user.name : a.user.handle}</p>
+                  <p className="truncate text-[11px] text-mute">
+                    {a.kind === 'sugestao' ? 'sugestão pelo link' : `curador · ${a.user.curatorOf.map(nicheLabel).join(', ').toLowerCase()} · ${a.user.reputation} rep`}
+                  </p>
                 </div>
+                <span className={cx('shrink-0 rounded-full px-2 py-0.5 text-[11px]', a.fit.match >= 70 ? 'bg-accent/15 text-accent' : 'bg-amber-400/15 text-amber-300')}>{a.fit.match}% encaixe</span>
               </div>
               <p className="mt-3 text-[14px] leading-relaxed text-ink/90">{a.comment}</p>
+              {a.fit.warnings[0] && <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-amber-300/90"><AlertTriangle size={12} />{a.fit.warnings[0]}</p>}
               <div className="mt-3 flex items-center justify-between">
                 <Link to={`/lugar/${a.place.id}`} className="flex items-center gap-2 rounded-full bg-white/[0.05] py-1 pl-1 pr-3 text-xs hover:bg-white/[0.08]">
                   <Cover hue={a.place.hue} className="size-6" rounded="rounded-full" />{a.place.name}
@@ -214,7 +225,7 @@ export function pedidoCard(d: RequestDetail): StoryCard {
   return { kind: 'pedido', text: d.request.text, chips, options: d.options.slice(0, 3), author: d.author.name.split(' ')[0] }
 }
 
-function ShareSheet({ open, onClose, data, link, onStory }: { open: boolean; onClose: () => void; data: RequestDetail; link: string; onStory: () => void }) {
+function ShareSheet({ open, onClose, data, link, onStory, onStorySugira }: { open: boolean; onClose: () => void; data: RequestDetail; link: string; onStory: () => void; onStorySugira: () => void }) {
   const toast = useToast()
   const nav = useNavigate()
   const url = link ? withSource(link, 'wa') : ''
@@ -282,6 +293,21 @@ function ShareSheet({ open, onClose, data, link, onStory }: { open: boolean; onC
             </Button>
           )}
           <Button size="lg" variant="soft" icon={<ExternalLink size={16} />} onClick={() => { onClose(); nav(`/r/${data.request.id}`) }}>Votação</Button>
+        </div>
+      </div>
+
+      <div className="mt-7 border-t border-line pt-5">
+        <p className="font-serif text-[22px] leading-none">Pedir sugestões</p>
+        <p className="mt-1.5 text-[13px] text-mute">Quem recebe indica um lugar, vê se encaixa no pedido e manda de volta pra entrar na votação.</p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <a
+            href={link ? `https://wa.me/?text=${encodeURIComponent(`Me indica um lugar? “${data.request.text}”\n👉 Sugere aqui:\n${withSource(suggestUrl(link), 'wa')}`)}` : undefined}
+            target="_blank" rel="noreferrer" onClick={() => track('suggest_request_sent', { via: 'whatsapp' })}
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white/[0.07] text-sm font-medium hover:bg-white/[0.1]"
+          >
+            <Send size={15} /> WhatsApp
+          </a>
+          <Button variant="soft" className="h-12" onClick={onStorySugira}>Story</Button>
         </div>
       </div>
     </Sheet>

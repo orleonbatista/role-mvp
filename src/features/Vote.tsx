@@ -12,6 +12,7 @@ import { readPayload } from '../lib/share'
 import { track } from '../lib/track'
 import type { Place, VoteTally } from '../lib/types'
 import { StorySheet } from './StorySheet'
+import { AskBox } from './AskBox'
 import type { StoryCard } from '../lib/storyCard'
 
 const FRIENDS = ['Bia', 'Caio', 'Duda', 'Léo', 'Mari']
@@ -46,6 +47,7 @@ export function VotePage() {
   const decide = useDecide(id)
   const [voter, setVoter] = useState(() => localStorage.getItem('role.voter') ?? '')
   const [celebrate, setCelebrate] = useState(false)
+  const [highlight, setHighlight] = useState<string[]>([])
   const nameRef = useRef<HTMLInputElement>(null)
   const shake = useAnimationControls()
 
@@ -143,8 +145,9 @@ export function VotePage() {
                   animate={{ opacity: 1, y: 0, transition: { delay: i * 0.08, duration: 0.6, ease } }}
                   whileTap={{ scale: 0.98 }}
                   aria-pressed={mine}
+                  data-opt={p.id}
                   onClick={() => !decided && cast(p.id)}
-                  className={cx('relative overflow-hidden rounded-[22px] border p-3 text-left transition-colors', mine ? 'border-accent/70' : 'border-line bg-surface/60')}
+                  className={cx('relative overflow-hidden rounded-[22px] border p-3 text-left transition-[colors,box-shadow] duration-500', mine ? 'border-accent/70' : 'border-line bg-surface/60', highlight.includes(p.id) && 'shadow-[0_0_0_2px_rgba(198,255,61,0.9),0_0_40px_-6px_rgba(198,255,61,0.55)]')}
                 >
                   <motion.div className="absolute inset-y-0 left-0 bg-accent/[0.12]" initial={false} animate={{ width: `${pct * 100}%` }} transition={{ type: 'spring', stiffness: 120, damping: 22 }} />
                   <div className="relative flex items-center gap-3">
@@ -193,6 +196,18 @@ export function VotePage() {
           </section>
 
           <p className="mt-5 text-center text-xs text-faint">{total} {total === 1 ? 'voto' : 'votos'} neste aparelho</p>
+
+          <AskBox
+            pedido={data.request.text}
+            options={data.options}
+            criteria={data.request.criteria}
+            tally={data.tally}
+            hood={me?.hood}
+            onHighlight={(ids) => {
+              setHighlight(ids)
+              setTimeout(() => setHighlight([]), 9000)
+            }}
+          />
           <AnimatePresence>
             {showCta && (
               <motion.button

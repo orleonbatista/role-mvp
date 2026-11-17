@@ -100,6 +100,10 @@ export interface Answer {
   helpful: number
   createdAt: number
   visibleAt: number
+  /** curador (simulado) ou sugestão de alguém que recebeu o link */
+  kind?: 'curador' | 'sugestao'
+  byName?: string
+  byHue?: number
 }
 
 export interface Vote {
@@ -150,6 +154,8 @@ export interface AnswerDTO extends Answer {
   user: Person
   place: Place
   markedHelpful: boolean
+  /** quanto a indicação encaixa nos critérios do pedido */
+  fit: { match: number; warnings: string[] }
 }
 
 export interface VoteTally {

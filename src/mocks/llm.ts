@@ -1,5 +1,5 @@
 import type { Criteria, Occasion, Tag } from '../lib/types'
-import { ALL, NICHES, OCCS, TAGS, VIBES, ollamaBody } from './llmPrompt'
+import { ALL, NICHES, OCCS, TAGS, VIBES, askBody, ollamaBody, type PlaceFact } from './llmPrompt'
 
 /**
  * IA híbrida OPCIONAL: um LLM extrai critérios estruturados do texto; o ranking continua
@@ -159,4 +159,32 @@ export async function refineWithLLM(text: string, base: Criteria): Promise<Crite
 
 function getLLMOverrideSafe() {
   try { return localStorage.getItem(OVERRIDE_KEY) } catch { return null }
+}
+
+/** pergunta livre sobre as opções de uma votação; null se não houver LLM disponível */
+export async function askPollLLM(question: string, pedido: string, facts: PlaceFact[]): Promise<{ answer: string; model: string; via: string; ms: number } | null> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 20000)
+  const t0 = performance.now()
+  try {
+    if (DEV_URL) {
+      const res = await fetch(`${DEV_URL}/api/chat`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(askBody(DEV_MODEL!, question, pedido, facts)) })
+      if (!res.ok) throw new Error(`ollama ${res.status}`)
+      const j = await res.json()
+      return { answer: String(j.message?.content ?? '').trim(), model: DEV_MODEL!, via: 'sua GPU', ms: Math.round(performance.now() - t0) }
+    }
+    if (Date.now() < downUntil) return null
+    const c = await gatewayConfig()
+    if (!c?.enabled || !c.url) return null
+    const res = await fetch(`${c.url}/ask`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, pedido, facts }) })
+    if (!res.ok) throw new Error(`gateway ${res.status}`)
+    const j = await res.json()
+    return { answer: j.answer, model: j.model, via: c.owner && c.owner !== 'override' ? `GPU do ${c.owner}` : 'GPU remota', ms: Math.round(performance.now() - t0) }
+  } catch (e) {
+    if (!DEV_URL) downUntil = Date.now() + 60_000
+    console.warn('[rolê] pergunta sem LLM, usando regras:', e)
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
 }

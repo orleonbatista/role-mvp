@@ -23,17 +23,18 @@
     <meta name="twitter:card" content="summary_large_image" />
     <style>html,body{margin:0;height:100%;background:#0a0a0b;color:#8b8b94;font:15px system-ui;display:grid;place-items:center}</style>
     <script>
-      // /v/?id=r-xxx&src=wa#p=...  ->  /r/r-xxx?src=wa#p=...
+      // /v/?id=r-xxx&src=wa#d=...  ->  /r/r-xxx?src=wa#d=...   (to=s -> /s/: pedir sugestão; to=i -> /i/: importar sugestão)
       (function () {
         var q = new URLSearchParams(location.search)
         var id = q.get('id')
         if (!id) {
           try { var m = location.hash.match(/p=([A-Za-z0-9_-]+)/); id = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))))).id } catch (e) {}
         }
-        q.delete('id')
+        var to = { s: 's/', i: 'i/' }[q.get('to')] || 'r/'
+        q.delete('id'); q.delete('to')
         var base = location.pathname.replace(/v\/?(index\.html)?$/, '')
         var qs = q.toString()
-        location.replace(base + (id ? 'r/' + encodeURIComponent(id) : '') + (qs ? '?' + qs : '') + location.hash)
+        location.replace(base + (id ? to + encodeURIComponent(id) : '') + (qs ? '?' + qs : '') + location.hash)
       })()
     </script>
   </head>

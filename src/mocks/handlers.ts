@@ -8,7 +8,7 @@ import { confidenceOf, introFor, parseRequest, rank, timeOptions, unmetFor } fro
 import { refineWithLLM } from './llm'
 import { people } from './seeds/people'
 import { placeById, places } from './seeds/places'
-import { nicheLabel, occasionLabel } from '../lib/labels'
+import { KIND_LABEL, nicheLabel, occasionLabel } from '../lib/labels'
 
 const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`
 const latency = () => delay(160 + Math.random() * 200)
@@ -88,10 +88,17 @@ async function buildDetail(id: string): Promise<RequestDetail | null> {
   const visible = all.filter((a) => a.visibleAt <= now).sort((a, b) => b.helpful - a.helpful || a.createdAt - b.createdAt)
   const helpfulIds = new Set((await db.helpful.toArray()).map((h) => h.id))
   const answers: AnswerDTO[] = await Promise.all(
-    visible.map(async (a) => ({ ...a, user: await personById(a.userId), place: placeById.get(a.placeId)!, markedHelpful: helpfulIds.has(a.id) })),
+    visible.map(async (a) => {
+      const place = placeById.get(a.placeId)!
+      const r = rank([place], request.criteria)[0]
+      const user: Person = a.byName
+        ? { id: a.userId, name: a.byName, handle: a.byName, hue: a.byHue ?? 200, curatorOf: [], reputation: 0 }
+        : await personById(a.userId)
+      return { ...a, user, place, markedHelpful: helpfulIds.has(a.id), fit: { match: r.match, warnings: r.warnings } }
+    }),
   )
   const optionIds = (request.optionIds ?? [...ranked.map((r) => r.place.id), ...visible.map((a) => a.placeId)])
-    .filter((x, i, arr) => arr.indexOf(x) === i && placeById.has(x)).slice(0, 4)
+    .filter((x, i, arr) => arr.indexOf(x) === i && placeById.has(x)).slice(0, 6)
   const votes = await db.votes.where('requestId').equals(id).toArray()
   const times = request.times ?? timeOptions(request.criteria)
   return {
@@ -203,6 +210,36 @@ export const handlers = [
       })
     }
     return HttpResponse.json({ ok: true })
+  }),
+
+  /** busca no catálogo, já com o encaixe nos critérios de um pedido (página de sugestões) */
+  http.get('/api/search', async ({ request }) => {
+    const url = new URL(request.url)
+    const q = (url.searchParams.get('q') ?? '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const req = await db.requests.get(url.searchParams.get('rid') ?? '')
+    const c: Criteria = req?.criteria ?? { groupSize: 2, niches: [], vibes: [], tags: [], unmet: [] }
+    const n = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const pool = q
+      ? places.filter((p) => [p.name, p.hood, p.tagline, ...p.niches.map(nicheLabel), KIND_LABEL[p.kind]].some((f) => n(f).includes(q)))
+      : places
+    await delay(120)
+    return HttpResponse.json(rank(pool, c).slice(0, 12))
+  }),
+
+  /** sugestão que voltou pelo link de retorno: entra como opção da votação */
+  http.post('/api/requests/:id/suggestions', async ({ params, request }) => {
+    const id = params.id as string
+    const { placeId, by, comment, hue } = (await request.json()) as { placeId: string; by: string; comment: string; hue?: number }
+    const req = await db.requests.get(id)
+    if (!req || !placeById.has(placeId)) return notFound()
+    const dup = await db.answers.where('requestId').equals(id).filter((a) => a.kind === 'sugestao' && a.placeId === placeId && a.byName === by).first()
+    if (!dup) {
+      const now = Date.now()
+      await db.answers.add({ id: uid('a'), requestId: id, userId: `ext-${by}`, placeId, comment: comment || 'Sugeri esse aqui!', helpful: 0, createdAt: now, visibleAt: now, kind: 'sugestao', byName: by, byHue: hue })
+      const opts = req.optionIds ?? []
+      if (!opts.includes(placeId)) await db.requests.update(id, { optionIds: [...opts, placeId].slice(-6) })
+    }
+    return HttpResponse.json({ ok: true, duplicate: !!dup })
   }),
 
   http.get('/api/requests/:id', async ({ params }) => {

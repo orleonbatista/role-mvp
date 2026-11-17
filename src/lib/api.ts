@@ -135,3 +135,7 @@ export interface TestesData {
 }
 export const useTestes = () => useQuery({ queryKey: ['testes'], queryFn: () => req<TestesData>('/testes'), staleTime: 0 })
 export const exportTestes = () => req<unknown>('/testes/export')
+
+export const searchPlaces = (q: string, rid: string) => req<Ranked[]>(`/search?q=${encodeURIComponent(q)}&rid=${encodeURIComponent(rid)}`)
+export const addSuggestion = (rid: string, b: { placeId: string; by: string; comment: string; hue?: number }) =>
+  post<{ ok: boolean; duplicate: boolean }>(`/requests/${rid}/suggestions`, b)

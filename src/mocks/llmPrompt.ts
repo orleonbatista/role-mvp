@@ -64,3 +64,43 @@ export function ollamaBody(model: string, text: string) {
     ],
   }
 }
+
+/* ---------- Perguntas sobre a votação ---------- */
+
+/** fatos de um lugar que podem ser usados na resposta (nada além disso) */
+export interface PlaceFact {
+  nome: string
+  bairro: string
+  tipo: string
+  preco_pessoa: number
+  capacidade: number
+  nota: number
+  estilos: string[]
+  clima: string[]
+  extras: string[]
+  horario: string
+  destaques: string[]
+  distancia_km?: number
+  votos?: number
+}
+
+export const ASK_SYSTEM = `Você é a IA do app rolê. e responde dúvidas sobre as OPÇÕES de uma votação de rolê.
+Regras:
+- Use SOMENTE os fatos fornecidos. Não invente endereço, preço, cardápio, avaliação ou horário.
+- Se os fatos não respondem, diga isso com honestidade e sugira o que dá pra comparar.
+- Responda em português do Brasil, tom leve, no máximo 3 frases curtas.
+- Cite os nomes exatos das opções que você está recomendando ou comparando.
+- Se a pergunta não for sobre essas opções ou sobre o rolê, responda só: "Só consigo ajudar com as opções desta votação."`
+
+export function askBody(model: string, question: string, pedido: string, facts: PlaceFact[]) {
+  return {
+    model,
+    stream: false,
+    keep_alive: '30m',
+    options: { temperature: 0.2, num_predict: 170 },
+    messages: [
+      { role: 'system', content: ASK_SYSTEM },
+      { role: 'user', content: `Pedido do grupo: "${pedido}"\nOpções (fatos):\n${JSON.stringify(facts)}\n\nPergunta: ${question}` },
+    ],
+  }
+}

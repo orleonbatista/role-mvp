@@ -64,3 +64,31 @@ export function shareText(d: RequestDetail) {
   const names = d.options.slice(0, 3).map((o) => o.name).join(', ')
   return `Bora decidir o rolê? “${d.request.text}”\nOpções: ${names}.\n👉 Vota aqui:`
 }
+
+/** mesmo link do pedido, mas abrindo a página "me indica um lugar" */
+export const suggestUrl = (voteLink: string) => voteLink.replace('/v/?', '/v/?to=s&')
+
+const b64 = (s: string) => toB64url(new TextEncoder().encode(s))
+/** link de retorno: leva o pedido (#d=) + a sugestão (&g=) de volta ao autor */
+export function returnUrl(voteLink: string, placeId: string, by: string, comment: string, hue: number) {
+  const idx = places.findIndex((p) => p.id === placeId)
+  const g = b64(JSON.stringify([idx, by.slice(0, 30), comment.slice(0, 140), hue]))
+  return voteLink.replace('/v/?', '/v/?to=i&').replace(/[?&]src=[^&#]*/, '') + `&g=${g}`
+}
+
+export function readSuggestion(hash: string): { placeId: string; by: string; comment: string; hue: number } | null {
+  const m = hash.match(/[#&]g=([A-Za-z0-9_-]+)/)
+  if (!m) return null
+  try {
+    const [idx, by, comment, hue] = JSON.parse(new TextDecoder().decode(fromB64url(m[1])))
+    const p = places[idx]
+    return p ? { placeId: p.id, by: String(by || 'Alguém'), comment: String(comment ?? ''), hue: Number(hue) || 200 } : null
+  } catch { return null }
+}
+
+/** reconstrói o link de votação a partir da URL atual (para montar o link de retorno) */
+export function currentVoteLink() {
+  const d = location.hash.match(/[#&](d|j|p)=([A-Za-z0-9_-]+)/)
+  const id = location.pathname.split('/').filter(Boolean).pop() ?? ''
+  return `${location.origin}${import.meta.env.BASE_URL}v/?id=${encodeURIComponent(id)}${d ? `#${d[1]}=${d[2]}` : ''}`
+}

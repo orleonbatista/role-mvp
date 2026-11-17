@@ -26,7 +26,14 @@ export interface FechadoCard {
   people: number
   author: string
 }
-export type StoryCard = PedidoCard | FechadoCard
+export interface SugiraCard {
+  kind: 'sugira'
+  text: string
+  chips: string[]
+  current: string[]
+  author: string
+}
+export type StoryCard = PedidoCard | FechadoCard | SugiraCard
 
 async function fontsReady() {
   try {
@@ -223,6 +230,46 @@ function drawFechado(ctx: CanvasRenderingContext2D, c: FechadoCard) {
   footer(ctx, `${c.author} no rolê.`)
 }
 
+function drawSugira(ctx: CanvasRenderingContext2D, c: SugiraCard) {
+  background(ctx, [82, 330, 200])
+  brand(ctx)
+  label(ctx, `${c.author} quer indicações`, 90, 330)
+  ctx.font = `400 120px ${SERIF}`
+  ctx.fillStyle = INK
+  ctx.fillText('Me indica', 90, 470)
+  ctx.font = `italic 400 120px ${SERIF}`
+  ctx.fillStyle = ACCENT
+  ctx.fillText('um lugar?', 90, 590)
+
+  ctx.font = `400 64px ${SERIF}`
+  ctx.fillStyle = INK
+  const lines = wrap(ctx, `“${c.text}”`, W - 180, 4)
+  lines.forEach((l, i) => ctx.fillText(l, 90, 730 + i * 74))
+  let y = 730 + lines.length * 74 + 20
+
+  ctx.font = `500 32px ${SANS}`
+  let x = 90
+  for (const chip of c.chips.slice(0, 5)) {
+    const w = ctx.measureText(chip).width + 52
+    if (x + w > W - 90) { x = 90; y += 78 }
+    ctx.fillStyle = 'rgba(198,255,61,0.14)'
+    roundRect(ctx, x, y, w, 62, 31); ctx.fill()
+    ctx.fillStyle = ACCENT
+    ctx.fillText(chip, x + 26, y + 42)
+    x += w + 14
+  }
+  y += 140
+  if (c.current.length) {
+    label(ctx, 'Já tenho na lista', 90, y, MUTE)
+    ctx.font = `400 50px ${SERIF}`
+    ctx.fillStyle = 'rgba(244,244,242,0.8)'
+    wrap(ctx, c.current.slice(0, 4).join(' · '), W - 180, 2).forEach((l, i) => ctx.fillText(l, 90, y + 70 + i * 60))
+  }
+
+  stickerSlot(ctx, 1600, 'Sugere pelo link ↓')
+  footer(ctx, 'quem indica bem ganha reputação no rolê.')
+}
+
 export async function renderStory(card: StoryCard): Promise<Blob> {
   await fontsReady()
   const canvas = document.createElement('canvas')
@@ -230,6 +277,7 @@ export async function renderStory(card: StoryCard): Promise<Blob> {
   canvas.height = H
   const ctx = canvas.getContext('2d')!
   if (card.kind === 'pedido') drawPedido(ctx, card)
+  else if (card.kind === 'sugira') drawSugira(ctx, card)
   else drawFechado(ctx, card)
   return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('canvas vazio'))), 'image/png'))
 }
