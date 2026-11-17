@@ -1,68 +1,66 @@
-import type { Criteria, Niche, Occasion, Tag, Vibe } from '../lib/types'
+import type { Criteria, Occasion, Tag } from '../lib/types'
+import { ALL, NICHES, OCCS, TAGS, VIBES, ollamaBody } from './llmPrompt'
 
 /**
- * IA híbrida OPCIONAL: um LLM local (Ollama) extrai critérios estruturados do texto;
- * o ranking continua determinístico e explicável (ranker.ts).
+ * IA híbrida OPCIONAL: um LLM extrai critérios estruturados do texto; o ranking continua
+ * determinístico e explicável (ranker.ts). Dois modos:
  *
- * Ativar: .env.local com  VITE_OLLAMA_MODEL=qwen2.5:7b  e rodar `npm run dev`.
- * O app chama /ollama/* e o proxy do Vite repassa ao Ollama local (vite.config.ts) —
- * funciona também do celular na mesma rede. No GitHub Pages não há proxy: vale só o parser por regras.
+ * 1) DEV (seu PC): .env.local com VITE_OLLAMA_MODEL=qwen2.5:7b → chama /ollama/* e o proxy
+ *    do Vite repassa ao Ollama local (vite.config.ts).
+ * 2) GATEWAY (site publicado): o app lê um JSON de configuração (VITE_LLM_CONFIG_URL, ex.:
+ *    llm.json no repo) com a URL do túnel até llm-gateway/server.mjs no seu PC. O gateway só
+ *    aceita o texto do pedido e monta o prompt no servidor. Override por aparelho em /testes.
  *
- * Extração ANCORADA: cada critério precisa citar o trecho exato do pedido que o justifica;
- * o que não aparece no texto é descartado. Isso corta a alucinação típica de modelos pequenos.
+ * Extração ANCORADA: cada critério cita o trecho do pedido que o justifica; o que não aparece
+ * no texto é descartado. Se nada responder a tempo, fica só o parser por regras.
  */
-const MODEL = import.meta.env.VITE_OLLAMA_MODEL as string | undefined
-const URL_ = MODEL ? ((import.meta.env.VITE_OLLAMA_URL as string | undefined) ?? `${import.meta.env.BASE_URL.replace(/\/$/, '')}/ollama`) : undefined
+const DEV_MODEL = import.meta.env.VITE_OLLAMA_MODEL as string | undefined
+const DEV_URL = DEV_MODEL ? ((import.meta.env.VITE_OLLAMA_URL as string | undefined) ?? `${import.meta.env.BASE_URL.replace(/\/$/, '')}/ollama`) : undefined
+const CONFIG_URL = import.meta.env.VITE_LLM_CONFIG_URL as string | undefined
+const OVERRIDE_KEY = 'role.llmUrl'
 
-const NICHES: Niche[] = ['listening', 'eletronica', 'boteco', 'gastronomia', 'drinks', 'jazz', 'ao-ar-livre']
-const VIBES: Vibe[] = ['tranquilo', 'animado', 'intimista', 'underground', 'descolado', 'raiz', 'sofisticado']
-const OCCS: Occasion[] = ['aniversario', 'date', 'amigos', 'solo', 'trabalho', 'esquenta']
-const TAGS: Tag[] = ['vegano', 'samba', 'pet', 'acessivel', 'karaoke', 'funk', 'sertanejo', 'open-bar']
+export interface GatewayConfig { enabled: boolean; url?: string; model?: string; owner?: string }
+let cfg: { at: number; value: GatewayConfig | null } | null = null
+let downUntil = 0
 
-export const llmEnabled = () => Boolean(URL_)
-export const llmModel = () => MODEL
-
-const SYSTEM = `Você extrai critérios de pedidos de rolê (bares, restaurantes, baladas, eventos em São Paulo).
-Regras:
-- Cada item precisa de "trecho": as palavras EXATAS do pedido que justificam o item (copie do texto).
-- Só inclua o que o pedido diz ou implica claramente. Na dúvida, não inclua. Listas vazias são normais.
-- Nunca repita itens. No máximo 5 itens.
-- ocasiao "nenhuma", pessoas 0 e orcamento 0 quando não forem ditos.
-Valores:
-- nichos: listening (som/vinil), eletronica (balada, techno, dançar, pista), boteco (bar raiz, petisco, acepipe, cerveja, chopp),
-  gastronomia (comer, jantar, almoçar, restaurante), drinks (drink, coquetel, vinho, rooftop), jazz (música ao vivo, jazz), ao-ar-livre (quintal, laje, céu aberto)
-- vibes: tranquilo (dá pra conversar, calmo), animado (agitado, festa), intimista (romântico, a dois), underground, descolado, raiz (simples, barato), sofisticado (chique, especial)
-- tags: vegano, samba (samba/pagode), pet (cachorro), acessivel (só cadeirante/mobilidade reduzida), karaoke, funk, sertanejo, open-bar
-- ocasiao: aniversario, date (encontro, crush, namorada), amigos (galera, parças, família), trabalho (firma, equipe, expediente), esquenta, solo (sozinho)
-- orcamento: valor máximo por pessoa em reais, só se houver número.`
-
-const EXAMPLES: [string, unknown][] = [
-  ['quero levar minha namorada pra jantar num lugar especial, até 200 conto', {
-    ocasiao: { valor: 'date', trecho: 'minha namorada' }, pessoas: { valor: 2, trecho: 'levar minha namorada' }, orcamento: { valor: 200, trecho: 'até 200 conto' },
-    itens: [{ valor: 'gastronomia', trecho: 'jantar' }, { valor: 'sofisticado', trecho: 'lugar especial' }],
-  }],
-  ['bora tomar uma com a galera depois do trampo', {
-    ocasiao: { valor: 'amigos', trecho: 'com a galera' }, pessoas: { valor: 0, trecho: '' }, orcamento: { valor: 0, trecho: '' },
-    itens: [{ valor: 'boteco', trecho: 'tomar uma' }],
-  }],
-]
-
-const ALL = [...NICHES, ...VIBES, ...TAGS] as string[]
-const SCHEMA = {
-  type: 'object',
-  properties: {
-    ocasiao: { type: 'object', properties: { valor: { type: 'string', enum: [...OCCS, 'nenhuma'] }, trecho: { type: 'string' } }, required: ['valor', 'trecho'] },
-    pessoas: { type: 'object', properties: { valor: { type: 'integer' }, trecho: { type: 'string' } }, required: ['valor', 'trecho'] },
-    orcamento: { type: 'object', properties: { valor: { type: 'integer' }, trecho: { type: 'string' } }, required: ['valor', 'trecho'] },
-    itens: {
-      type: 'array', maxItems: 5,
-      items: { type: 'object', properties: { valor: { type: 'string', enum: ALL }, trecho: { type: 'string' } }, required: ['valor', 'trecho'] },
-    },
-  },
-  required: ['ocasiao', 'pessoas', 'orcamento', 'itens'],
+export async function gatewayConfig(force = false): Promise<GatewayConfig | null> {
+  const override = typeof localStorage !== 'undefined' ? localStorage.getItem(OVERRIDE_KEY) : null
+  if (override) return { enabled: true, url: override.replace(/\/$/, ''), owner: 'override' }
+  if (!CONFIG_URL) return null
+  if (!force && cfg && Date.now() - cfg.at < 120_000) return cfg.value
+  try {
+    const r = await fetch(`${CONFIG_URL}?t=${Math.floor(Date.now() / 60_000)}`, { signal: AbortSignal.timeout(4000) })
+    const value = r.ok ? ((await r.json()) as GatewayConfig) : null
+    cfg = { at: Date.now(), value }
+    return value
+  } catch {
+    cfg = { at: Date.now(), value: null }
+    return null
+  }
 }
 
+export const setLLMOverride = (url: string | null) => (url ? localStorage.setItem(OVERRIDE_KEY, url) : localStorage.removeItem(OVERRIDE_KEY))
+export const getLLMOverride = () => localStorage.getItem(OVERRIDE_KEY)
+
+export async function llmStatus(): Promise<{ mode: 'dev' | 'gateway' | 'off'; ok: boolean; detail: string }> {
+  if (DEV_URL) {
+    try {
+      const r = await fetch(`${DEV_URL}/api/tags`, { signal: AbortSignal.timeout(3000) })
+      return { mode: 'dev', ok: r.ok, detail: `Ollama local (${DEV_MODEL})` }
+    } catch { return { mode: 'dev', ok: false, detail: 'Ollama local não respondeu' } }
+  }
+  const c = await gatewayConfig(true)
+  if (!c?.enabled || !c.url) return { mode: 'off', ok: false, detail: 'Sem LLM configurado: usando só regras' }
+  try {
+    const r = await fetch(`${c.url}/health`, { signal: AbortSignal.timeout(5000) })
+    const j = await r.json()
+    return { mode: 'gateway', ok: !!j.ok, detail: j.ok ? `${j.model} em ${c.url}` : `gateway respondeu, mas o modelo está fora (${c.url})` }
+  } catch { return { mode: 'gateway', ok: false, detail: `PC/túnel fora do ar (${c.url})` } }
+}
+
+/* ---------- validação ancorada ---------- */
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+
 function lev1(a: string, b: string) {
   if (a === b) return true
   if (Math.abs(a.length - b.length) > 1 || a.length < 4) return false
@@ -98,36 +96,37 @@ const TAG_GUARD: Record<Tag, RegExp> = {
 
 export interface LLMRaw { ocasiao?: { valor: string; trecho: string }; pessoas?: { valor: number; trecho: string }; orcamento?: { valor: number; trecho: string }; itens?: { valor: string; trecho: string }[] }
 
-export async function askLLM(text: string, signal?: AbortSignal): Promise<LLMRaw> {
-  const res = await fetch(`${URL_}/api/chat`, {
-    method: 'POST',
-    signal,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: MODEL,
-      stream: false,
-      format: SCHEMA,
-      keep_alive: '30m',
-      options: { temperature: 0, num_predict: 220, repeat_penalty: 1.15 },
-      messages: [
-        { role: 'system', content: SYSTEM },
-        ...EXAMPLES.flatMap(([q, a]) => [{ role: 'user', content: q }, { role: 'assistant', content: JSON.stringify(a) }]),
-        { role: 'user', content: text },
-      ],
-    }),
-  })
-  if (!res.ok) throw new Error(`ollama ${res.status}`)
-  const json = await res.json()
-  return JSON.parse(json.message?.content ?? '{}')
+/** pergunta ao LLM disponível (dev direto ou gateway); null se não houver nenhum */
+export async function askLLM(text: string, signal?: AbortSignal): Promise<{ raw: LLMRaw; model: string; via: string } | null> {
+  if (DEV_URL) {
+    const res = await fetch(`${DEV_URL}/api/chat`, { method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ollamaBody(DEV_MODEL!, text)) })
+    if (!res.ok) throw new Error(`ollama ${res.status}`)
+    const json = await res.json()
+    return { raw: JSON.parse(json.message?.content ?? '{}'), model: DEV_MODEL!, via: 'sua GPU' }
+  }
+  if (Date.now() < downUntil) return null
+  const c = await gatewayConfig()
+  if (!c?.enabled || !c.url) return null
+  try {
+    const res = await fetch(`${c.url}/extract`, { method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
+    if (!res.ok) throw new Error(`gateway ${res.status}`)
+    const j = await res.json()
+    return { raw: j.raw ?? {}, model: j.model ?? c.model ?? 'LLM', via: c.owner && c.owner !== 'override' ? `GPU do ${c.owner}` : 'GPU remota' }
+  } catch (e) {
+    downUntil = Date.now() + 60_000 // fora do ar: não fica esperando a cada pedido
+    throw e
+  }
 }
 
 export async function refineWithLLM(text: string, base: Criteria): Promise<Criteria> {
-  if (!URL_) return base
+  if (!DEV_URL && !CONFIG_URL && !getLLMOverrideSafe()) return base
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 15000) // 1ª chamada carrega o modelo na GPU
+  const timer = setTimeout(() => ctrl.abort(), DEV_URL ? 15000 : 9000)
   const t0 = performance.now()
   try {
-    const out = await askLLM(text, ctrl.signal)
+    const got = await askLLM(text, ctrl.signal)
+    if (!got) return base
+    const out = got.raw
     const items = (out.itens ?? []).filter((i) =>
       ALL.includes(i.valor) && grounded(text, i.trecho) &&
       (!(TAGS as string[]).includes(i.valor) || TAG_GUARD[i.valor as Tag].test(norm(i.trecho))))
@@ -148,7 +147,7 @@ export async function refineWithLLM(text: string, base: Criteria): Promise<Crite
       niches: [...new Set([...base.niches, ...of(NICHES)])],
       vibes: [...new Set([...base.vibes, ...of(VIBES)])],
       tags: [...new Set([...base.tags, ...of(TAGS)])],
-      source: { engine: 'llm', model: MODEL, ms: Math.round(performance.now() - t0) },
+      source: { engine: 'llm', model: got.model, ms: Math.round(performance.now() - t0), via: got.via },
     }
   } catch (e) {
     console.warn('[rolê] LLM indisponível, usando só regras:', e)
@@ -156,4 +155,8 @@ export async function refineWithLLM(text: string, base: Criteria): Promise<Crite
   } finally {
     clearTimeout(timer)
   }
+}
+
+function getLLMOverrideSafe() {
+  try { return localStorage.getItem(OVERRIDE_KEY) } catch { return null }
 }

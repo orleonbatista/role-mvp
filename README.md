@@ -57,7 +57,18 @@ Como funciona (`src/mocks/llm.ts`):
 - **Extração ancorada**: cada critério vem com o trecho exato do pedido que o justifica; o que não aparece no texto é descartado (corta alucinação de modelo pequeno). Tags exigem vocabulário da própria tag (ex.: "acessível" só com cadeirante/rampa).
 - União com o parser por regras: regras garantem números, bairro e dia/horário; o LLM soma gírias e contexto ("minha mina" → date, "pagodinho" → samba, "sem barulho" → tranquilo).
 - Se o Ollama estiver desligado ou demorar >15 s, cai para as regras sem quebrar nada. A tela de resultado mostra qual motor entendeu o pedido.
-- No site publicado (GitHub Pages) não há proxy: lá vale só o parser por regras.
+- No site publicado (GitHub Pages) o LLM chega pelo **gateway + túnel** (seção abaixo); sem eles, vale só o parser por regras.
+
+## LLM do seu PC no site publicado (para testes com amigos)
+
+```
+GitHub Pages ──HTTPS──> trycloudflare.com ──túnel──> llm-gateway (127.0.0.1:8787) ──> Ollama (127.0.0.1:11434)
+```
+
+- `llm-gateway/server.mjs` (Node 22.18+, sem dependências): expõe **só** `POST /extract {text}` e `GET /health`. O prompt e o schema ficam no servidor (`src/mocks/llmPrompt.ts`, compartilhado com o app), então ninguém usa sua GPU como chatbot genérico. A API do Ollama não é exposta. Aceita só as origens do site/dev, limita 20 pedidos/min e 400/dia por IP, até 400 caracteres por pedido, uma extração por vez na GPU.
+- `llm-gateway\start.cmd` sobe o gateway e abre um **Cloudflare Quick Tunnel** (sem conta). O endereço `https://….trycloudflare.com` muda a cada reinício.
+- O site lê o endereço atual de **`llm.json`** na raiz do repo (em tempo de execução, sem rebuild). Ao reiniciar o túnel, atualize a `url` ali e faça commit — ou, só para um aparelho, cole a URL em **/testes → IA (LLM)**.
+- PC desligado/túnel fora: o app percebe em segundos, usa só as regras por 1 minuto e tenta de novo depois. O painel /testes mostra o status.
 
 ## Fluxo para testar
 

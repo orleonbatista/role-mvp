@@ -1,5 +1,7 @@
 import { motion } from 'motion/react'
-import { Download, MessageSquareHeart, Store } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Cpu, Download, MessageSquareHeart, Store } from 'lucide-react'
+import { getLLMOverride, llmStatus, setLLMOverride } from '../mocks/llm'
 import { AnimatedNumber, Button, Page, SectionTitle, Skeleton, Tag, TopBar } from '../ui/primitives'
 import { ease } from '../ui/motion'
 import { exportTestes, useTestes } from '../lib/api'
@@ -9,6 +11,31 @@ import { timeAgo } from '../lib/labels'
 const FACES = ['', '😖', '😕', '😐', '🙂', '🤩']
 
 /** Painel do testador: funil do loop principal, feedback, leads (fake door) e export. */
+function LLMCard() {
+  const [st, setSt] = useState<Awaited<ReturnType<typeof llmStatus>> | null>(null)
+  const [url, setUrl] = useState(getLLMOverride() ?? '')
+  const check = () => { setSt(null); llmStatus().then(setSt) }
+  useEffect(check, [])
+  return (
+    <section className="mt-7">
+      <SectionTitle>IA (LLM)</SectionTitle>
+      <div className="mx-5 rounded-[20px] border border-line p-4">
+        <p className="flex items-center gap-2 text-[14px]">
+          <Cpu size={15} className="text-mute" />
+          <span className={`size-2 rounded-full ${st === null ? 'bg-faint animate-pulse' : st.ok ? 'bg-accent' : 'bg-amber-400'}`} />
+          {st === null ? 'verificando…' : st.ok ? 'LLM no ar' : st.mode === 'off' ? 'Só regras' : 'LLM fora do ar'}
+        </p>
+        {st && <p className="mt-1 break-all text-xs text-mute">{st.detail}</p>}
+        <div className="mt-3 flex gap-2">
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="URL do gateway (opcional, só neste aparelho)" aria-label="URL do gateway"
+            className="h-10 min-w-0 flex-1 rounded-[12px] border border-line bg-bg px-3 text-xs outline-none placeholder:text-faint focus:border-accent/50" />
+          <Button variant="soft" className="h-10 px-3 text-xs" onClick={() => { setLLMOverride(url.trim() || null); check() }}>Salvar</Button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export function TestesPage() {
   const { data } = useTestes()
 
@@ -33,6 +60,8 @@ export function TestesPage() {
         Dados deste aparelho{data.firstAt ? ` desde ${new Date(data.firstAt).toLocaleDateString('pt-BR')}` : ''} · {data.total} eventos.
         Exporte o JSON de cada testador para consolidar.
       </p>
+
+      <LLMCard />
 
       <section className="mt-7">
         <SectionTitle>Funil do loop</SectionTitle>

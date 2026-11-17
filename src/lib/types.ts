@@ -71,7 +71,7 @@ export interface Criteria {
   /** termos pedidos que o catálogo não cobre (ex.: "funk") */
   unmet: string[]
   /** quem extraiu os critérios: só regras, ou regras + LLM local */
-  source?: { engine: 'regras' | 'llm'; model?: string; ms?: number }
+  source?: { engine: 'regras' | 'llm'; model?: string; ms?: number; via?: string }
 }
 
 export interface RoleRequest {
