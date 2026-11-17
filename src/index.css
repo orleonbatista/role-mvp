@@ -18,7 +18,12 @@
 }
 
 html, body, #root { height: 100%; }
+/* o app rola por dentro (cada tela tem seu scroller); a página em si nunca rola nem estica */
+html, body { overflow: hidden; overscroll-behavior: none; }
 body {
+  touch-action: manipulation; /* sem zoom de toque duplo */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   margin: 0;
   background: #050506;
   color: var(--color-ink);
@@ -46,14 +51,24 @@ body {
 
 .text-balance { text-wrap: balance; }
 
+/* iOS dá zoom automático em campo com fonte < 16px ao focar — e a tela fica "maior que o celular" */
+@media (pointer: coarse) {
+  input, textarea, select { font-size: 16px !important; }
+}
+
+
 @layer base {
   input, textarea, button { font: inherit; color: inherit; }
   textarea { resize: none; }
+  /* item de grid nunca alarga a coluna por causa de texto sem quebra (truncate, nomes longos) */
+  :where(.grid) > * { min-width: 0; }
   button { cursor: pointer; }
 }
 
 /* faixa inferior com gradiente não bloqueia toques no conteúdo atrás dela */
 @layer components {
+  /* altura da tela: 100vh de reserva pra navegadores sem dvh (em layer, pra sm:h-[844px] ganhar no desktop) */
+  .app-shell { height: 100vh; height: 100dvh; }
   .bottom-bar { pointer-events: none; }
   .bottom-bar * { pointer-events: auto; }
 }

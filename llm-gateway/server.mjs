@@ -1,8 +1,10 @@
-// Gateway do LLM para testes: expõe SÓ a extração de critérios, com origem permitida,
-// limite de uso e fila de 1 por vez na GPU. Fica entre o túnel (cloudflared) e o Ollama.
+// Gateway do rolê para testes: fica entre o túnel (cloudflared) e o PC.
+//  - LLM: expõe SÓ /extract e /ask (nunca a API crua do Ollama), com origem permitida, limite e fila de 1 na GPU.
+//  - Dados: /api/* (api.mjs, SQLite) com pedidos, votos, sugestões, curadoria e métricas compartilhados entre aparelhos.
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { askBody, ollamaBody } from '../src/mocks/llmPrompt.ts'
+import { adminKeyFile, dataDir, handleApi } from './api.mjs'
 
 const PORT = Number(process.env.PORT ?? 8787)
 const OLLAMA = process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434'
@@ -35,6 +37,18 @@ function limited(ip) {
   return false
 }
 
+// limite separado pra API de dados (bem mais folgado que o do LLM)
+const apiHits = new Map()
+function apiLimited(ip, write) {
+  const now = Date.now()
+  const key = `${ip}:${write ? 'w' : 'r'}`
+  const arr = (apiHits.get(key) ?? []).filter((t) => now - t < 60_000)
+  if (arr.length >= (write ? 90 : 400)) return true
+  arr.push(now)
+  apiHits.set(key, arr)
+  return false
+}
+
 function send(res, status, body, origin) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -49,9 +63,30 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(origin ? 204 : 403, origin ? {
       'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'GET, POST',
-      'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600', Vary: 'Origin',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Device, X-Admin-Key', 'Access-Control-Max-Age': '600', Vary: 'Origin',
     } : {})
     return res.end()
+  }
+  const path = (req.url ?? '').split('?')[0]
+  if (path.startsWith('/api/')) {
+    if (!origin) return send(res, 403, { error: 'origin' }, null)
+    const ip = String(req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? '?')
+    const write = req.method === 'POST'
+    if (apiLimited(ip, write)) return send(res, 429, { error: 'rate_limited' }, origin)
+    let body = {}
+    if (write) {
+      let raw = ''
+      for await (const chunk of req) { raw += chunk; if (raw.length > 16_000) return send(res, 413, { error: 'too_large' }, origin) }
+      try { body = JSON.parse(raw || '{}') } catch { return send(res, 400, { error: 'bad_json' }, origin) }
+    }
+    try {
+      const [status, out] = handleApi(req.method, path, req, body)
+      if (write) console.log(`[${new Date().toLocaleTimeString('pt-BR')}] api ${status} ${req.method} ${path}`)
+      return send(res, status, out, origin)
+    } catch (e) {
+      console.warn('falha api:', e.message)
+      return send(res, 500, { error: 'server' }, origin)
+    }
   }
   if (req.method === 'GET' && req.url === '/health') {
     try {
@@ -131,5 +166,6 @@ const server = http.createServer(async (req, res) => {
 })
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`gateway do LLM em http://127.0.0.1:${PORT}  (modelo ${MODEL}, origens: ${ORIGINS.join(', ')})`)
+  console.log(`gateway do rolê em http://127.0.0.1:${PORT}  (modelo ${MODEL}, origens: ${ORIGINS.join(', ')})`)
+  console.log(`dados: SQLite em ${dataDir} · chave da curadoria em ${adminKeyFile}`)
 })

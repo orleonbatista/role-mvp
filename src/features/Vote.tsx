@@ -2,13 +2,14 @@ import { AnimatePresence, motion, useAnimationControls } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router'
-import { ArrowRight, CalendarCheck, Clock, Crown, Info, Sparkles, X } from 'lucide-react'
+import { ArrowRight, CalendarCheck, Clock, Crown, Info, MapPinPlus, Radio, Send, Sparkles, X } from 'lucide-react'
+import { Link } from 'react-router'
 import { Avatar, AnimatedNumber, Button, Cover, EmptyState, Overlay, Page, Skeleton, cx } from '../ui/primitives'
 import { ease, spring } from '../ui/motion'
 import { placeIcon } from '../ui/placeIcon'
-import { importRequest, useDecide, useProfile, useRequest, useVote } from '../lib/api'
+import { importRequest, useDecide, useProfile, useRequest, useSync, useVote } from '../lib/api'
 import { priceLabel } from '../lib/labels'
-import { readPayload } from '../lib/share'
+import { currentVoteLink, readPayload } from '../lib/share'
 import { track } from '../lib/track'
 import type { Place, VoteTally } from '../lib/types'
 import { StorySheet } from './StorySheet'
@@ -45,6 +46,8 @@ export function VotePage() {
   const { data: me } = useProfile()
   const vote = useVote(id)
   const decide = useDecide(id)
+  const syncQ = useSync()
+  const live = !!syncQ.data?.online
   const [voter, setVoter] = useState(() => localStorage.getItem('role.voter') ?? '')
   const [celebrate, setCelebrate] = useState(false)
   const [highlight, setHighlight] = useState<string[]>([])
@@ -57,20 +60,21 @@ export function VotePage() {
   // modo demo: amigos fictícios votam para mostrar o placar ao vivo (desligado para testes reais)
   const reqId = data?.request.id
   useEffect(() => {
-    if (!data || external || me?.demoMode === false) return
+    // com placar ao vivo (backend no ar) não simula: voto fictício misturado com voto real confunde o grupo
+    if (!data || external || me?.demoMode === false || !syncQ.isFetched || live) return
     const key = `role.sim.${id}`
     if (localStorage.getItem(key)) return
     const opts = data.options
     const picks = [0, 1, 0, 2].map((i) => opts[Math.min(i, opts.length - 1)].id)
     const timers = FRIENDS.slice(0, 4).flatMap((f, i) => [
       setTimeout(() => {
-        vote.mutate({ placeId: picks[i], voter: f })
-        vote.mutate({ placeId: data.times[i % 2 === 0 ? 0 : Math.min(1, data.times.length - 1)], voter: f, kind: 'time' })
+        vote.mutate({ placeId: picks[i], voter: f, demo: true })
+        vote.mutate({ placeId: data.times[i % 2 === 0 ? 0 : Math.min(1, data.times.length - 1)], voter: f, kind: 'time', demo: true })
         if (i === 3) localStorage.setItem(key, '1')
       }, 1400 + i * 1700),
     ])
     return () => timers.forEach(clearTimeout)
-  }, [reqId, external, me?.demoMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reqId, external, me?.demoMode, syncQ.isFetched, live]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const total = data?.tally.reduce((a, t) => a + t.count, 0) ?? 0
   const leader = useMemo(() => {
@@ -123,6 +127,21 @@ export function VotePage() {
             <h1 className="mt-3 font-serif text-[34px] leading-[1] tracking-tight text-balance">Onde vai ser?</h1>
             <p className="mt-2 text-[14px] text-mute">“{data.request.text}”</p>
           </header>
+
+          {decided && (() => {
+            const p = data.options.find((o) => o.id === data.request.decidedPlaceId)
+            return p ? (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease }}
+                className="mx-5 mt-5 flex items-center gap-3 rounded-[22px] border border-accent/40 bg-accent/[0.08] p-3">
+                <Cover hue={p.hue} icon={placeIcon(p)} iconSize={20} className="size-12 shrink-0" rounded="rounded-[12px]" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-accent">Fechado</p>
+                  <p className="truncate font-serif text-[22px] leading-tight">{p.name}{data.request.decidedTime ? ` · ${data.request.decidedTime}` : ''}</p>
+                </div>
+                <Link to={`/lugar/${p.id}`} className="shrink-0 rounded-full bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-ink">Ver</Link>
+              </motion.div>
+            ) : null
+          })()}
 
           <motion.label animate={shake} className={cx('mx-5 mt-6 flex items-center gap-3 rounded-[20px] border bg-surface px-4 py-3 transition-colors', voter.trim() ? 'border-line' : 'border-accent/60')}>
             <span className="text-xs text-mute">Votando como</span>
@@ -195,7 +214,31 @@ export function VotePage() {
             </div>
           </section>
 
-          <p className="mt-5 text-center text-xs text-faint">{total} {total === 1 ? 'voto' : 'votos'} neste aparelho</p>
+          <p className="mt-5 flex items-center justify-center gap-1.5 text-xs text-faint">
+            {live && <Radio size={12} className="text-accent" />}
+            {total} {total === 1 ? 'voto' : 'votos'}{live ? ' · placar ao vivo' : ' neste aparelho'}
+          </p>
+
+          {!decided && (
+            <div className="mx-5 mt-4 grid gap-2">
+              <button onClick={() => { track('suggest_from_vote', { id }); nav(`/s/${id}${location.search}${location.hash}`) }}
+                className="flex items-center gap-3 rounded-[20px] border border-dashed border-white/15 px-4 py-3 text-left transition-colors hover:border-accent/40">
+                <MapPinPlus size={18} className="shrink-0 text-accent" />
+                <span className="flex-1">
+                  <span className="block text-[14px]">Nenhuma te convence?</span>
+                  <span className="block text-[12px] text-mute">Sugere outro lugar: {live ? 'entra na votação na hora' : `vai pro ${data.author.name.split(' ')[0]} aprovar`}</span>
+                </span>
+                <ArrowRight size={16} className="text-mute" />
+              </button>
+              {iVoted && (
+                <a href={`https://wa.me/?text=${encodeURIComponent(`Já votei no rolê. Falta você 👇\n${currentVoteLink()}`)}`} target="_blank" rel="noreferrer"
+                  onClick={() => track('vote_reshared', { id })}
+                  className="flex items-center justify-center gap-2 rounded-full bg-white/[0.05] py-2.5 text-[13px] text-mute transition-colors hover:text-ink">
+                  <Send size={14} />Falta gente votar? Cobra no grupo
+                </a>
+              )}
+            </div>
+          )}
 
           <AskBox
             pedido={data.request.text}
@@ -225,7 +268,7 @@ export function VotePage() {
               </motion.button>
             )}
           </AnimatePresence>
-          {external && (
+          {external && !live && (
             <p className="mx-5 mt-3 flex items-start gap-2 rounded-[16px] bg-white/[0.04] p-3 text-[12px] leading-relaxed text-mute">
               <Info size={14} className="mt-0.5 shrink-0" />
               Versão de teste: seu voto fica salvo neste celular. Conta no grupo em qual você votou — o placar compartilhado chega com a próxima versão.

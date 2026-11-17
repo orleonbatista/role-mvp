@@ -65,7 +65,7 @@ export function useCreateRequest() {
 export function useVote(requestId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (b: { placeId: string; voter: string; kind?: 'place' | 'time' }) => post(`/requests/${requestId}/votes`, b),
+    mutationFn: (b: { placeId: string; voter: string; kind?: 'place' | 'time'; demo?: boolean }) => post<{ synced: boolean }>(`/requests/${requestId}/votes`, b),
     onMutate: async ({ placeId, voter, kind = 'place' }) => {
       // otimista: o placar anima na hora
       await qc.cancelQueries({ queryKey: ['request', requestId] })
@@ -138,7 +138,7 @@ export const exportTestes = () => req<unknown>('/testes/export')
 
 export const searchPlaces = (q: string, rid: string) => req<Ranked[]>(`/search?q=${encodeURIComponent(q)}&rid=${encodeURIComponent(rid)}`)
 export const addSuggestion = (rid: string, b: { placeId: string; by: string; comment: string; hue?: number }) =>
-  post<{ ok: boolean; duplicate: boolean }>(`/requests/${rid}/suggestions`, b)
+  post<{ ok: boolean; duplicate: boolean; synced: boolean }>(`/requests/${rid}/suggestions`, b)
 
 /* ---------- divulgação de eventos ---------- */
 export const groupFromEvent = (placeId: string) => post<{ id: string }>(`/events/${encodeURIComponent(placeId)}/group`, {})
@@ -147,13 +147,17 @@ export type SubmissionDTO = EventSubmission & { fit: EventFit }
 export const useSubmissions = () => useQuery({ queryKey: ['submissions'], queryFn: () => req<SubmissionDTO[]>('/submissions') })
 export function useSubmitEvent() {
   const qc = useQueryClient()
-  return useMutation({ mutationFn: (d: EventDraft) => post<EventSubmission>('/submissions', d), onSuccess: () => qc.invalidateQueries({ queryKey: ['submissions'] }) })
+  return useMutation({ mutationFn: (d: EventDraft) => post<EventSubmission & { synced: boolean }>('/submissions', d), onSuccess: () => qc.invalidateQueries({ queryKey: ['submissions'] }) })
 }
 export const importSubmission = (id: string, draft: unknown) => post<EventSubmission>('/submissions/import', { id, draft })
 export function useReviewSubmission() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: EventSubmission['status'] }) => post<EventSubmission>(`/submissions/${id}/status`, { status }),
+    mutationFn: ({ id, status }: { id: string; status: EventSubmission['status'] }) => post<EventSubmission & { published: boolean }>(`/submissions/${id}/status`, { status }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['submissions'] }); qc.invalidateQueries({ queryKey: ['events'] }) },
   })
 }
+
+/* ---------- backend compartilhado (PC) ---------- */
+export const useSync = () => useQuery({ queryKey: ['sync'], queryFn: () => req<{ online: boolean; admin: boolean }>('/sync'), staleTime: 30_000, refetchInterval: 60_000 })
+export const useGlobalStats = (enabled: boolean) => useQuery({ queryKey: ['testes-global'], queryFn: () => req<import('../mocks/remote').GlobalStats | null>('/testes/global'), enabled, refetchInterval: 15_000 })

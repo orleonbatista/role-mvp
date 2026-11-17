@@ -5,7 +5,7 @@ import { Check, Code2, Send, X } from 'lucide-react'
 import { Button, Cover, Tag, cx } from '../ui/primitives'
 import { useToast } from '../ui/Toast'
 import { ease } from '../ui/motion'
-import { useReviewSubmission, type SubmissionDTO } from '../lib/api'
+import { useReviewSubmission, useSync, type SubmissionDTO } from '../lib/api'
 import { eventWhen, isPast } from '../mocks/extraEvents'
 import { bioUrl, promoteText, promoteUrl } from '../lib/share'
 import { nicheLabel, occasionLabel, priceLabel, timeAgo, vibeLabel } from '../lib/labels'
@@ -22,11 +22,13 @@ export function SubmissionReview({ s, compact }: { s: SubmissionDTO; compact?: b
   const toast = useToast()
   const review = useReviewSubmission()
   const [copied, setCopied] = useState(false)
+  const sync = useSync().data
+  const livePublish = !!(sync?.online && sync.admin)
   const past = isPast(s)
   const decide = (status: 'aprovado' | 'recusado') => {
     review.mutate({ id: s.id, status })
     track('submission_reviewed', { id: s.id, status, matches: s.fit.matches })
-    toast(status === 'aprovado' ? 'Aprovado neste aparelho' : 'Recusado')
+    toast(status === 'aprovado' ? (livePublish ? 'Aprovado e publicado pra todo mundo' : 'Aprovado neste aparelho') : 'Recusado')
   }
   const notifyText = `Seu evento ${s.name} foi aprovado no rolê! 🎉\nEsse é o seu link de divulgação (leva o seu @ e vira votação de grupo):\n${promoteUrl(s.id, s.by.handle)}${s.by.handle ? `\n\nLink pra bio, com todos os seus eventos:\n${bioUrl(s.by.handle)}` : ''}`
   const promoLink = promoteUrl(s.id, s.by.handle)
@@ -68,11 +70,13 @@ export function SubmissionReview({ s, compact }: { s: SubmissionDTO; compact?: b
         </div>
       ) : (
         <div className="mt-3 grid gap-2">
-          <p className="text-[12px] text-mute">Aprovado: já aparece neste aparelho. Pra todo mundo ver, publique no <code className="text-ink/80">eventos.json</code> do repositório.</p>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="soft" icon={copied ? <Check size={15} /> : <Code2 size={15} />} onClick={async () => {
+          {livePublish
+            ? <p className="text-[12px] text-accent">Aprovado e publicado: já aparece no feed de todo mundo.</p>
+            : <p className="text-[12px] text-mute">Aprovado: já aparece neste aparelho. Pra todo mundo ver, ligue o backend com a chave da curadoria, ou publique no <code className="text-ink/80">eventos.json</code>.</p>}
+          <div className={cx('grid gap-2', livePublish ? 'grid-cols-1' : 'grid-cols-2')}>
+            {!livePublish && <Button variant="soft" icon={copied ? <Check size={15} /> : <Code2 size={15} />} onClick={async () => {
               try { await navigator.clipboard.writeText(publishJson(s)); setCopied(true); toast('JSON copiado'); setTimeout(() => setCopied(false), 1800) } catch { toast('Não deu pra copiar') }
-            }}>{copied ? 'Copiado' : 'Copiar JSON'}</Button>
+            }}>{copied ? 'Copiado' : 'Copiar JSON'}</Button>}
             <a href={`https://wa.me/?text=${encodeURIComponent(notifyText)}`} target="_blank" rel="noreferrer" onClick={() => track('submission_notified', { id: s.id })}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#25D366] text-[14px] font-medium text-black active:scale-[0.98]"><Send size={15} />Avisar</a>
           </div>

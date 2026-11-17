@@ -1,5 +1,8 @@
 # rolê. — MVP local
 
+> 📚 Documentação completa (produto, jornadas, arquitetura, operação, métricas, roadmap e modelo de negócio) em [`docs/`](docs/README.md).
+
+
 App mobile-first (PWA) de curadoria de rolês: você descreve o que quer, a "IA" sugere, a comunidade refina, o grupo vota por link e depois você avalia.
 **Tudo roda 100% local e mockado** — sem backend, sem chaves, sem rede.
 
@@ -118,3 +121,11 @@ Publicar pra todo mundo: aprovar (aparece na hora naquele aparelho) → "Copiar 
 ao array em `eventos.json` na raiz do repo. O app lê esse arquivo em tempo de execução
 (`VITE_EVENTS_URL`, via raw.githubusercontent), sem precisar de novo deploy. Eventos com data
 passada somem do feed sozinhos.
+
+## Backend compartilhado (SQLite no PC, mesmo túnel)
+
+O `llm-gateway/server.mjs` também serve `/api/*` (`llm-gateway/api.mjs`, `node:sqlite`, sem dependências).
+Com ele no ar, pedidos, votos (placar ao vivo), sugestões (entram direto na votação), decisão, envio e
+curadoria de eventos (aprovar = publicar) e métricas ficam compartilhados entre aparelhos. Sem ele, o app
+volta sozinho ao modo link (tudo no aparelho). Dados em `llm-gateway/data/role.db`; chave da curadoria em
+`llm-gateway/data/admin-key.txt` (cole em `/testes`). Detalhes em [docs/05-operacao.md](docs/05-operacao.md).

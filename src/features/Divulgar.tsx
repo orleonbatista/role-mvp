@@ -50,7 +50,7 @@ export function DivulgarPage() {
   const [highlights, setHighlights] = useState(['', '', ''])
   const [ticketUrl, setTicketUrl] = useState('')
   const [fit, setFit] = useState<EventFit | null>(null)
-  const [sent, setSent] = useState<{ sub: EventSubmission; link: string } | null>(null)
+  const [sent, setSent] = useState<{ sub: EventSubmission; link: string; synced: boolean } | null>(null)
   const [copied, setCopied] = useState(false)
   useEffect(() => { track('divulgar_viewed') }, [])
 
@@ -80,7 +80,7 @@ export function DivulgarPage() {
     const link = await curadoriaUrl(sub.id, { ...draft, hue: sub.hue } as EventDraft)
     try { localStorage.setItem('role.promoter', `@${by}`) } catch { /* */ }
     track('event_submitted', { id: sub.id, niches, role, matches: fit?.matches })
-    setSent({ sub, link })
+    setSent({ sub, link, synced: sub.synced })
   }
 
   const footer = (
@@ -179,17 +179,27 @@ export function DivulgarPage() {
       </div>
 
       <Sheet open={!!sent} onClose={() => setSent(null)}>
-        <p className="flex items-center gap-2 font-serif text-[28px] leading-none"><Megaphone size={20} className="text-accent" />Manda pra curadoria</p>
-        <p className="mt-2 text-sm text-mute">Seu evento está pronto. Envie o link pra curadoria do rolê: quem tocar nele vê o evento na fila e aprova ou não. Aprovado, ele entra no feed e você recebe o link de divulgação.</p>
+        {sent?.synced ? (
+          <>
+            <p className="flex items-center gap-2 font-serif text-[28px] leading-none"><Check size={22} className="text-accent" />Na fila da curadoria</p>
+            <p className="mt-2 text-sm text-mute">Recebemos seu evento. Assim que for aprovado ele entra no feed e o status muda aqui em "Seus envios". Se quiser apressar, mande o link pra curadoria.</p>
+          </>
+        ) : (
+          <>
+            <p className="flex items-center gap-2 font-serif text-[28px] leading-none"><Megaphone size={20} className="text-accent" />Manda pra curadoria</p>
+            <p className="mt-2 text-sm text-mute">Seu evento está pronto. Envie o link pra curadoria do rolê: quem tocar nele vê o evento na fila e aprova ou não. Aprovado, ele entra no feed e você recebe o link de divulgação.</p>
+          </>
+        )}
         <div className="mt-5 grid gap-2">
+          {sent?.synced && <Button size="lg" className="w-full" onClick={() => setSent(null)}>Fechar</Button>}
           <a href={sent ? `https://wa.me/?text=${encodeURIComponent(`Oi! Quero divulgar meu evento no rolê: ${sent.sub.name} (${eventWhen(sent.sub)}, ${sent.sub.hood}).\n👉 Revisar: ${sent.link}`)}` : undefined}
             target="_blank" rel="noreferrer" onClick={() => track('event_sent_to_curation', { via: 'whatsapp' })}
-            className="inline-flex h-14 items-center justify-center gap-2 rounded-full bg-[#25D366] text-[15px] font-medium text-black active:scale-[0.98]"><Send size={16} />Enviar no WhatsApp</a>
-          <Button size="lg" variant="soft" icon={copied ? <Check size={16} /> : <Copy size={16} />} onClick={async () => {
+            className={cx('inline-flex items-center justify-center gap-2 rounded-full font-medium active:scale-[0.98]', sent?.synced ? 'h-11 bg-white/[0.06] text-[14px] text-ink' : 'h-14 bg-[#25D366] text-[15px] text-black')}><Send size={16} />{sent?.synced ? 'Avisar a curadoria (opcional)' : 'Enviar no WhatsApp'}</a>
+          {!sent?.synced && <Button size="lg" variant="soft" icon={copied ? <Check size={16} /> : <Copy size={16} />} onClick={async () => {
             if (!sent) return
             try { await navigator.clipboard.writeText(sent.link); setCopied(true); toast('Link copiado'); setTimeout(() => setCopied(false), 1800) } catch { toast('Não deu pra copiar') }
             track('event_sent_to_curation', { via: 'copy' })
-          }}>{copied ? 'Copiado' : 'Copiar link (pra mandar no direct)'}</Button>
+          }}>{copied ? 'Copiado' : 'Copiar link (pra mandar no direct)'}</Button>}
         </div>
       </Sheet>
     </Page>

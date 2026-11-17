@@ -7,7 +7,7 @@ import { Avatar, Button, Cover, EmptyState, Page, Skeleton, Tag, cx } from '../u
 import { Sheet } from '../ui/Sheet'
 import { ease } from '../ui/motion'
 import { placeIcon } from '../ui/placeIcon'
-import { importRequest, searchPlaces, useProfile, useRequest } from '../lib/api'
+import { addSuggestion, importRequest, searchPlaces, useProfile, useRequest } from '../lib/api'
 import { currentVoteLink, readPayload, returnUrl } from '../lib/share'
 import { KIND_LABEL, nicheLabel, occasionLabel, priceLabel } from '../lib/labels'
 import { track } from '../lib/track'
@@ -41,6 +41,8 @@ export function SuggestPage() {
   const [name, setName] = useState(() => localStorage.getItem('role.voter') ?? '')
   const [comment, setComment] = useState('')
   const [sent, setSent] = useState<string | null>(null)
+  const [live, setLive] = useState(false)
+  const [sending, setSending] = useState(false)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => { if (!name && me?.name) setName(me.name.split(' ')[0]) }, [me, name])
@@ -56,14 +58,23 @@ export function SuggestPage() {
   const c = data?.request.criteria
   const inPoll = new Set(data?.options.map((o) => o.id) ?? [])
 
-  function send() {
-    if (!picked || !name.trim() || !data) return
+  async function send() {
+    if (!picked || !name.trim() || !data || sending) return
+    setSending(true)
     localStorage.setItem('role.voter', name.trim())
-    const link = returnUrl(currentVoteLink(), picked.place.id, name.trim(), comment.trim(), hueOf(name.trim()))
-    setSent(link)
-    track('suggestion_sent', { id, placeId: picked.place.id, match: picked.match })
+    // entra na votação deste aparelho e, com o backend no ar, na de todo mundo
+    const r = await addSuggestion(id, { placeId: picked.place.id, by: name.trim(), comment: comment.trim(), hue: hueOf(name.trim()) }).catch(() => null)
+    await qc.invalidateQueries({ queryKey: ['request', id] })
+    setLive(!!r?.synced)
+    setSent(r?.synced ? currentVoteLink() : returnUrl(currentVoteLink(), picked.place.id, name.trim(), comment.trim(), hueOf(name.trim())))
+    setSending(false)
+    track('suggestion_sent', { id, placeId: picked.place.id, match: picked.match, live: !!r?.synced })
   }
-  const msg = picked && sent ? `Sugeri ${picked.place.name} pro teu rolê${comment.trim() ? `: “${comment.trim()}”` : ''} 👉 Toca pra adicionar na votação:\n${sent}` : ''
+  const msg = picked && sent
+    ? live
+      ? `Sugeri ${picked.place.name} pro rolê${comment.trim() ? `: “${comment.trim()}”` : ''}. Já tá na votação 👇\n${sent}`
+      : `Sugeri ${picked.place.name} pro teu rolê${comment.trim() ? `: “${comment.trim()}”` : ''} 👉 Toca pra adicionar na votação:\n${sent}`
+    : ''
 
   return (
     <Page footer={picked && data ? (
@@ -82,7 +93,7 @@ export function SuggestPage() {
           <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Por quê? (opcional)" aria-label="Comentário" maxLength={140}
             className="h-11 min-w-0 flex-1 rounded-[14px] border border-line bg-bg px-3 text-[14px] outline-none placeholder:text-faint" />
         </div>
-        <Button size="lg" className="w-full" icon={<Send size={16} />} disabled={!name.trim()} onClick={send}>Enviar sugestão pra {author}</Button>
+        <Button size="lg" className="w-full" icon={<Send size={16} />} disabled={!name.trim() || sending} onClick={send}>{sending ? "Enviando…" : `Sugerir pro rolê do ${author}`}</Button>
       </div>
     ) : null}>
       <div className="flex items-center justify-between px-5 pt-14">
@@ -149,12 +160,22 @@ export function SuggestPage() {
       )}
 
       <Sheet open={!!sent} onClose={() => setSent(null)}>
-        <p className="font-serif text-[28px] leading-none">Manda pro {author}</p>
-        <p className="mt-2 text-sm text-mute">Quando {author} tocar no link, {picked?.place.name} entra na votação com o seu nome.</p>
+        {live ? (
+          <>
+            <p className="font-serif text-[28px] leading-none">Tá na votação ✓</p>
+            <p className="mt-2 text-sm text-mute">{picked?.place.name} já aparece pra todo mundo com o seu nome. Avisa o grupo pra votarem.</p>
+            <Button size="lg" className="mt-5 w-full" onClick={() => nav(`/r/${id}${location.search.replace(/[?&]to=s/, '')}${location.hash}`)}>Ver a votação</Button>
+          </>
+        ) : (
+          <>
+            <p className="font-serif text-[28px] leading-none">Manda pro {author}</p>
+            <p className="mt-2 text-sm text-mute">Quando {author} tocar no link, {picked?.place.name} entra na votação com o seu nome.</p>
+          </>
+        )}
         <div className="mt-5 grid gap-2">
           <a href={`https://wa.me/?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" onClick={() => track('suggestion_shared', { via: 'whatsapp' })}
             className="inline-flex h-14 items-center justify-center gap-2 rounded-full bg-[#25d366] text-[15px] font-medium text-[#062b14] transition-transform active:scale-[0.98]">
-            <Send size={16} /> Enviar no WhatsApp
+            <Send size={16} /> {live ? 'Avisar no grupo' : 'Enviar no WhatsApp'}
           </a>
           <Button size="lg" variant="soft" icon={copied ? <Check size={16} /> : <Copy size={16} />}
             onClick={async () => { try { await navigator.clipboard.writeText(msg) } catch { /* sem clipboard */ } setCopied(true); track('suggestion_shared', { via: 'copy' }); setTimeout(() => setCopied(false), 2000) }}>

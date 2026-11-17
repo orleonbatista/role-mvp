@@ -47,8 +47,14 @@ async function fetchPublished(): Promise<EventSubmission[]> {
 
 /** roda no boot, antes de renderizar: publicados (global) + aprovados aqui (local) */
 export async function loadExtraEvents() {
-  const [published, local] = await Promise.all([fetchPublished(), db.submissions.where('status').equals('aprovado').toArray().catch(() => [])])
-  for (const s of [...published, ...local]) registerPlace(toPlace({ ...s, status: 'aprovado' }))
+  // 3 fontes: eventos.json (manual), backend do PC (aprovados na curadoria) e aprovações deste aparelho
+  const [published, fromApi, local] = await Promise.all([
+    fetchPublished(),
+    import('./remote').then((r) => r.publishedEvents()).catch(() => null),
+    db.submissions.where('status').equals('aprovado').toArray().catch(() => []),
+  ])
+  const api = (fromApi ?? []).map((e) => sanitizeDraft(e) && { ...sanitizeDraft(e)!, id: e.id, hue: Number(e.hue) || 200, at: e.at ?? 0, origin: 'recebido' as const, status: 'aprovado' as const })
+  for (const s of [...published, ...api.filter(Boolean) as EventSubmission[], ...local]) registerPlace(toPlace({ ...s, status: 'aprovado' }))
 }
 
 export function approveLocally(s: EventSubmission) {

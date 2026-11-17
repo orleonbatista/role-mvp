@@ -1,10 +1,14 @@
 import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
-import { Cpu, Download, MessageSquareHeart, Store } from 'lucide-react'
+import { Cpu, Database, Download, MessageSquareHeart, Store } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { checkAdmin, getAdminKey, setAdminKey } from '../mocks/remote'
+import { useToast } from '../ui/Toast'
+import { cx } from '../ui/primitives'
 import { getLLMOverride, llmStatus, setLLMOverride } from '../mocks/llm'
 import { AnimatedNumber, Button, Page, SectionTitle, Skeleton, Tag, TopBar } from '../ui/primitives'
 import { ease } from '../ui/motion'
-import { exportTestes, useSubmissions, useTestes } from '../lib/api'
+import { exportTestes, useGlobalStats, useSubmissions, useSync, useTestes, type TestesData } from '../lib/api'
 import { SubmissionReview } from './SubmissionReview'
 import { Link } from 'react-router'
 import { FUNNEL } from '../lib/track'
@@ -38,8 +42,50 @@ function LLMCard() {
   )
 }
 
+/** backend do PC: status + chave da curadoria (habilita fila global, publicar e métricas de todos) */
+function BackendCard() {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const sync = useSync()
+  const [key, setKey] = useState(getAdminKey())
+  async function save() {
+    setAdminKey(key.trim() || null)
+    if (key.trim() && !(await checkAdmin())) { toast('Chave não confere'); setAdminKey(null) }
+    else toast(key.trim() ? 'Curadoria liberada neste aparelho' : 'Chave removida')
+    for (const k of ['sync', 'submissions', 'testes-global']) qc.invalidateQueries({ queryKey: [k] })
+  }
+  const st = sync.data
+  return (
+    <section className="mt-7">
+      <SectionTitle>Backend (dados compartilhados)</SectionTitle>
+      <div className="mx-5 rounded-[20px] border border-line p-4">
+        <p className="flex items-center gap-2 text-[14px]">
+          <Database size={15} className="text-mute" />
+          <span className={`size-2 rounded-full ${!st ? 'bg-faint animate-pulse' : st.online ? 'bg-accent' : 'bg-amber-400'}`} />
+          {!st ? 'verificando…' : st.online ? 'No ar: votos, sugestões e curadoria sincronizam entre aparelhos' : 'Fora do ar: cada aparelho guarda o seu (modo link)'}
+        </p>
+        <div className="mt-3 flex gap-2">
+          <input value={key} onChange={(e) => setKey(e.target.value)} type="password" autoComplete="off" placeholder="Chave da curadoria (só pra quem cura)" aria-label="Chave da curadoria"
+            className="h-10 min-w-0 flex-1 rounded-[12px] border border-line bg-bg px-3 text-xs outline-none placeholder:text-faint focus:border-accent/50" />
+          <Button variant="soft" className="h-10 px-3 text-xs" onClick={save}>Salvar</Button>
+        </div>
+        {st?.admin && <p className="mt-2 text-[12px] text-accent">Curadoria ativa neste aparelho: aprovar publica pra todo mundo.</p>}
+      </div>
+    </section>
+  )
+}
+
 export function TestesPage() {
-  const { data } = useTestes()
+  const local = useTestes().data
+  const sync = useSync().data
+  const canGlobal = !!(sync?.online && sync.admin)
+  const global = useGlobalStats(canGlobal).data
+  const [scope, setScope] = useState<'todos' | 'aqui'>('todos')
+  const data: TestesData | undefined = local && (scope === 'todos' && canGlobal && global
+    ? { ...local, counts: global.counts, total: global.total, firstAt: global.firstAt, lastAt: global.lastAt, bySrc: global.bySrc as TestesData['bySrc'],
+        feedback: global.feedback, leads: global.leads.map((l) => ({ ...l, id: `${l.at}`, placeName: l.placeName ?? l.placeId })),
+        recent: global.recent.map((e) => ({ ...e, id: `${e.device}-${e.at}` })) }
+    : local)
   const subs = useSubmissions()
   const queue = [...(subs.data ?? [])].sort((a, b) => Number(b.status === 'pendente') - Number(a.status === 'pendente') || b.at - a.at)
   useEffect(() => { if (location.hash === '#fila' && subs.data) setTimeout(() => document.getElementById('fila')?.scrollIntoView({ behavior: 'smooth' }), 300) }, [subs.data])
@@ -61,11 +107,22 @@ export function TestesPage() {
   return (
     <Page>
       <TopBar title="Painel de testes" right={<Button variant="soft" className="h-9 px-3 text-xs" icon={<Download size={13} />} onClick={download}>Exportar</Button>} />
+      {canGlobal && global && (
+        <div className="mx-5 mb-3 grid grid-cols-2 rounded-full bg-white/[0.05] p-1 text-[13px]">
+          {(['todos', 'aqui'] as const).map((k) => (
+            <button key={k} onClick={() => setScope(k)} className={cx('rounded-full py-2 transition-colors', scope === k ? 'bg-accent text-accent-ink' : 'text-mute')}>
+              {k === 'todos' ? `Todos (${global.devices} aparelhos)` : 'Este aparelho'}
+            </button>
+          ))}
+        </div>
+      )}
       <p className="px-5 text-sm text-mute">
-        Dados deste aparelho{data.firstAt ? ` desde ${new Date(data.firstAt).toLocaleDateString('pt-BR')}` : ''} · {data.total} eventos.
-        Exporte o JSON de cada testador para consolidar.
+        {scope === 'todos' && canGlobal && global
+          ? <>Todos os aparelhos · {data.total} eventos · {global.totals.requests} pedidos, {global.totals.votes} votos, {global.totals.suggestions} sugestões, {global.totals.decided} fechados.</>
+          : <>Dados deste aparelho{data.firstAt ? ` desde ${new Date(data.firstAt).toLocaleDateString('pt-BR')}` : ''} · {data.total} eventos.{!canGlobal && ' Com o backend no ar e a chave da curadoria, aqui aparecem todos os aparelhos.'}</>}
       </p>
 
+      <BackendCard />
       <LLMCard />
 
       <section className="mt-7">

@@ -298,7 +298,7 @@ function ShareSheet({ open, onClose, data, link, onStory, onStorySugira }: { ope
 
       <div className="mt-7 border-t border-line pt-5">
         <p className="font-serif text-[22px] leading-none">Pedir sugestões</p>
-        <p className="mt-1.5 text-[13px] text-mute">Quem recebe indica um lugar, vê se encaixa no pedido e manda de volta pra entrar na votação.</p>
+        <p className="mt-1.5 text-[13px] text-mute">Quem recebe indica um lugar e vê se encaixa no pedido. A sugestão entra na votação (na hora, quando o backend está no ar).</p>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <a
             href={link ? `https://wa.me/?text=${encodeURIComponent(`Me indica um lugar? “${data.request.text}”\n👉 Sugere aqui:\n${withSource(suggestUrl(link), 'wa')}`)}` : undefined}

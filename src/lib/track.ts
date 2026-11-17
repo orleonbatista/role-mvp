@@ -1,3 +1,4 @@
+import { enqueueEvent } from '../mocks/remote'
 import { db } from '../db/db'
 
 /** Medição local de testes: tudo fica no IndexedDB do aparelho e pode ser exportado em /testes.
@@ -22,6 +23,7 @@ export function track(name: string, props?: Record<string, unknown>) {
     props: { ...props, src: firstSource() },
   }
   db.events.add(ev).catch(() => {})
+  enqueueEvent(ev)
   if (import.meta.env.DEV) console.debug('[track]', name, props ?? '')
 }
 

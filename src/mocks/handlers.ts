@@ -11,6 +11,7 @@ import { placeById, places } from './seeds/places'
 import { KIND_LABEL, nicheLabel, occasionLabel } from '../lib/labels'
 import { DAY_SHORT } from '../lib/hours'
 import { approveLocally, fitOf, isPast, sanitizeDraft } from './extraEvents'
+import * as remote from './remote'
 
 const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`
 const latency = () => delay(160 + Math.random() * 200)
@@ -77,6 +78,11 @@ function tallyOf(votes: Vote[], ids: string[]): VoteTally[] {
     const vs = votes.filter((v) => v.placeId === placeId)
     return { placeId, count: vs.length, voters: vs.map((v) => v.voter) }
   })
+}
+
+async function authorInfo() {
+  const p = await getProfile()
+  return { name: p?.name ?? 'Alguém', hue: p?.hue ?? 200 }
 }
 
 async function buildDetail(id: string): Promise<RequestDetail | null> {
@@ -160,6 +166,7 @@ export const handlers = [
       times: day !== undefined ? [`${DAY_SHORT[day]} ${ev.periods[0].open % 24}h`] : timeOptions(criteria),
     }
     await db.requests.add(req)
+    void authorInfo().then((a) => remote.pushRequest(req, a))
     await delay(400)
     return HttpResponse.json({ id: req.id })
   }),
@@ -172,6 +179,7 @@ export const handlers = [
   }),
 
   http.get('/api/submissions', async () => {
+    await Promise.all([remote.pullMySubmissions(), remote.pullQueue()])
     const all = await db.submissions.orderBy('at').reverse().toArray()
     const reqs = await db.requests.toArray()
     return HttpResponse.json(all.map((s) => ({ ...s, fit: fitOf(s, reqs) })))
@@ -183,8 +191,9 @@ export const handlers = [
     const slug = draft.name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24)
     const sub: EventSubmission = { ...draft, id: `ev-u-${slug}-${Math.random().toString(36).slice(2, 6)}`, hue: Math.floor(Math.random() * 360), at: Date.now(), status: 'pendente', origin: 'meu' }
     await db.submissions.add(sub)
-    await delay(500)
-    return HttpResponse.json(sub)
+    const synced = await remote.pushSubmission(sub)
+    await delay(300)
+    return HttpResponse.json({ ...sub, synced })
   }),
 
   /** chegou pelo link da curadoria: entra na fila deste aparelho */
@@ -203,7 +212,14 @@ export const handlers = [
     if (!sub || !['aprovado', 'recusado', 'pendente'].includes(status)) return notFound()
     await db.submissions.update(sub.id, { status, reviewedAt: Date.now() })
     if (status === 'aprovado') approveLocally({ ...sub, status })
-    return HttpResponse.json({ ...sub, status })
+    // com a chave da curadoria, aprovar = publicar pra todo mundo (sem editar eventos.json)
+    let published = false
+    if (remote.getAdminKey()) {
+      // envio que chegou só pelo link de curadoria: sobe antes de mudar o status
+      await remote.pushSubmission(sub)
+      published = await remote.pushReview(sub.id, status)
+    }
+    return HttpResponse.json({ ...sub, status, published })
   }),
 
   http.get('/api/places/:id', async ({ params }) => {
@@ -261,6 +277,7 @@ export const handlers = [
       .filter((x, i, arr) => arr.indexOf(x) === i).slice(0, 4)
     await db.requests.add(req)
     await db.answers.bulkAdd(answers)
+    void authorInfo().then((a) => remote.pushRequest(req, a))
     await delay(600)
     return HttpResponse.json({ id: req.id })
   }),
@@ -304,28 +321,38 @@ export const handlers = [
       const opts = req.optionIds ?? []
       if (!opts.includes(placeId)) await db.requests.update(id, { optionIds: [...opts, placeId].slice(-6) })
     }
-    return HttpResponse.json({ ok: true, duplicate: !!dup })
+    // com backend no ar a sugestão já entra na votação de todo mundo (sem link de retorno)
+    const synced = await remote.pushSuggestion(id, { placeId, by, comment, hue })
+    return HttpResponse.json({ ok: true, duplicate: !!dup, synced })
   }),
 
   http.get('/api/requests/:id', async ({ params }) => {
-    const detail = await buildDetail(params.id as string)
+    const id = params.id as string
+    const local = await db.requests.get(id)
+    // pedido meu criado antes do backend existir (ou com ele fora do ar): publica agora
+    if (local?.authorId === 'me' && !remote.wasPushed(id)) await remote.pushRequest(local, await authorInfo())
+    await remote.syncRequest(id)
+    const detail = await buildDetail(id)
     await latency()
     return detail ? HttpResponse.json(detail) : notFound()
   }),
 
   http.post('/api/requests/:id/votes', async ({ params, request }) => {
-    const { placeId, voter, kind = 'place' } = (await request.json()) as { placeId: string; voter: string; kind?: 'place' | 'time' }
+    const { placeId, voter, kind = 'place', demo } = (await request.json()) as { placeId: string; voter: string; kind?: 'place' | 'time'; demo?: boolean }
     const requestId = params.id as string
     const prev = await db.votes.where('requestId').equals(requestId).filter((v) => v.voter === voter && (v.kind ?? 'place') === kind).toArray()
     await db.votes.bulkDelete(prev.map((v) => v.id))
     const vote: Vote = { id: uid('v'), requestId, kind, placeId, voter, createdAt: Date.now() }
     await db.votes.add(vote)
-    return HttpResponse.json(vote)
+    // amigos fictícios do modo demo nunca vão pro placar compartilhado
+    const synced = demo ? false : await remote.pushVote(requestId, kind, placeId, voter)
+    return HttpResponse.json({ ...vote, synced })
   }),
 
   http.post('/api/requests/:id/decide', async ({ params, request }) => {
     const { placeId, time } = (await request.json()) as { placeId: string; time?: string }
     await db.requests.update(params.id as string, { status: 'decidido', decidedPlaceId: placeId, decidedTime: time })
+    void remote.pushDecision(params.id as string, placeId, time)
     await delay(500)
     return HttpResponse.json({ ok: true })
   }),
@@ -368,6 +395,7 @@ export const handlers = [
     const body = (await request.json()) as Omit<Lead, 'id' | 'at'>
     const lead: Lead = { ...body, id: uid('l'), at: Date.now() }
     await db.leads.add(lead)
+    void remote.pushLead({ ...lead, placeName: placeById.get(lead.placeId)?.name })
     await delay(700)
     return HttpResponse.json(lead)
   }),
@@ -376,8 +404,15 @@ export const handlers = [
     const body = (await request.json()) as Omit<Feedback, 'id' | 'at'>
     const fb: Feedback = { ...body, id: uid('f'), at: Date.now() }
     await db.feedback.add(fb)
+    void remote.pushFeedback(fb)
     return HttpResponse.json(fb)
   }),
+
+  http.get('/api/testes/global', async () => {
+    const g = remote.getAdminKey() ? await remote.globalStats() : null
+    return HttpResponse.json(g ? { ...g, leads: g.leads.map((l) => ({ ...l, placeName: l.placeName ?? placeById.get(l.placeId)?.name ?? l.placeId })) } : null)
+  }),
+  http.get('/api/sync', async () => HttpResponse.json({ online: await remote.isOnline(), admin: !!remote.getAdminKey() })),
 
   http.get('/api/testes', async () => {
     const [events, feedback, leads, mine] = await Promise.all([

@@ -228,7 +228,7 @@ function LeadSheet({ open, onClose, place, defaultName, onDone }: { open: boolea
       <Button size="lg" className="mt-4 w-full" disabled={!sel || !name.trim() || create.isPending} onClick={submit}>
         {create.isPending ? 'Enviando…' : 'Enviar pedido de reserva'}
       </Button>
-      <p className="mt-2 text-center text-[11px] text-faint">Versão de teste: o pedido fica salvo só neste aparelho.</p>
+      <p className="mt-2 text-center text-[11px] text-faint">Versão de teste: ainda não reservamos de verdade. Seu pedido ajuda a medir o interesse.</p>
     </Sheet>
   )
 }

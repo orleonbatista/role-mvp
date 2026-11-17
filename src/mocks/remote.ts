@@ -1,0 +1,209 @@
+import type { EventDraft, EventSubmission, Feedback, Lead, RoleRequest, TrackEvent } from '../lib/types'
+import { db } from '../db/db'
+import { gatewayConfig } from './llm'
+import { placeById } from './seeds/places'
+
+/* Sincronização com o backend do PC (llm-gateway/api.mjs, exposto no mesmo túnel do LLM).
+   Regra: o app NUNCA depende dele. Toda escrita vai primeiro pro IndexedDB local; depois, se o backend
+   responder, é espelhada lá. Toda leitura de pedido puxa o estado compartilhado (votos, sugestões, decisão)
+   e mescla no local. Backend fora do ar → modo link (payload no #d=, como antes). */
+
+const DEVICE_KEY = 'role.device'
+const ADMIN_KEY = 'role.adminKey'
+const API_URL = import.meta.env.VITE_API_URL as string | undefined
+
+export function deviceId() {
+  try {
+    let d = localStorage.getItem(DEVICE_KEY)
+    if (!d) { d = `d-${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`; localStorage.setItem(DEVICE_KEY, d) }
+    return d
+  } catch { return 'd-anonimo00' }
+}
+export const getAdminKey = () => { try { return localStorage.getItem(ADMIN_KEY) ?? '' } catch { return '' } }
+export const setAdminKey = (k: string | null) => { try { k ? localStorage.setItem(ADMIN_KEY, k) : localStorage.removeItem(ADMIN_KEY) } catch { /* */ } }
+
+let health: { at: number; base: string | null } | null = null
+let downUntil = 0
+
+/** URL do backend se ele estiver no ar (cache de 60s; 30s de pausa depois de uma falha) */
+export async function apiBase(force = false): Promise<string | null> {
+  if (Date.now() < downUntil && !force) return null
+  if (!force && health && Date.now() - health.at < 60_000) return health.base
+  const cfg = API_URL ? { enabled: true, url: API_URL } : await gatewayConfig()
+  const base = cfg?.enabled && cfg.url ? cfg.url.replace(/\/$/, '') : null
+  if (!base) { health = { at: Date.now(), base: null }; return null }
+  try {
+    const r = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(3500) })
+    const ok = r.ok && (await r.json()).db === true
+    health = { at: Date.now(), base: ok ? base : null }
+    if (!ok) downUntil = Date.now() + 30_000
+  } catch {
+    health = { at: Date.now(), base: null }
+    downUntil = Date.now() + 30_000
+  }
+  return health.base
+}
+export const isOnline = async () => !!(await apiBase())
+
+async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opts: { admin?: boolean; timeout?: number } = {}): Promise<T | null> {
+  const base = await apiBase()
+  if (!base) return null
+  try {
+    const r = await fetch(base + path, {
+      method,
+      headers: {
+        'X-Device': deviceId(),
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(opts.admin ? { 'X-Admin-Key': getAdminKey() } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(opts.timeout ?? 4000),
+      keepalive: method === 'POST',
+    })
+    if (!r.ok) return null
+    return (await r.json()) as T
+  } catch {
+    downUntil = Date.now() + 30_000
+    health = { at: Date.now(), base: null }
+    return null
+  }
+}
+
+/* ---------- pedidos, votos, sugestões, decisão ---------- */
+interface RemoteState {
+  request: { id: string; text: string; criteria: RoleRequest['criteria']; optionIds: string[]; times: string[]; author: { name: string; hue: number }; createdAt: number; eventId?: string }
+  authorDevice: string
+  decision: { placeId: string; time?: string; at: number } | null
+  votes: { device: string; kind: 'place' | 'time'; value: string; voter: string; at: number }[]
+  suggestions: { id: string; placeId: string; byName: string; comment: string; hue: number; device: string; at: number }[]
+}
+
+const pushed = new Set<string>()
+export async function pushRequest(r: RoleRequest, author: { name: string; hue: number }) {
+  const ok = await call('POST', '/api/requests', {
+    id: r.id, text: r.text, criteria: r.criteria, optionIds: r.optionIds ?? [], times: r.times ?? [], author, createdAt: r.createdAt, eventId: r.eventId,
+  })
+  if (ok) pushed.add(r.id)
+  return !!ok
+}
+export const wasPushed = (id: string) => pushed.has(id)
+
+/** puxa o estado compartilhado e mescla no IndexedDB. Devolve true se o backend respondeu. */
+export async function syncRequest(id: string): Promise<boolean> {
+  const s = await call<RemoteState>('GET', `/api/requests/${encodeURIComponent(id)}`, undefined, { timeout: 2500 })
+  if (!s) return false
+  const me = deviceId()
+  const mine = s.authorDevice === me
+  const optionIds = s.request.optionIds.filter((x) => placeById.has(x))
+  const local = await db.requests.get(id)
+  if (!local) {
+    await db.requests.add({
+      id, authorId: mine ? 'me' : `ext-${id}`, text: s.request.text, criteria: s.request.criteria, createdAt: s.request.createdAt,
+      status: 'aberto', optionIds, times: s.request.times, eventId: s.request.eventId, ...(mine ? {} : { externalAuthor: s.request.author }),
+    })
+  } else if (optionIds.length && optionIds.join() !== (local.optionIds ?? []).join()) {
+    await db.requests.update(id, { optionIds })
+  }
+  if (s.decision) {
+    const cur = await db.requests.get(id)
+    if (cur && (cur.status !== 'decidido' || cur.decidedPlaceId !== s.decision.placeId || cur.decidedTime !== s.decision.time)) {
+      await db.requests.update(id, { status: 'decidido', decidedPlaceId: s.decision.placeId, decidedTime: s.decision.time })
+    }
+  }
+  // votos de OUTROS aparelhos (os meus já estão no local); id estável = um voto por aparelho e tipo
+  const remoteVotes = s.votes.filter((v) => v.device !== me)
+  if (remoteVotes.length) {
+    await db.votes.bulkPut(remoteVotes.map((v) => ({ id: `rv-${v.device}-${v.kind}-${id}`, requestId: id, kind: v.kind, placeId: v.value, voter: v.voter, createdAt: v.at })))
+  }
+  // sugestões que chegaram por qualquer aparelho viram respostas "sugestão pelo link"
+  if (s.suggestions.length) {
+    const existing = await db.answers.where('requestId').equals(id).toArray()
+    const have = new Set(existing.filter((a) => a.kind === 'sugestao').map((a) => `${a.placeId}|${a.byName}`))
+    const fresh = s.suggestions.filter((x) => placeById.has(x.placeId) && !have.has(`${x.placeId}|${x.byName}`) && !existing.some((a) => a.id === x.id))
+    if (fresh.length) {
+      await db.answers.bulkAdd(fresh.map((x) => ({
+        id: x.id, requestId: id, userId: `ext-${x.byName}`, placeId: x.placeId, comment: x.comment, helpful: 0,
+        createdAt: x.at, visibleAt: x.at, kind: 'sugestao' as const, byName: x.byName, byHue: x.hue,
+      })))
+    }
+  }
+  return true
+}
+
+export const pushVote = (rid: string, kind: 'place' | 'time', value: string, voter: string) =>
+  call('POST', `/api/requests/${encodeURIComponent(rid)}/votes`, { kind, value, voter }).then(Boolean)
+export const pushSuggestion = (rid: string, b: { placeId: string; by: string; comment: string; hue?: number }) =>
+  call('POST', `/api/requests/${encodeURIComponent(rid)}/suggestions`, b).then(Boolean)
+export const pushDecision = (rid: string, placeId: string, time?: string) =>
+  call('POST', `/api/requests/${encodeURIComponent(rid)}/decide`, { placeId, time }).then(Boolean)
+
+/* ---------- eventos enviados + curadoria ---------- */
+export const pushSubmission = (s: EventSubmission) =>
+  call('POST', '/api/submissions', { id: s.id, draft: { ...stripLocal(s) } }).then(Boolean)
+const stripLocal = (s: EventSubmission): EventDraft & { hue: number } => {
+  const { id: _i, status: _s, origin: _o, at: _a, reviewedAt: _r, ...draft } = s
+  return draft
+}
+
+/** status dos MEUS envios (quem enviou vê "aprovado" sem precisar de mensagem) */
+export async function pullMySubmissions() {
+  const list = await call<{ id: string; status: EventSubmission['status']; reviewed_at?: number }[]>('GET', '/api/submissions/mine')
+  if (!list) return
+  for (const r of list) {
+    const local = await db.submissions.get(r.id)
+    if (local && local.status !== r.status) await db.submissions.update(r.id, { status: r.status, reviewedAt: r.reviewed_at })
+  }
+}
+
+/** fila da curadoria (precisa da chave): espelha no local como 'recebido' */
+export async function pullQueue(): Promise<boolean> {
+  if (!getAdminKey()) return false
+  const list = await call<(EventDraft & { id: string; hue: number; status: EventSubmission['status']; at: number; reviewedAt?: number })[]>('GET', '/api/submissions', undefined, { admin: true })
+  if (!list) return false
+  for (const r of list) {
+    const local = await db.submissions.get(r.id)
+    if (!local) await db.submissions.add({ ...r, origin: 'recebido' })
+    else if (local.status !== r.status) await db.submissions.update(r.id, { status: r.status, reviewedAt: r.reviewedAt })
+  }
+  return true
+}
+export const pushReview = (id: string, status: EventSubmission['status']) =>
+  call('POST', `/api/submissions/${encodeURIComponent(id)}/status`, { status }, { admin: true }).then(Boolean)
+export const checkAdmin = async () => !!(await call('GET', '/api/admin/check', undefined, { admin: true }))
+export const publishedEvents = () => call<(EventDraft & { id: string; hue: number; at: number })[]>('GET', '/api/events', undefined, { timeout: 3000 })
+
+/* ---------- métricas, feedback, leads ---------- */
+let queue: TrackEvent[] = []
+let timer: ReturnType<typeof setTimeout> | null = null
+export function enqueueEvent(e: TrackEvent) {
+  queue.push(e)
+  if (queue.length > 200) queue = queue.slice(-200)
+  if (!timer) timer = setTimeout(flushEvents, 4000)
+}
+export async function flushEvents() {
+  timer = null
+  if (!queue.length) return
+  const batch = queue.splice(0, 60)
+  const ok = await call('POST', '/api/track', { events: batch })
+  if (!ok) queue.unshift(...batch) // tenta de novo no próximo lote
+  else if (queue.length) timer = setTimeout(flushEvents, 500)
+}
+if (typeof window !== 'undefined') {
+  addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void flushEvents() })
+}
+export const pushFeedback = (f: Feedback) => call('POST', '/api/feedback', f)
+export const pushLead = (l: Lead & { placeName?: string }) => call('POST', '/api/leads', l)
+export const globalStats = () => call<GlobalStats>('GET', '/api/stats', undefined, { admin: true, timeout: 6000 })
+
+export interface GlobalStats {
+  counts: Record<string, number>
+  total: number
+  devices: number
+  bySrc: Record<string, Record<string, number>>
+  firstAt?: number
+  lastAt?: number
+  recent: { device: string; name: string; path: string; props: Record<string, unknown>; at: number }[]
+  feedback: (Feedback & { at: number })[]
+  leads: (Lead & { placeName?: string; at: number })[]
+  totals: { requests: number; votes: number; suggestions: number; decided: number }
+}

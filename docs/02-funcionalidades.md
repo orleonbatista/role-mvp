@@ -1,0 +1,67 @@
+# 02 · Funcionalidades
+
+Inventário do MVP (nov/2026). Entre parênteses, a rota da tela.
+
+## Entrada e perfil
+- **Onboarding** (`/onboarding`): nome, estilos favoritos (jazz, eletrônica, boteco, listening…) e vibe.
+  Monta o feed "Pra você". Se a pessoa veio de um convite, volta pra onde estava ao terminar.
+- **Perfil** (`/perfil`): gostos, diário de rolês, modo demo (amigos e curadores simulados, liga/desliga),
+  atalhos pra Divulgar evento e Painel de testes, zerar dados locais.
+
+## Descoberta
+- **Home** (`/`): campo "Descreve o rolê…", atalhos de ocasião (Aniversário, Date, Com amigos, Happy hour,
+  Esquenta, Solo), carrossel **Pra você** (match % com seu gosto), **Essa semana** (eventos, inclusive
+  enviados e aprovados) e **A comunidade pede** (pedidos recentes).
+- **Lugar/evento** (`/lugar/:id`): capa, nota (ou "novo" para evento sem avaliação), preço, capacidade,
+  horário de funcionamento com "aberto agora", distância do seu bairro, destaques, avaliações.
+  - Reserva em grupo (**fake door**: coleta o pedido pra medir interesse; ainda não reserva).
+  - Evento com link de ingresso: botão de ingresso.
+  - Evento: card **Vai divulgar?** e botão de compartilhar.
+
+## Pedido e recomendação
+- **Novo pedido** (`/novo`): texto livre. Ao vivo, mostra o que foi entendido (ocasião, pessoas, dia, hora,
+  bairro, orçamento, estilos, vibes, requisitos). Pedido vago → pergunta de esclarecimento antes de buscar.
+- **Entendimento**: regras determinísticas + LLM local (qwen2.5:7b) com extração ancorada (cada critério
+  cita o trecho do texto; o que não está no texto é descartado). Sem LLM, as regras resolvem sozinhas.
+- **Resultados** (`/pedido/:id`): "IA do rolê" explica o que entendeu e a confiança; top 3 com % de
+  encaixe, motivos e avisos; respostas da comunidade (curadores simulados no modo demo e sugestões reais
+  de quem recebeu o link), com % de encaixe e "útil".
+- **Compartilhar** (folha): Story do Instagram (arte 1080×1920 gerada no aparelho), WhatsApp com preview
+  rico, copiar link, abrir votação. Seção **Pedir sugestões** (link de indicação por WhatsApp ou Story).
+
+## Votação em grupo
+- **Votação** (`/r/:id`, pública, sem cadastro): vota no lugar e no horário, placar animado, coroa no líder.
+  - **Placar ao vivo** entre aparelhos quando o backend está no ar; senão, "votos neste aparelho".
+  - **Pergunte à IA**: "qual o mais barato?", "qual cabe todo mundo?", "qual fica aberto sexta?" — responde
+    com os dados das opções e destaca o lugar citado (LLM no PC; sem ele, regras).
+  - **Nenhuma te convence? Sugere outro lugar**: abre a busca de sugestão; com backend, entra na votação na hora.
+  - **Falta gente votar? Cobra no grupo**: reenvia o link no WhatsApp depois de votar.
+  - **Fechar no X · horário** (só o autor): celebração + arte de Story "fechado". Todo mundo vê o banner **Fechado**.
+  - Convite "Tem um rolê pra decidir?" pra quem chegou pelo link.
+- **Sugerir** (`/s/:id`, pública): vê os critérios do pedido, busca no catálogo com % de encaixe e avisos,
+  escolhe, põe nome e comentário. Com backend → entra na votação de todos; sem → gera link de retorno
+  pro autor (WhatsApp/direct).
+- **Importar sugestão** (`/i/:id`): o autor toca no link de retorno e a sugestão entra na votação.
+
+## Depois do rolê
+- **Avaliar** (`/avaliar/:id`): foi? Amei / foi ok / não curti, comentário. "Amei" credita o curador que indicou.
+- **Diário**: histórico do que você foi e avaliou.
+
+## Divulgação de eventos (artistas, produtores, casas, criadores)
+- **Divulgar** (folha na página do evento): @ de quem divulga, arte de Story "Bora nesse?", WhatsApp, copiar,
+  **link pra bio**. O link leva `src=cr_<@>`: as chegadas e votações criadas ficam atribuídas.
+- **Convite** (`/e/:id`, público): "@x indica", data/local/preço, destaques, **Bora? Chama teu grupo** → cria
+  uma votação com o evento fixo como 1ª opção + 2 parecidas.
+- **Página de bio** (`/p/:handle`, tipo linktree): todos os eventos que aquele @ indica, cada um vira convite.
+- **Enviar evento** (`/divulgar`, sem cadastro): formulário + **encaixe com a comunidade** ao vivo (em quantos
+  pedidos recentes entraria no top 5). Com backend → vai direto pra fila; sem → link de curadoria.
+- **Curadoria**: fila no `/testes` e no link `/c/:id`; aprovar/recusar. Com backend + chave da curadoria,
+  **aprovar publica pra todo mundo**; sem, publica-se pelo `eventos.json` do repositório.
+  Quem enviou acompanha o status em "Seus envios". Eventos com data passada saem do feed sozinhos.
+
+## Medição e testes
+- **Rastreamento** de eventos de produto (local + backend), origem de primeiro toque (`?src=`), feedback
+  (botão flutuante), leads da reserva (fake door).
+- **Painel de testes** (`/testes`): status do backend e da IA, chave da curadoria, alternância **Todos os
+  aparelhos / Este aparelho**, funil do loop, fila de eventos, tabela por origem (inclui divulgadores e
+  grupos gerados), feedback, leads, últimos eventos, exportar JSON.
