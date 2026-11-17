@@ -2,7 +2,7 @@ import { AnimatePresence, motion, useAnimationControls } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router'
-import { CalendarCheck, Clock, Crown, Info, X } from 'lucide-react'
+import { ArrowRight, CalendarCheck, Clock, Crown, Info, Sparkles, X } from 'lucide-react'
 import { Avatar, AnimatedNumber, Button, Cover, EmptyState, Overlay, Page, Skeleton, cx } from '../ui/primitives'
 import { ease, spring } from '../ui/motion'
 import { placeIcon } from '../ui/placeIcon'
@@ -10,7 +10,9 @@ import { importRequest, useDecide, useProfile, useRequest, useVote } from '../li
 import { priceLabel } from '../lib/labels'
 import { readPayload } from '../lib/share'
 import { track } from '../lib/track'
-import type { VoteTally } from '../lib/types'
+import type { Place, VoteTally } from '../lib/types'
+import { StorySheet } from './StorySheet'
+import type { StoryCard } from '../lib/storyCard'
 
 const FRIENDS = ['Bia', 'Caio', 'Duda', 'Léo', 'Mari']
 const hueOf = (s: string) => [...s].reduce((a, c) => a + c.charCodeAt(0) * 37, 0) % 360
@@ -75,6 +77,9 @@ export function VotePage() {
   }, [data])
   const leaderTime = data && leaderOf(data.timeTally)?.placeId
   const decided = data?.request.status === 'decidido'
+  const iVoted = !!data?.tally.some((t) => t.voters.includes(voter.trim()))
+  // visitante (veio pelo link) depois de votar: convite para fazer o próprio pedido
+  const showCta = !!data && iVoted && (external || !me?.onboarded)
 
   function cast(placeId: string, kind: 'place' | 'time' = 'place') {
     if (!voter.trim()) {
@@ -181,6 +186,23 @@ export function VotePage() {
           </section>
 
           <p className="mt-5 text-center text-xs text-faint">{total} {total === 1 ? 'voto' : 'votos'} neste aparelho</p>
+          <AnimatePresence>
+            {showCta && (
+              <motion.button
+                initial={{ opacity: 0, y: 16, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.6, ease }}
+                onClick={() => { track('cta_new_request', { from: 'vote' }); nav(me?.onboarded ? '/novo' : '/onboarding') }}
+                className="mx-5 mt-5 flex w-[calc(100%-2.5rem)] items-center gap-3 rounded-[24px] border border-accent/30 bg-accent/[0.07] p-4 text-left"
+              >
+                <span className="grid size-11 shrink-0 place-items-center rounded-full bg-accent text-accent-ink"><Sparkles size={18} /></span>
+                <span className="flex-1">
+                  <span className="block font-serif text-[22px] leading-none">Tem um rolê pra decidir?</span>
+                  <span className="mt-1 block text-[13px] text-mute">Descreve em uma frase: a IA sugere e sua turma vota.</span>
+                </span>
+                <ArrowRight size={18} className="text-accent" />
+              </motion.button>
+            )}
+          </AnimatePresence>
           {external && (
             <p className="mx-5 mt-3 flex items-start gap-2 rounded-[16px] bg-white/[0.04] p-3 text-[12px] leading-relaxed text-mute">
               <Info size={14} className="mt-0.5 shrink-0" />
@@ -210,6 +232,7 @@ export function VotePage() {
               time={data.request.decidedTime ?? leaderTime}
               onReview={() => nav(`/avaliar/${id}`)}
               onHome={() => nav('/')}
+              author={data.author.name.split(' ')[0]}
             />
           )}
         </AnimatePresence>
@@ -218,8 +241,11 @@ export function VotePage() {
   )
 }
 
-function Celebration({ place, size, time, onReview, onHome }: { place: { name: string; hue: number }; size: number; time?: string; onReview: () => void; onHome: () => void }) {
+function Celebration({ place, size, time, onReview, onHome, author }: { place: Place; size: number; time?: string; onReview: () => void; onHome: () => void; author: string }) {
   const dots = Array.from({ length: 28 })
+  const [story, setStory] = useState(false)
+  const card = useMemo<StoryCard>(() => ({ kind: 'fechado', place, time, people: size, author }), [place, time, size, author])
+  const link = `${location.origin}${import.meta.env.BASE_URL}?src=ig`
   return (
     <motion.div className="pointer-events-auto absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg/90 px-8 text-center backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       <div className="relative">
@@ -245,9 +271,17 @@ function Celebration({ place, size, time, onReview, onHome }: { place: { name: s
       <motion.h2 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45, duration: 0.6, ease }} className="mt-2 font-serif text-[44px] leading-none">{place.name}</motion.h2>
       <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-3 text-sm text-mute">{time ? `${time} · ` : ''}Reserva simulada pra {size} {size === 1 ? 'pessoa' : 'pessoas'}.</motion.p>
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.75, duration: 0.5, ease }} className="mt-10 grid w-full gap-2">
-        <Button size="lg" onClick={onReview}>Já fui, quero avaliar</Button>
+        <button
+          onClick={() => setStory(true)}
+          className="inline-flex h-14 items-center justify-center gap-2 rounded-full text-[15px] font-medium text-white shadow-[0_10px_34px_-10px_rgba(225,48,108,0.6)] transition-transform active:scale-[0.98]"
+          style={{ background: 'linear-gradient(90deg,#f58529,#dd2a7b 45%,#8134af 75%,#515bd4)' }}
+        >
+          Postar no Story
+        </button>
+        <Button size="lg" variant="soft" onClick={onReview}>Já fui, quero avaliar</Button>
         <Button size="lg" variant="ghost" onClick={onHome}>Voltar pro início</Button>
       </motion.div>
+      <StorySheet open={story} onClose={() => setStory(false)} card={card} link={link} context="fechado" />
     </motion.div>
   )
 }

@@ -131,6 +131,7 @@ export interface TestesData {
   leads: (Lead & { placeName: string })[]
   niches: Record<string, number>
   unmet: Record<string, number>
+  bySrc: Record<string, { app_open: number; vote_cast: number; onboarding_done: number; request_created: number; story_shared: number }>
 }
 export const useTestes = () => useQuery({ queryKey: ['testes'], queryFn: () => req<TestesData>('/testes'), staleTime: 0 })
 export const exportTestes = () => req<unknown>('/testes/export')

@@ -11,14 +11,14 @@ export function Sheet({ open, onClose, children }: { open: boolean; onClose: () 
       {open && (
         <>
           <motion.div
-            className="pointer-events-auto absolute inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            className="pointer-events-auto absolute inset-0 z-[85] bg-black/50 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
           />
           <motion.div
-            className="pointer-events-auto absolute inset-x-0 bottom-0 z-50 flex max-h-[92%] flex-col rounded-t-[32px] border-t border-line bg-surface px-5 pb-8 pt-3"
+            className="pointer-events-auto absolute inset-x-0 bottom-0 z-[90] flex max-h-[92%] flex-col rounded-t-[32px] border-t border-line bg-surface px-5 pb-8 pt-3"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}

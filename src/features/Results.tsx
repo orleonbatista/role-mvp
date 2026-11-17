@@ -1,11 +1,14 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { AlertTriangle, Check, Copy, ExternalLink, Heart, Send, Share2, Sparkles, Star } from 'lucide-react'
 import { AnimatedNumber, Avatar, Button, Cover, EmptyState, Page, Skeleton, StreamText, Tag, TopBar, Typing, cx } from '../ui/primitives'
 import { placeIcon } from '../ui/placeIcon'
 import { track } from '../lib/track'
 import { shareText, shareUrl } from '../lib/share'
+import { withSource, type StoryCard } from '../lib/storyCard'
+import { StorySheet } from './StorySheet'
+import { occasionLabel as occLabel } from '../lib/labels'
 import { openStatus } from '../lib/hours'
 import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
@@ -20,7 +23,11 @@ export function Results() {
   const { data, isLoading, isError } = useRequest(id)
   const [introDone, setIntroDone] = useState(false)
   const [share, setShare] = useState(false)
+  const [story, setStory] = useState(false)
   const loaded = !!data
+  const optKey = data?.options.map((o) => o.id).join() ?? ''
+  // memo: a arte não pode ser refeita a cada polling do pedido
+  const storyCard = useMemo(() => (data ? pedidoCard(data) : null), [data?.request.id, optKey]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (loaded) track('results_viewed', { id, confidence: data?.confidence }) }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isError) return (
@@ -94,7 +101,8 @@ export function Results() {
         </motion.div>
       )}
 
-      {data && <ShareSheet open={share} onClose={() => setShare(false)} data={data} />}
+      {data && <ShareSheet open={share} onClose={() => setShare(false)} data={data} onStory={() => { setShare(false); setTimeout(() => setStory(true), 250) }} />}
+      {data && <StorySheet open={story} onClose={() => setStory(false)} card={storyCard} link={withSource(shareUrl(data), 'ig')} context="pedido" />}
     </Page>
   )
 }
@@ -199,10 +207,16 @@ function Community({ data }: { data: RequestDetail }) {
   )
 }
 
-function ShareSheet({ open, onClose, data }: { open: boolean; onClose: () => void; data: RequestDetail }) {
+export function pedidoCard(d: RequestDetail): StoryCard {
+  const c = d.request.criteria
+  const chips = [c.occasion && occLabel(c.occasion), c.groupSize > 1 && `${c.groupSize} pessoas`, c.hood, c.when?.label].filter(Boolean) as string[]
+  return { kind: 'pedido', text: d.request.text, chips, options: d.options.slice(0, 3), author: d.author.name.split(' ')[0] }
+}
+
+function ShareSheet({ open, onClose, data, onStory }: { open: boolean; onClose: () => void; data: RequestDetail; onStory: () => void }) {
   const toast = useToast()
   const nav = useNavigate()
-  const url = shareUrl(data)
+  const url = withSource(shareUrl(data), 'wa')
   const text = shareText(data)
   const [copied, setCopied] = useState(false)
   const opts = data.options.slice(0, 3)
@@ -238,6 +252,13 @@ function ShareSheet({ open, onClose, data }: { open: boolean; onClose: () => voi
       </div>
 
       <div className="mt-5 grid gap-2">
+        <button
+          onClick={onStory}
+          className="inline-flex h-14 items-center justify-center gap-2 rounded-full text-[15px] font-medium text-white shadow-[0_10px_34px_-10px_rgba(225,48,108,0.6)] transition-transform active:scale-[0.98]"
+          style={{ background: 'linear-gradient(90deg,#f58529,#dd2a7b 45%,#8134af 75%,#515bd4)' }}
+        >
+          Postar no Story do Instagram
+        </button>
         <a
           href={`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`}
           target="_blank"

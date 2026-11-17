@@ -284,13 +284,20 @@ export const handlers = [
     ])
     const counts: Record<string, number> = {}
     for (const e of events) counts[e.name] = (counts[e.name] ?? 0) + 1
+    // por origem (first touch): chegadas, votos e cadastros
+    const bySrc: Record<string, { app_open: number; vote_cast: number; onboarding_done: number; request_created: number; story_shared: number }> = {}
+    for (const e of events) {
+      const src = String((e.props as any)?.src ?? 'direto')
+      const row = (bySrc[src] ??= { app_open: 0, vote_cast: 0, onboarding_done: 0, request_created: 0, story_shared: 0 })
+      if (e.name in row) (row as any)[e.name]++
+    }
     const niches: Record<string, number> = {}
     for (const n of mine.flatMap((r) => r.criteria.niches)) niches[nicheLabel(n)] = (niches[nicheLabel(n)] ?? 0) + 1
     const unmet: Record<string, number> = {}
     for (const u of mine.flatMap((r) => r.criteria.unmet ?? [])) unmet[u] = (unmet[u] ?? 0) + 1
     return HttpResponse.json({
       counts, total: events.length, firstAt: events[0]?.at, lastAt: events[events.length - 1]?.at,
-      recent: events.slice(-25).reverse(), feedback, niches, unmet,
+      recent: events.slice(-25).reverse(), feedback, niches, unmet, bySrc,
       leads: leads.map((l) => ({ ...l, placeName: placeById.get(l.placeId)?.name ?? l.placeId })),
     })
   }),

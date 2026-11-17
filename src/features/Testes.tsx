@@ -84,8 +84,23 @@ export function TestesPage() {
           })}
         </div>
         <div className="mt-4 flex flex-wrap gap-1.5 px-5">
-          {['clarify_shown', 'reserve_intent', 'lead_submitted', 'place_viewed', 'vote_page_opened', 'feedback_sent'].map((k) => (
+          {['clarify_shown', 'reserve_intent', 'lead_submitted', 'story_opened', 'story_shared', 'cta_new_request', 'vote_page_opened', 'feedback_sent'].map((k) => (
             <Tag key={k}>{k}: {data.counts[k] ?? 0}</Tag>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <SectionTitle aside={<span className="text-xs text-faint">primeiro acesso</span>}>Por origem</SectionTitle>
+        <div className="mx-5 overflow-hidden rounded-[18px] border border-line text-[12px]">
+          <div className="grid grid-cols-6 gap-1 bg-white/[0.04] px-3 py-2 text-mute">
+            <span className="col-span-2">origem</span><span>abriu</span><span>votou</span><span>cadastro</span><span>story</span>
+          </div>
+          {Object.entries(data.bySrc).sort((a, b) => b[1].app_open - a[1].app_open).map(([src, r]) => (
+            <div key={src} className="grid grid-cols-6 gap-1 border-t border-line px-3 py-2">
+              <span className="col-span-2 truncate">{({ ig: 'Instagram', wa: 'WhatsApp', direto: 'direto' } as Record<string, string>)[src] ?? src}</span>
+              <span>{r.app_open}</span><span>{r.vote_cast}</span><span>{r.onboarding_done}</span><span>{r.story_shared}</span>
+            </div>
           ))}
         </div>
       </section>

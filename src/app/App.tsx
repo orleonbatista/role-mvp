@@ -7,7 +7,7 @@ import { FeedbackButton } from './FeedbackButton'
 import { ToastHost } from '../ui/Toast'
 import { Skeleton } from '../ui/primitives'
 import { useProfile } from '../lib/api'
-import { track } from '../lib/track'
+import { captureSource, track } from '../lib/track'
 import { Home } from '../features/Home'
 
 // code-split: só a Home vai no bundle inicial; o resto carrega sob demanda
@@ -37,7 +37,10 @@ export function App() {
   const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !isPublic
   const showFeedback = !location.pathname.startsWith('/onboarding') && !location.pathname.startsWith('/r/') && !location.pathname.startsWith('/testes')
 
-  useEffect(() => { track('app_open', { referrer: document.referrer || undefined }) }, [])
+  useEffect(() => {
+    const src = captureSource()
+    track('app_open', { referrer: document.referrer || undefined, via: src ?? undefined })
+  }, [])
   useEffect(() => { track('screen', { path: location.pathname }) }, [location.pathname])
 
   return (
