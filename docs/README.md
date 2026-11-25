@@ -19,3 +19,4 @@ Estado atual (nov/2026): MVP em PWA publicado no GitHub Pages
 (`https://orleonbatista.github.io/role-mvp/`), com LLM local (qwen2.5:7b na RTX 2070) e backend SQLite
 rodando no PC do Orleon, ambos expostos por um túnel Cloudflare. Catálogo de 36 lugares fictícios em
 bairros reais de São Paulo.
+- [10 · Plano de uso do Google Places](10-plano-google.md): custo por fase, armazenamento e campos na experiência
