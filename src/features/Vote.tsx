@@ -2,7 +2,8 @@ import { AnimatePresence, motion, useAnimationControls } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router'
-import { ArrowRight, CalendarCheck, Clock, Crown, Info, MapPinPlus, Radio, Send, Sparkles, X } from 'lucide-react'
+import { ArrowRight, CalendarCheck, CalendarPlus, ChevronRight, Clock, Crown, Info, MapPinPlus, Radio, Send, Sparkles, Star, X } from 'lucide-react'
+import { slotDate, slotLabel } from '../lib/slot'
 import { Link } from 'react-router'
 import { Avatar, AnimatedNumber, Button, Cover, EmptyState, Overlay, Page, Skeleton, cx } from '../ui/primitives'
 import { ease, spring } from '../ui/motion'
@@ -55,6 +56,9 @@ export function VotePage() {
   const [celebrate, setCelebrate] = useState(false)
   const [highlight, setHighlight] = useState<string[]>([])
   const nameRef = useRef<HTMLInputElement>(null)
+  const [customOpen, setCustomOpen] = useState(false)
+  const [cDate, setCDate] = useState('')
+  const [cTime, setCTime] = useState('20:00')
   const shake = useAnimationControls()
 
   useEffect(() => { if (!voter && me?.name) setVoter(me.name.split(' ')[0]) }, [me, voter])
@@ -146,6 +150,22 @@ export function VotePage() {
             ) : null
           })()}
 
+          {decided && (() => {
+            const when = slotDate(data.request.decidedTime, data.request.createdAt)
+            const over = when ? Date.now() > when.getTime() + 2 * 3600_000 : Date.now() > data.request.createdAt + 86_400_000
+            let done = false
+            try { done = !!localStorage.getItem(`role.reviewed.${id}`) } catch { /* */ }
+            if (!over || done) return null
+            return (
+              <button onClick={() => { track('review_prompt_vote', { id }); nav(`/avaliar/${id}`) }}
+                className="mx-5 mt-3 flex w-[calc(100%-2.5rem)] items-center gap-3 rounded-[20px] border border-line bg-surface p-3.5 text-left">
+                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-accent-ink"><Star size={17} /></span>
+                <span className="flex-1"><span className="block text-[15px]">Como foi o rolê?</span><span className="block text-[12px] text-mute">Sua avaliação vira curadoria e ajuda os próximos pedidos.</span></span>
+                <ChevronRight size={16} className="text-mute" />
+              </button>
+            )
+          })()}
+
           <motion.label animate={shake} className={cx('mx-5 mt-6 flex items-center gap-3 rounded-[20px] border bg-surface px-4 py-3 transition-colors', voter.trim() ? 'border-line' : 'border-accent/60')}>
             <span className="text-xs text-mute">Votando como</span>
             <input ref={nameRef} value={voter} onChange={(e) => setVoter(e.target.value)} placeholder="seu nome" aria-label="Seu nome"
@@ -203,6 +223,10 @@ export function VotePage() {
                         </AnimatePresence>
                       </div>
                     </div>
+                    <span role="link" tabIndex={0} aria-label={`Ver detalhes de ${p.name}`}
+                      onClick={(e) => { e.stopPropagation(); track('vote_place_info', { id: p.id, decided }); nav(`/lugar/${p.id}`) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); nav(`/lugar/${p.id}`) } }}
+                      className="grid size-9 shrink-0 place-items-center rounded-full bg-white/[0.06] text-mute active:bg-white/[0.12]"><Info size={15} /></span>
                     <div className="text-right">
                       <AnimatedNumber value={count} className="font-serif text-3xl leading-none" />
                       <p className="text-[11px] text-mute"><AnimatedNumber value={Math.round(pct * 100)} />%</p>
@@ -227,7 +251,26 @@ export function VotePage() {
                   </motion.button>
                 )
               })}
+              {!decided && !customOpen && (
+                <button onClick={() => setCustomOpen(true)} className="flex flex-col items-center justify-center rounded-[18px] border border-dashed border-white/15 px-2 py-3 text-[12px] text-mute">
+                  <CalendarPlus size={16} className="mb-0.5 text-accent" />Outro dia/horário
+                </button>
+              )}
             </div>
+            {customOpen && !decided && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[18px] border border-line bg-surface p-3">
+                <input type="date" aria-label="Dia" value={cDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setCDate(e.target.value)}
+                  className="h-10 flex-1 rounded-full border border-line bg-bg px-3 text-[14px] [color-scheme:dark]" />
+                <input type="time" aria-label="Horário" value={cTime} step={900} onChange={(e) => setCTime(e.target.value)}
+                  className="h-10 w-28 rounded-full border border-line bg-bg px-3 text-[14px] [color-scheme:dark]" />
+                <Button size="md" disabled={!cDate || !cTime} onClick={() => {
+                  const l = slotLabel(cDate, cTime)
+                  if (!l) return
+                  cast(l, 'time'); track('custom_time', { id }); setCustomOpen(false); setCDate('')
+                }}>Propor</Button>
+                <p className="w-full text-[11px] text-faint">Vira uma opção nova e já conta seu voto nela.</p>
+              </div>
+            )}
           </section>
 
           <p className="mt-5 flex items-center justify-center gap-1.5 text-xs text-faint">

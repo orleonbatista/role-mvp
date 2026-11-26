@@ -108,6 +108,8 @@ export interface RoleRequest {
   status: 'aberto' | 'decidido'
   decidedPlaceId?: string
   decidedTime?: string
+  /** horários alternativos que alguém da turma propôs */
+  extraTimes?: string[]
   /** snapshot das opções (vem no link compartilhado) */
   optionIds?: string[]
   /** opções de horário para votação */

@@ -43,7 +43,7 @@ function Fallback() {
 export function App() {
   const location = useLocation()
   const { data: profile, isLoading } = useProfile()
-  const isPublic = ['/r/', '/s/', '/e/', '/p/', '/lugar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
+  const isPublic = ['/r/', '/s/', '/e/', '/p/', '/lugar/', '/avaliar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
   const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !isPublic
   const showFeedback = !['/onboarding', '/r/', '/s/', '/i/', '/e/', '/c/', '/p/', '/divulgar', '/testes'].some((p) => location.pathname.startsWith(p))
 

@@ -36,6 +36,7 @@ export function ReviewPage() {
     if (!placeId || went === null) return
     const res = await create.mutateAsync({ requestId: id, placeId, went, verdict: went ? verdict : undefined, note })
     track('review_saved', { went, verdict, credited: !!res.credited })
+    try { localStorage.setItem(`role.reviewed.${id}`, '1') } catch { /* */ }
     setCredited(res.credited)
     if (!res.credited) { toast('Avaliação salva no seu diário'); nav('/perfil') }
   }

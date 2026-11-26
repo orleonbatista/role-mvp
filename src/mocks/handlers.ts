@@ -213,13 +213,16 @@ async function buildDetail(id: string): Promise<RequestDetail | null> {
   const optionIds = (request.optionIds ?? [...ranked.map((r) => r.place.id), ...visible.map((a) => a.placeId)])
     .filter((x, i, arr) => arr.indexOf(x) === i && placeById.has(x)).slice(0, 6)
   const votes = await db.votes.where('requestId').equals(id).toArray()
-  const times = request.times ?? timeOptions(request.criteria)
+  const timeVotes = votes.filter((v) => v.kind === 'time')
+  // horários sugeridos pela turma (data/hora alternativa) entram como opção junto com os da IA
+  const times = [...(request.times ?? timeOptions(request.criteria)), ...(request.extraTimes ?? []), ...timeVotes.map((v) => v.placeId)]
+    .filter((x, i, a) => a.indexOf(x) === i).slice(0, 9)
   return {
     request, author, intro: introFor(request.criteria, ranked), confidence: confidenceOf(request.criteria, ranked[0]),
     recommendations: ranked, answers, pendingAnswers: all.length - visible.length,
     options: optionIds.map((p) => placeById.get(p)!),
     tally: tallyOf(votes.filter((v) => (v.kind ?? 'place') === 'place'), optionIds),
-    times, timeTally: tallyOf(votes.filter((v) => v.kind === 'time'), times),
+    times, timeTally: tallyOf(timeVotes, times),
   }
 }
 
