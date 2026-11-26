@@ -114,6 +114,20 @@ use `/testes` → "URL do gateway".
 - **Licença ODbL:** manter o crédito "© colaboradores do OpenStreetMap" onde a base aparece (já está nas
   telas).
 
+## Login com Google (Google Cloud, projeto role-mvp)
+Configuração:
+- **Plataforma de autenticação:** app "rolê", público externo, em produção. Escopos só básicos (openid, e-mail, perfil), então não precisa de verificação do Google.
+- **Cliente OAuth "role-web-login"** (aplicativo web). Origens autorizadas: `https://orleonbatista.github.io`, `http://localhost:5173` e `http://localhost:4173`.
+- **ID do cliente:** está no workflow (`VITE_GOOGLE_CLIENT_ID`) e no gateway (`GOOGLE_CLIENT_ID`, com padrão no código). Não é segredo. O segredo do cliente não é usado e não fica em lugar nenhum.
+
+Ao mudar o domínio do site:
+1. Adicione a nova origem no cliente.
+2. Atualize a página inicial e o link da privacidade em Branding.
+
+## Dados pessoais (LGPD)
+- **Apagar dados:** a própria pessoa apaga em Perfil → Apagar meus dados. Se alguém pedir por fora, apague no SQLite pelo `device` ou pelo `email` em `users`, e depois em `reviews` e `group_members`.
+- **Backup:** `llm-gateway/data/role.db` tem dados pessoais. Não compartilhe e não suba pro git (a pasta `data` já está no `.gitignore`).
+
 ## Modo demo
 - Desligado por padrão. Quem já usava a versão antiga foi migrado pra desligado.
 - Ligar/desligar em `/testes` → **Modo demonstração**. A página recarrega e passa a mostrar ou esconder

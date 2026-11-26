@@ -57,7 +57,7 @@ export function useSaveProfile() {
 export function useCreateRequest() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (b: { text: string; overrides?: Partial<Criteria> }) => post<{ id: string }>('/requests', b),
+    mutationFn: (b: { text: string; overrides?: Partial<Criteria>; groupId?: string }) => post<{ id: string }>('/requests', b),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['feed'] }),
   })
 }

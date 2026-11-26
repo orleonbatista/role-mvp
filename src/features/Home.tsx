@@ -8,6 +8,7 @@ import { KIND_LABEL, OCCASIONS, occasionLabel, priceLabel, timeAgo } from '../li
 import { distanceKm, fmtKm, openStatus } from '../lib/hours'
 import { placeIcon } from '../ui/placeIcon'
 import { places } from '../mocks/seeds/places'
+import { TurmasStrip } from './Turmas'
 
 function greeting() {
   const h = new Date().getHours()
@@ -123,6 +124,7 @@ export function Home() {
       </section>
 
       <section className="mt-9">
+        <div className="mb-5"><TurmasStrip /></div>
         <SectionTitle aside={me?.demoMode ? <span className="text-xs text-faint">demo</span> : undefined}>{me?.demoMode ? "A comunidade pede" : "Seus pedidos"}</SectionTitle>
         <motion.div variants={list} initial="initial" animate="animate" className="grid gap-3 px-5">
           {feed.isLoading && [0, 1, 2].map((i) => <Skeleton key={i} className="h-28" />)}

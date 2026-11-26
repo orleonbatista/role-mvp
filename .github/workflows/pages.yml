@@ -34,6 +34,8 @@ jobs:
           VITE_PLACES_KEY: ${{ secrets.PLACES_KEY }}
           # mapa embutido na ficha (Maps Embed API: sem custo, liberada na mesma chave)
           VITE_MAPS_EMBED: '1'
+          # login com Google (ID do cliente OAuth: público por natureza, o token só vale pra este app)
+          VITE_GOOGLE_CLIENT_ID: 235507423712-egg04ho66g7e4o8v552nrb4dck494opm.apps.googleusercontent.com
       # SPA: qualquer rota desconhecida (ex.: /r/abc) cai no app
       - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5

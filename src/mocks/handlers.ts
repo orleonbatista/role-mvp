@@ -15,6 +15,7 @@ import * as remote from './remote'
 import { track } from '../lib/track'
 import { moderationRules } from './llmPrompt'
 import { rememberPlace } from './gplaces'
+import { snapOf } from '../lib/places'
 
 const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`
 const latency = () => delay(160 + Math.random() * 200)
@@ -152,6 +153,7 @@ export const handlers = [
     }
     next.curatorOf = next.niches.slice(0, 2)
     await db.profile.put(next)
+    void remote.pushMe(next) // só vai pro banco com consentimento (consentAt)
     await latency()
     return HttpResponse.json(next)
   }),
@@ -315,12 +317,12 @@ export const handlers = [
   }),
 
   http.post('/api/requests', async ({ request }) => {
-    const body = (await request.json()) as { text: string; overrides?: Partial<Criteria> }
+    const body = (await request.json()) as { text: string; overrides?: Partial<Criteria>; groupId?: string }
     const criteria = await analyze(body.text, body.overrides)
     const profile = await getProfile()
     const req: RoleRequest = {
       id: uid('r'), authorId: 'me', text: body.text.trim(), criteria, createdAt: Date.now(), status: 'aberto',
-      times: timeOptions(criteria),
+      times: timeOptions(criteria), groupId: /^t-[a-z0-9]{10}$/.test(body.groupId ?? '') ? body.groupId : undefined,
     }
     const answers = profile?.demoMode ? simulateAnswers(req, profile) : []
     // snapshot das opções de voto: top 3 da IA + indicações dos curadores
@@ -428,6 +430,10 @@ export const handlers = [
     const body = (await request.json()) as Omit<Review, 'id' | 'createdAt'>
     const review: Review = { ...body, id: uid('rv'), createdAt: Date.now() }
     await db.reviews.add(review)
+    // avaliação de quem foi: vai pro banco (vira a nota da comunidade) — comentário moderado no servidor
+    const pl = placeById.get(body.placeId)
+    const me = await getProfile()
+    if (body.went && body.verdict && pl && !me?.demoMode) void remote.pushPlaceReview({ ...review, name: me?.name ?? 'Alguém', hue: me?.hue ?? 82, placeName: pl.name, place: pl.source ? snapOf(pl) : undefined })
     if (body.requestId && body.went) await db.requests.update(body.requestId, { status: 'decidido', decidedPlaceId: body.placeId })
     let credited: Person | null = null
     if (body.requestId && body.went && body.verdict === 'amei') {

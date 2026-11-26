@@ -1,6 +1,10 @@
 import { motion } from 'motion/react'
 import { Link, useNavigate } from 'react-router'
-import { ArrowUpRight, BarChart3, MapPinPlus, Megaphone, RotateCcw, Settings2, Sparkles } from 'lucide-react'
+import { ArrowUpRight, BarChart3, MapPinPlus, Megaphone, RotateCcw, Settings2, ShieldCheck, Sparkles, Trash2, Users } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { GoogleButton } from './GoogleButton'
+import { deleteMe } from '../mocks/remote'
+import { useToast } from '../ui/Toast'
 import { AnimatedNumber, Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
 import { useDiary, useProfile } from '../lib/api'
@@ -12,6 +16,14 @@ export function ProfilePage() {
   const nav = useNavigate()
   const { data: me } = useProfile()
   const { data } = useDiary()
+  const qc = useQueryClient()
+  const toast = useToast()
+  async function eraseAll() {
+    if (!confirm('Apagar seu perfil, avaliações e participação em turmas do servidor e deste celular? Não dá pra desfazer.')) return
+    const r = await deleteMe()
+    if (!r) { toast('Servidor fora do ar: tente de novo daqui a pouco pra apagar também de lá.'); return }
+    await resetAll()
+  }
 
   const diary = data?.diary ?? []
   const requests = data?.requests ?? []
@@ -106,6 +118,41 @@ export function ProfilePage() {
               {r.status === 'decidido' ? <Tag tone="accent">decidido</Tag> : <ArrowUpRight size={14} className="text-mute" />}
             </Link>
           ))}
+        </div>
+      </section>
+
+      <section className="mt-9">
+        <SectionTitle>Conta e dados</SectionTitle>
+        <div className="mx-5 divide-y divide-line overflow-hidden rounded-[22px] border border-line">
+          <div className="px-4 py-3.5">
+            {me.email ? (
+              <p className="flex items-center gap-3 text-[14px]"><ShieldCheck size={16} className="text-accent" /><span className="min-w-0 flex-1 truncate">Conta Google · {me.email}</span></p>
+            ) : (
+              <>
+                <p className="mb-2 text-[13px] text-mute">Ligue uma conta Google pra não perder perfil e turmas ao trocar de celular.</p>
+                <GoogleButton text="signin_with" onDone={(r) => {
+                  if (!r.ok) return
+                  if (r.existing) { window.location.assign(import.meta.env.BASE_URL); return }
+                  toast('Conta Google ligada')
+                  qc.invalidateQueries({ queryKey: ['me'] })
+                }} />
+              </>
+            )}
+          </div>
+          <Link to="/turmas" className="flex items-center gap-3 px-4 py-3.5">
+            <Users size={16} className="text-accent" />
+            <span className="flex-1 text-[14px]">Suas turmas</span>
+            <ArrowUpRight size={14} className="text-mute" />
+          </Link>
+          <Link to="/privacidade" className="flex items-center gap-3 px-4 py-3.5">
+            <ShieldCheck size={16} className="text-mute" />
+            <span className="flex-1 text-[14px]">Aviso de privacidade</span>
+            <ArrowUpRight size={14} className="text-mute" />
+          </Link>
+          <button onClick={eraseAll} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
+            <Trash2 size={16} className="text-[#ff8a8a]" />
+            <span className="flex-1 text-[14px] text-[#ff8a8a]">Apagar meus dados</span>
+          </button>
         </div>
       </section>
 

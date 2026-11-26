@@ -68,6 +68,10 @@ export interface Profile extends Person {
   onboarded: boolean
   /** região de quem usa (GPS ou CEP), arredondada a ~1 km; nunca o endereço exato */
   home?: Home
+  /** aceitou o aviso de privacidade (LGPD): só então o perfil vai pro banco */
+  consentAt?: number
+  /** conta Google ligada (e-mail só pra mostrar no Perfil) */
+  email?: string
   /** simula curadores e amigos votando; desligar para testes com pessoas reais */
   demoMode: boolean
 }
@@ -102,6 +106,8 @@ export interface RoleRequest {
   times?: string[]
   /** pedido criado a partir de um convite de evento: o evento fica fixo como 1ª opção */
   eventId?: string
+  /** turma (grupo de quem votou junto) — reaproveitada em "novo rolê com essa turma" */
+  groupId?: string
   /** autor quando o pedido veio de outro aparelho via link */
   externalAuthor?: { name: string; hue: number }
 }

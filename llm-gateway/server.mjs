@@ -4,7 +4,7 @@
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { askBody, moderateBody, moderationRules, ollamaBody } from '../src/mocks/llmPrompt.ts'
-import { adminKeyFile, areaFresh, cellOf, dataDir, handleApi, insertPlace, nearRows, placeForModeration, saveArea, validLatLng } from './api.mjs'
+import { adminKeyFile, areaFresh, googleLogin, insertReview, cellOf, dataDir, handleApi, insertPlace, nearRows, placeForModeration, saveArea, validLatLng } from './api.mjs'
 import { aroundQuery, geoFromCep, geoReverse, hoodNear, overpass, toRows } from './osm.mjs'
 
 const PORT = Number(process.env.PORT ?? 8787)
@@ -12,6 +12,8 @@ const OLLAMA = process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434'
 const MODEL = process.env.LLM_MODEL ?? 'qwen2.5:7b'
 const ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://orleonbatista.github.io,http://localhost:5173,http://localhost:4173')
   .split(',').map((s) => s.trim())
+// ID do cliente do login com Google (público por natureza; o token só vale pra este app)
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? '235507423712-egg04ho66g7e4o8v552nrb4dck494opm.apps.googleusercontent.com'
 const MAX_TEXT = 400
 const PER_MIN = 20
 const PER_DAY = 400
@@ -135,6 +137,35 @@ const server = http.createServer(async (req, res) => {
         console.warn('base:', e.message)
         return send(res, 502, { error: 'overpass' }, origin)
       }
+    }
+    // login com Google: valida o ID token no Google (assinatura, validade, público = nosso app, e-mail verificado)
+    if (write && path === '/api/auth/google') {
+      const cred = String(body.credential ?? '')
+      if (cred.length < 100 || cred.length > 4096) return send(res, 400, { error: 'credential' }, origin)
+      try {
+        const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(cred)}`, { signal: AbortSignal.timeout(8000) })
+        const t = r.ok ? await r.json() : null
+        const valid = t && t.aud === GOOGLE_CLIENT_ID && ['accounts.google.com', 'https://accounts.google.com'].includes(t.iss) &&
+          Number(t.exp) * 1000 > Date.now() && (t.email_verified === 'true' || t.email_verified === true) && t.sub
+        if (!valid) return send(res, 401, { error: 'google_token' }, origin)
+        const [status, out] = googleLogin(String(t.sub), String(t.email ?? '').slice(0, 120), String(t.given_name ?? t.name ?? ''), String(req.headers['x-device'] ?? ''))
+        console.log(`[${new Date().toLocaleTimeString('pt-BR')}] login google ${status} ${out.existing ? 'conta existente' : 'conta nova'}`)
+        return send(res, status, out, origin)
+      } catch (e) {
+        console.warn('google:', e.message)
+        return send(res, 502, { error: 'google' }, origin)
+      }
+    }
+    // avaliação "Quem foi": comentário passa pelas mesmas regras + LLM do catálogo antes de ficar público
+    if (write && path === '/api/reviews') {
+      const note = String(body.note ?? '').slice(0, 400)
+      let verdict = { ok: true, motivo: '' }
+      const rule = note.trim() ? moderationRules(String(body.placeName ?? 'lugar'), note) : null
+      if (rule) verdict = { ok: false, motivo: rule }
+      else if (note.trim()) verdict = await moderateLLM(String(body.placeName ?? 'lugar'), note)
+      const [status, out] = insertReview(body, String(req.headers['x-device'] ?? ''), verdict)
+      console.log(`[${new Date().toLocaleTimeString('pt-BR')}] avaliação ${status} ${out.status ?? ''} ${verdict.motivo ? '(' + verdict.motivo + ')' : ''}`)
+      return send(res, status, out, origin)
     }
     // catálogo comunitário: regras + LLM decidem se o lugar entra direto ou vai pra revisão da curadoria
     if (write && path === '/api/places') {

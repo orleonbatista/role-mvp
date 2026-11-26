@@ -172,7 +172,11 @@ export function TestesPage() {
       )}
       <p className="px-5 text-sm text-mute">
         {scope === 'todos' && canGlobal && global
-          ? <>Todos os aparelhos · {data.total} eventos · {global.totals.requests} pedidos, {global.totals.votes} votos, {global.totals.suggestions} sugestões, {global.totals.decided} fechados.</>
+          ? <>Todos os aparelhos · {data.total} eventos · {global.totals.requests} pedidos, {global.totals.votes} votos, {global.totals.suggestions} sugestões, {global.totals.decided} fechados.
+              {global.people && <> Pessoas: {global.people.users} com perfil ({global.people.withGoogle} com Google) · {global.people.reviews} avaliações · {global.people.activeGroups} turmas ativas de {global.people.groups}.
+                {' '}Regiões: {Object.entries(global.people.byHood).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([h, n]) => `${h} ${n}`).join(', ') || '—'}.
+                {' '}Gostos: {Object.entries(global.people.byNiche).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([h, n]) => `${h} ${n}`).join(', ') || '—'}.</>}
+              {global.base && <> Base regional: {global.base.places} lugares em {global.base.areas} regiões.</>}</>
           : <>Dados deste aparelho{data.firstAt ? ` desde ${new Date(data.firstAt).toLocaleDateString('pt-BR')}` : ''} · {data.total} eventos.{!canGlobal && ' Com o backend no ar e a chave da curadoria, aqui aparecem todos os aparelhos.'}</>}
       </p>
 

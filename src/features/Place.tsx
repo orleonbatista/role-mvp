@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { StoryCard } from '../lib/storyCard'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { GoogleLive } from './GoogleLive'
+import { useQuery } from '@tanstack/react-query'
+import { placeReviews } from '../mocks/remote'
 import { CalendarCheck, ChevronLeft, Clock, MapPin, Megaphone, Minus, Plus, Share2, Star, Ticket, Users } from 'lucide-react'
 import { Link } from 'react-router'
 import { PromoteSheet } from './PromoteSheet'
@@ -23,6 +25,8 @@ import { KIND_LABEL, VERDICT_LABEL, nicheLabel, occasionLabel, priceLabel, timeA
 export function PlacePage() {
   const { id = '' } = useParams()
   const [sp] = useSearchParams()
+  const community = useQuery({ queryKey: ['place-reviews', id], queryFn: () => placeReviews(id), staleTime: 30_000 })
+  const cr = community.data
   const nav = useNavigate()
   const toast = useToast()
   const { data, isError } = usePlace(id)
@@ -102,8 +106,10 @@ export function PlacePage() {
 
           <motion.div variants={list} initial="initial" animate="animate" className="mt-6 grid grid-cols-3 gap-2">
             {[
-              place.source === 'google'
-                ? { k: 'nota', v: '—', icon: null, sub: 'veja no Maps' }
+              cr && cr.count > 0 && cr.score !== null
+                ? { k: 'nota', v: cr.score.toFixed(1), icon: <Star size={13} className="fill-accent text-accent" />, sub: `${cr.count} da comunidade` }
+                : place.source
+                ? { k: 'nota', v: 'novo', icon: null, sub: 'ninguém avaliou' }
                 : place.ratingCount === 0
                 ? { k: 'nota', v: 'novo', icon: null, sub: 'sem avaliações' }
                 : { k: 'nota', v: place.rating.toFixed(1), icon: <Star size={13} className="fill-accent text-accent" />, sub: `${place.ratingCount} avaliações` },
@@ -189,6 +195,19 @@ export function PlacePage() {
                 {r.note && <p className="mt-1.5 text-[14px]">{r.note}</p>}
               </div>
             ))}
+            {cr?.items.filter((r) => !r.mine).map((r, i) => (
+              <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06, duration: 0.5, ease }} className="rounded-[20px] bg-surface p-4">
+                <div className="flex items-center gap-2">
+                  <Avatar name={r.name} hue={r.hue ?? 200} size={24} />
+                  <span className="text-[13px]">{r.name}</span>
+                  <span className="ml-auto text-xs text-mute">{VERDICT_LABEL[r.verdict]} · {timeAgo(r.at)}</span>
+                </div>
+                {r.note && <p className="mt-2 text-[14px] text-ink/85">{r.note}</p>}
+              </motion.div>
+            ))}
+            {data && !data.myReviews.length && !data.reviews.length && !cr?.items.length && (
+              <p className="rounded-[20px] border border-dashed border-line px-4 py-4 text-center text-[13px] text-faint">Ninguém avaliou ainda. Foi lá? Conta como foi depois do rolê.</p>
+            )}
             {data?.reviews.map((r, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06, duration: 0.5, ease }} className="rounded-[20px] bg-surface p-4">
                 <div className="flex items-center gap-2">

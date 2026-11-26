@@ -73,6 +73,27 @@ Rotas novas:
 
 O código do OSM fica em `llm-gateway/osm.mjs`.
 
+## Pessoas no banco
+Tabelas:
+- `users`: aparelho, perfil, região arredondada, data do aceite, `google_sub` e e-mail;
+- `reviews`: avaliações, com status de moderação;
+- `groups` e `group_members`: turmas;
+- coluna `requests.group_id`.
+
+Login com Google:
+- o app usa o Google Identity Services, com o botão oficial;
+- o gateway valida o ID token no `tokeninfo` (público = ID do cliente do rolê, e-mail verificado);
+- conta nova: liga ao aparelho atual;
+- conta existente: devolve o id do aparelho da conta, e o celular novo passa a usá-lo.
+
+Rotas:
+- `POST /api/auth/google`;
+- `GET|POST /api/me`, `POST /api/me/delete`;
+- `POST /api/reviews`, `GET /api/places/:id/reviews`, `GET /api/ratings`;
+- `GET /api/groups`, `POST /api/groups/:id/(name|leave)`.
+
+O app nunca depende do banco: sem servidor, tudo segue funcionando no aparelho.
+
 ## Camadas de lugares
 
 | Camada | Origem | Onde vive | Aparece |

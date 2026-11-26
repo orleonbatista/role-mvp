@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useCallback, useState } from 'react'
+import { Link, useNavigate } from 'react-router'
 import { ArrowRight, LoaderCircle, LocateFixed, MapPin, Sparkles } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button, Chip, Page } from '../ui/primitives'
@@ -11,6 +11,8 @@ import { track } from '../lib/track'
 import type { Home, Niche, Vibe } from '../lib/types'
 import { ensureRegion, homeFromCep, homeFromGps, hoodFor } from '../mocks/region'
 import { useToast } from '../ui/Toast'
+import { GoogleButton } from './GoogleButton'
+import type { LoginOutcome } from '../lib/googleAuth'
 
 const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
 
@@ -27,18 +29,28 @@ export function Onboarding() {
   const [vibes, setVibes] = useState<Vibe[]>(me?.vibes ?? [])
   const [home, setHome] = useState<Home | undefined>(me?.home)
   const [loadingRegion, setLoadingRegion] = useState(false)
+  const [consent, setConsent] = useState(!!me?.consentAt)
+  const [email, setEmail] = useState(me?.email)
+  const onGoogle = useCallback((r: LoginOutcome) => {
+    if (!r.ok) return
+    // conta que já existia: perfil, avaliações e turmas voltaram — recarrega já dentro do app
+    if (r.existing) { window.location.assign(import.meta.env.BASE_URL); return }
+    setEmail(r.email)
+    if (r.name) setName((n) => n || r.name!)
+    setDir(1); setStep(1)
+  }, [])
   const qc = useQueryClient()
   const toast = useToast()
 
   const go = (n: number) => { setDir(n > step ? 1 : -1); setStep(n) }
-  const canNext = [true, name.trim().length > 1, niches.length > 0, vibes.length > 0][step]
+  const canNext = [true, name.trim().length > 1, niches.length > 0, vibes.length > 0 && consent][step]
 
   async function finish() {
     const first = name.trim().split(' ')[0]
     const finalHood = home ? hoodFor(home) : hood
     await save.mutateAsync({
       name: name.trim(), handle: '@' + first.toLowerCase().normalize('NFD').replace(/[^a-z]/g, ''),
-      hood: finalHood, home, niches, vibes, onboarded: true,
+      hood: finalHood, home, niches, vibes, onboarded: true, consentAt: me?.consentAt ?? Date.now(), email,
     })
     track(me?.onboarded ? 'taste_edited' : 'onboarding_done', { niches, vibes, hood: finalHood, via: home?.via ?? 'bairro' })
     // lugares reais em volta: o PC busca no OpenStreetMap (1ª vez da região pode levar ~1 min) — espera até 12 s
@@ -87,7 +99,7 @@ export function Onboarding() {
             transition={{ duration: 0.5, ease }}
             className="no-scrollbar absolute inset-0 flex flex-col overflow-y-auto px-6 pb-6 pt-10"
           >
-            {step === 0 && <Welcome />}
+            {step === 0 && <Welcome onGoogle={onGoogle} />}
             {step === 1 && (
               <>
                 <h1 className="font-serif text-[44px] leading-[0.95] tracking-tight">Como a galera<br /><em className="text-accent">te chama?</em></h1>
@@ -142,6 +154,13 @@ export function Onboarding() {
                 <div className="mt-8 flex flex-wrap gap-2.5">
                   {VIBES.map((v) => <Chip key={v.id} active={vibes.includes(v.id)} onClick={() => setVibes((a) => toggle(a, v.id))} className="h-11 px-5 text-sm">{v.label}</Chip>)}
                 </div>
+                <label className="mt-10 flex items-start gap-3 rounded-2xl border border-line bg-white/[0.02] p-4 text-[13px] leading-relaxed text-ink/85">
+                  <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[#c6ff3d]" />
+                  <span>
+                    Concordo em salvar meu nome, gosto e região (~1 km) pra montar recomendações e as votações com a minha turma.{' '}
+                    <Link to="/privacidade" className="text-accent underline-offset-4 hover:underline">Aviso de privacidade</Link> · dá pra apagar tudo no Perfil.
+                  </span>
+                </label>
               </>
             )}
           </motion.section>
@@ -215,7 +234,7 @@ function Region({ home, setHome, hood, setHood }: { home?: Home; setHome: (h?: H
   )
 }
 
-function Welcome() {
+function Welcome({ onGoogle }: { onGoogle: (r: LoginOutcome) => void }) {
   return (
     <div className="flex flex-1 flex-col justify-end pb-8">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[60%]">
@@ -244,6 +263,10 @@ function Welcome() {
       <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8, duration: 0.6, ease }} className="relative mt-6 max-w-[290px] text-[15px] leading-relaxed text-mute">
         Diga o que você quer. A IA sugere, a comunidade refina, sua turma vota.
       </motion.p>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }} className="relative mt-8 grid gap-2">
+        <GoogleButton onDone={onGoogle} />
+        <p className="text-center text-[12px] text-faint">Com a conta Google, seu perfil e suas turmas te acompanham em qualquer celular. Ou toque em Começar pra seguir sem conta.</p>
+      </motion.div>
     </div>
   )
 }

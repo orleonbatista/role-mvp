@@ -15,6 +15,18 @@ Inventário do MVP (nov/2026). Entre parênteses, a rota da tela.
 - **Ficha ao vivo do Google:** foto com crédito, aberto agora, horário, nota do Google (discreta), telefone e mapa.
   Em pedido de grupo aparecem também "bom pra grupo", "aceita reserva" e "música ao vivo". Nada é salvo.
 
+## Conta, turmas e dados
+- **Entrar com Google** na tela inicial (ou depois, em Perfil → Conta e dados). Uma conta que já existe traz o perfil,
+  as avaliações e as turmas pra este celular. Sem conta, o app funciona igual, preso ao aparelho.
+- **Aviso de privacidade** (`/privacidade`) e aceite obrigatório no fim do cadastro (LGPD). O perfil só vai pro banco
+  com o aceite.
+- **Turmas** (`/turmas` + faixa na Home): cada votação vira uma turma, e quem vota ou sugere entra nela. Dá pra
+  renomear e fazer "Novo rolê com essa turma" (`/novo?turma=`).
+- **Avaliações da comunidade:** o "Quem foi" vai pro banco, com o comentário moderado. A ficha mostra a nota da
+  comunidade (Amei 10 · Foi ok 7 · Não curti 3) e as avaliações das outras pessoas.
+- **Apagar meus dados** (Perfil): remove perfil, avaliações, turmas, feedback e métricas do servidor e do celular.
+  Nos votos antigos, o nome vira "Alguém".
+
 ## Curadoria
 - **Indicar um lugar** (`/indicar`, pública): busca no catálogo (curados + base real do OSM) e no Google;
   escolhe e escreve como é. A IA marca estilo, vibe e ocasião ("Entendi: …"), a pessoa ajusta e o lugar

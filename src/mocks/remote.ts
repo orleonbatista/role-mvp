@@ -1,4 +1,4 @@
-import type { EventDraft, EventSubmission, Feedback, Lead, RoleRequest, TrackEvent } from '../lib/types'
+import type { EventDraft, EventSubmission, Feedback, Lead, Profile, Review, RoleRequest, TrackEvent } from '../lib/types'
 import { db } from '../db/db'
 import { gatewayConfig } from './llm'
 import { placeById } from './seeds/places'
@@ -13,6 +13,9 @@ import { snapOf } from '../lib/places'
 const DEVICE_KEY = 'role.device'
 const ADMIN_KEY = 'role.adminKey'
 const API_URL = import.meta.env.VITE_API_URL as string | undefined
+
+/** recuperação em outro celular: o aparelho novo assume o id do antigo */
+export function setDeviceId(id: string) { try { localStorage.setItem(DEVICE_KEY, id) } catch { /* */ } }
 
 export function deviceId() {
   try {
@@ -82,11 +85,12 @@ interface RemoteState {
 
 const pushed = new Set<string>()
 export async function pushRequest(r: RoleRequest, author: { name: string; hue: number }) {
-  const ok = await call('POST', '/api/requests', {
+  const ok = await call<{ ok: boolean; groupId?: string }>('POST', '/api/requests', {
     id: r.id, text: r.text, criteria: r.criteria, optionIds: r.optionIds ?? [], times: r.times ?? [], author, createdAt: r.createdAt, eventId: r.eventId,
-    places: snapsFor(r.optionIds ?? []),
+    places: snapsFor(r.optionIds ?? []), groupId: r.groupId,
   })
   if (ok) pushed.add(r.id)
+  if (ok?.groupId && ok.groupId !== r.groupId) await db.requests.update(r.id, { groupId: ok.groupId })
   return !!ok
 }
 export const wasPushed = (id: string) => pushed.has(id)
@@ -213,6 +217,8 @@ export interface GlobalStats {
   feedback: (Feedback & { at: number })[]
   leads: (Lead & { placeName?: string; at: number })[]
   totals: { requests: number; votes: number; suggestions: number; decided: number }
+  base?: { places: number; areas: number }
+  people?: { users: number; withGoogle: number; byHood: Record<string, number>; byNiche: Record<string, number>; reviews: number; groups: number; activeGroups: number }
 }
 
 /* ---------- catálogo comunitário de lugares ---------- */
@@ -236,3 +242,21 @@ export const baseNear = (lat: number, lng: number, km = 3) =>
 /** lugar do OSM → place_id do Google (único dado do Google que pode ficar guardado) */
 export const gmatchGet = (osm: string) => call<{ placeId: string | null }>('GET', `/api/gmatch/${osm}`, undefined, { timeout: 3000 })
 export const gmatchPut = (osm: string, placeId: string | null) => call('POST', '/api/gmatch', { osm, placeId })
+
+/* ---------- pessoas: perfil, avaliações, turmas (LGPD: perfil só com consentimento) ---------- */
+export const pushMe = (p: Profile) => (p.consentAt ? call('POST', '/api/me', { consentAt: p.consentAt, profile: { name: p.name, handle: p.handle, hue: p.hue, hood: p.hood, niches: p.niches, vibes: p.vibes, home: p.home } }) : Promise.resolve(null))
+export interface GoogleLogin {
+  existing: boolean; device: string; email: string; name?: string; profile?: Partial<Profile>; consentAt?: number
+  reviews?: { id: string; place_id: string; request_id: string | null; verdict: Review['verdict']; note: string; place?: unknown; at: number }[]
+}
+export const googleLogin = (credential: string) => call<GoogleLogin>('POST', '/api/auth/google', { credential }, { timeout: 12000 })
+export const deleteMe = () => call<{ ok: boolean }>('POST', '/api/me/delete', {}, { timeout: 8000 })
+export const pushPlaceReview = (r: Review & { name: string; hue: number; placeName: string; place?: unknown }) =>
+  call<{ ok: boolean; status: string }>('POST', '/api/reviews', { id: r.id, placeId: r.placeId, requestId: r.requestId, verdict: r.verdict, note: r.note, name: r.name, hue: r.hue, placeName: r.placeName, place: r.place, at: r.createdAt }, { timeout: 12000 })
+export interface CommunityReviews { score: number | null; count: number; items: { id: string; name: string; hue: number; verdict: NonNullable<Review['verdict']>; note: string; at: number; mine: boolean; pending: boolean }[] }
+export const placeReviews = (id: string) => call<CommunityReviews>('GET', `/api/places/${encodeURIComponent(id)}/reviews`, undefined, { timeout: 4000 })
+export const ratings = () => call<Record<string, [number, number]>>('GET', '/api/ratings', undefined, { timeout: 4000 })
+export interface Turma { id: string; name: string | null; mine: boolean; updatedAt: number; members: { name: string; hue: number; me: boolean }[]; requests: { id: string; text: string; createdAt: number; decided: boolean }[] }
+export const myGroups = () => call<Turma[]>('GET', '/api/groups', undefined, { timeout: 4000 })
+export const renameGroup = (id: string, name: string) => call('POST', `/api/groups/${id}/name`, { name })
+export const leaveGroup = (id: string) => call('POST', `/api/groups/${id}/leave`, {})

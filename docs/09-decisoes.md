@@ -49,3 +49,11 @@ Formato curto: **decisão**, **por quê**, **trade-off**.
     do teste.
 20. **Sem afirmação sem lastro.** Lugar sem curadoria não recebe "aberto agora", "comunidade aprova" nem elogio:
     só o que se sabe (tipo, bairro) e "ninguém avaliou ainda".
+21. **Conteúdo do Google não é salvo, nem reescrito pela IA.** Só o `place_id`; foto, nota e horário aparecem ao vivo.
+    *Trade-off:* custo por visualização, que cabe na franquia grátis na fase de testes.
+22. **Login com Google em vez de e-mail e senha.** Sem um serviço de envio de e-mail não dá pra confirmar o endereço
+    nem recuperar a senha. O Google resolve as duas coisas e é um toque. E-mail e senha ficam pra quando houver um
+    serviço de e-mail (ex.: Resend).
+23. **Conta = aparelho principal.** Entrar com Google num celular novo faz ele assumir o id do aparelho da conta.
+    Simples e sem sessão nova no backend. *Trade-off:* o id do aparelho continua sendo a credencial; na migração pra
+    Supabase/D1, trocar por sessão assinada.

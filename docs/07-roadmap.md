@@ -31,6 +31,8 @@ Cada fase só avança quando os critérios da anterior forem cumpridos.
 | Duas camadas: curado (visível) + base real OSM (reserva da IA, "sem curadoria") | ✅ |
 | Fictício só no modo demo (desligado por padrão) | ✅ |
 | Convite da IA quando falta curadoria + modo curador fundador (`/indicar`, `/fundador`) | ✅ |
+| Região por GPS/CEP + base regional OSM no banco do PC; Google ao vivo na ficha | ✅ |
+| Usuários, avaliações da comunidade e turmas no banco; login com Google; aviso de privacidade e "apagar meus dados" | ✅ |
 | **Recrutar 5 a 10 curadores fundadores e curar 50 lugares em 2 ou 3 bairros** | ⏭ agora |
 | Rodada de teste com 3 a 5 grupos reais | ⏭ depois da curadoria inicial |
 

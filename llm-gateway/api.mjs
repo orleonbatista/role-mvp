@@ -49,6 +49,23 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS base_places (id TEXT PRIMARY KEY, row TEXT NOT NULL, lat REAL NOT NULL, lng REAL NOT NULL, area TEXT NOT NULL, at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS base_areas (cell TEXT PRIMARY KEY, lat REAL NOT NULL, lng REAL NOT NULL, label TEXT NOT NULL, count INTEGER NOT NULL, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_base_lat ON base_places(lat, lng);
+  -- pessoas (LGPD: só com consentimento; "apagar meus dados" remove tudo do aparelho)
+  CREATE TABLE IF NOT EXISTS users (
+    device TEXT PRIMARY KEY, data TEXT NOT NULL, hood TEXT, lat REAL, lng REAL, consent_at INTEGER NOT NULL,
+    token_hash TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS reviews (
+    id TEXT PRIMARY KEY, device TEXT NOT NULL, place_id TEXT NOT NULL, request_id TEXT, verdict TEXT NOT NULL, note TEXT NOT NULL,
+    name TEXT NOT NULL, hue INTEGER, place TEXT, status TEXT NOT NULL DEFAULT 'ok', motivo TEXT, at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS ix_reviews_place ON reviews(place_id);
+  -- turmas: cada votação vira (ou reaproveita) uma turma; quem vota entra
+  CREATE TABLE IF NOT EXISTS groups (id TEXT PRIMARY KEY, name TEXT, owner_device TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS group_members (
+    group_id TEXT NOT NULL, device TEXT NOT NULL, name TEXT NOT NULL, hue INTEGER, joined_at INTEGER NOT NULL, last_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, device)
+  );
+  CREATE INDEX IF NOT EXISTS ix_gm_device ON group_members(device);
   -- lugar do OSM → place_id do Google (o place_id é o único dado do Google que os termos deixam guardar)
   CREATE TABLE IF NOT EXISTS gmatch (osm_id TEXT PRIMARY KEY, place_id TEXT, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_votes_req ON votes(request_id);
@@ -59,6 +76,11 @@ db.exec(`
 
 // migração: coluna com o resumo do lugar do Google na sugestão (bancos criados antes dela)
 if (!db.prepare("SELECT 1 FROM pragma_table_info('suggestions') WHERE name = 'place'").get()) db.exec('ALTER TABLE suggestions ADD COLUMN place TEXT')
+if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'group_id'").get()) db.exec('ALTER TABLE requests ADD COLUMN group_id TEXT')
+if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'google_sub'").get()) {
+  db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT'); db.exec('ALTER TABLE users ADD COLUMN email TEXT')
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_users_google ON users(google_sub)')
 
 /* ---------- validação ---------- */
 const RE = {
@@ -93,6 +115,7 @@ const q = {
   getReq: db.prepare('SELECT * FROM requests WHERE id = ?'),
   insReq: db.prepare('INSERT OR IGNORE INTO requests (id, data, author_device, created_at) VALUES (?, ?, ?, ?)'),
   updReq: db.prepare('UPDATE requests SET data = ? WHERE id = ? AND author_device = ?'),
+  setGroup: db.prepare('UPDATE requests SET group_id = ? WHERE id = ?'),
   decide: db.prepare('UPDATE requests SET decided_place = ?, decided_time = ?, decided_at = ? WHERE id = ? AND author_device = ?'),
   votes: db.prepare('SELECT device, kind, value, voter, at FROM votes WHERE request_id = ? ORDER BY at'),
   vote: db.prepare(`INSERT INTO votes (request_id, device, kind, value, voter, at) VALUES (?, ?, ?, ?, ?, ?)
@@ -122,10 +145,27 @@ function requestState(id) {
   if (!r) return null
   return {
     request: { ...parse(r.data), id: r.id, createdAt: r.created_at },
-    authorDevice: r.author_device,
+    authorDevice: r.author_device, groupId: r.group_id ?? undefined,
     decision: r.decided_place ? { placeId: r.decided_place, time: r.decided_time ?? undefined, at: r.decided_at } : null,
     votes: q.votes.all(id),
     suggestions: q.sugs.all(id).map((x) => ({ ...x, place: x.place ? parse(x.place) : undefined })),
+  }
+}
+
+function peopleStats() {
+  const users = db.prepare('SELECT data, hood, google_sub FROM users WHERE consent_at > 0').all()
+  const byHood = {}, byNiche = {}
+  for (const u of users) {
+    const d = parse(u.data) ?? {}
+    if (u.hood) byHood[u.hood] = (byHood[u.hood] ?? 0) + 1
+    for (const n of d.niches ?? []) byNiche[n] = (byNiche[n] ?? 0) + 1
+  }
+  const one = (sql) => db.prepare(sql).get().n
+  return {
+    users: users.length, withGoogle: users.filter((u) => u.google_sub).length, byHood, byNiche,
+    reviews: one("SELECT COUNT(*) AS n FROM reviews WHERE status = 'ok'"),
+    groups: one('SELECT COUNT(*) AS n FROM groups'),
+    activeGroups: one('SELECT COUNT(*) AS n FROM (SELECT group_id FROM group_members GROUP BY group_id HAVING COUNT(*) >= 2)'),
   }
 }
 
@@ -140,7 +180,7 @@ function stats() {
   }
   const devices = new Set(events.map((e) => e.device)).size
   return {
-    counts, total: events.length, devices, bySrc, base: qb.countAll.get(),
+    counts, total: events.length, devices, bySrc, base: qb.countAll.get(), people: peopleStats(),
     firstAt: events[0]?.at, lastAt: events[events.length - 1]?.at,
     recent: events.slice(-30).reverse().map((e) => ({ ...e, props: parse(e.props) ?? {} })),
     feedback: db.prepare('SELECT data, at FROM feedback ORDER BY at DESC LIMIT 100').all().map((f) => ({ ...parse(f.data), at: f.at })),
@@ -210,6 +250,145 @@ const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : NaN)
 /** coordenadas dentro do Brasil (com folga) */
 export const validLatLng = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat > -34 && lat < 6 && lng > -74 && lng < -34
 
+/* ---------- pessoas: perfil, avaliações, turmas ---------- */
+const NICHES = new Set(['jazz', 'listening', 'eletronica', 'drinks', 'boteco', 'gastronomia', 'ao-ar-livre', 'samba', 'rock', 'indie'])
+const VERDICT_SCORE = { amei: 10, ok: 7, 'nao-curti': 3 }
+const RE_GROUP = /^t-[a-z0-9]{10}$/
+const qp = {
+  getUser: db.prepare('SELECT * FROM users WHERE device = ?'),
+  putUser: db.prepare(`INSERT INTO users (device, data, hood, lat, lng, consent_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(device) DO UPDATE SET data = excluded.data, hood = excluded.hood, lat = excluded.lat, lng = excluded.lng, consent_at = excluded.consent_at, updated_at = excluded.updated_at`),
+  byGoogle: db.prepare('SELECT * FROM users WHERE google_sub = ?'),
+  linkGoogle: db.prepare('UPDATE users SET google_sub = ?, email = ? WHERE device = ?'),
+  insBare: db.prepare('INSERT INTO users (device, data, consent_at, created_at, updated_at, google_sub, email) VALUES (?, ?, 0, ?, ?, ?, ?)'),
+  insReview: db.prepare(`INSERT OR REPLACE INTO reviews (id, device, place_id, request_id, verdict, note, name, hue, place, status, motivo, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+  placeReviews: db.prepare(`SELECT id, device, verdict, note, name, hue, status, at FROM reviews WHERE place_id = ? AND (status = 'ok' OR device = ?) ORDER BY at DESC LIMIT 40`),
+  myReviews: db.prepare('SELECT id, place_id, request_id, verdict, note, place, at FROM reviews WHERE device = ? ORDER BY at'),
+  ratings: db.prepare(`SELECT place_id, verdict, COUNT(*) AS n FROM reviews WHERE status = 'ok' GROUP BY place_id, verdict`),
+  getGroup: db.prepare('SELECT * FROM groups WHERE id = ?'),
+  insGroup: db.prepare('INSERT INTO groups (id, name, owner_device, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'),
+  touchGroup: db.prepare('UPDATE groups SET updated_at = ? WHERE id = ?'),
+  renameGroup: db.prepare('UPDATE groups SET name = ? WHERE id = ?'),
+  member: db.prepare('SELECT 1 FROM group_members WHERE group_id = ? AND device = ?'),
+  addMember: db.prepare(`INSERT INTO group_members (group_id, device, name, hue, joined_at, last_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(group_id, device) DO UPDATE SET name = excluded.name, last_at = excluded.last_at`),
+  leave: db.prepare('DELETE FROM group_members WHERE group_id = ? AND device = ?'),
+  myGroups: db.prepare(`SELECT g.* FROM groups g JOIN group_members m ON m.group_id = g.id WHERE m.device = ? ORDER BY g.updated_at DESC LIMIT 20`),
+  members: db.prepare('SELECT device, name, hue FROM group_members WHERE group_id = ? ORDER BY joined_at'),
+  groupRequests: db.prepare('SELECT id, data, created_at, decided_place FROM requests WHERE group_id = ? ORDER BY created_at DESC LIMIT 6'),
+  setReqGroup: db.prepare('UPDATE requests SET group_id = ? WHERE id = ?'),
+}
+const userName = (device) => parse(qp.getUser.get(device)?.data ?? 'null')?.name
+
+/** perfil sem nada além do necessário: nome, @, cor, bairro, gosto e região arredondada (~1 km) */
+function cleanProfile(b) {
+  const p = b?.profile ?? {}
+  const home = p.home && Number.isFinite(Number(p.home.lat)) ? { lat: Math.round(Number(p.home.lat) * 100) / 100, lng: Math.round(Number(p.home.lng) * 100) / 100, label: str(p.home.label, 40), city: str(p.home.city, 40), via: ['gps', 'cep', 'bairro'].includes(p.home.via) ? p.home.via : 'bairro' } : undefined
+  return {
+    name: str(p.name, 40).trim(), handle: str(p.handle, 30), hue: int(p.hue, 82), hood: str(p.hood, 40),
+    niches: (Array.isArray(p.niches) ? p.niches : []).filter((n) => NICHES.has(n)).slice(0, 8),
+    vibes: (Array.isArray(p.vibes) ? p.vibes : []).map((v) => str(v, 20)).slice(0, 6), home,
+  }
+}
+
+/** login com Google (o token já foi validado no server.mjs): conta existente → devolve o aparelho/perfil dela;
+ *  conta nova → liga ao aparelho atual */
+export function googleLogin(sub, email, givenName, device) {
+  if (!RE.device.test(device)) return bad('device')
+  const now = Date.now()
+  const acc = qp.byGoogle.get(sub)
+  if (acc) {
+    return ok({ existing: true, device: acc.device, email, profile: parse(acc.data), consentAt: acc.consent_at,
+      reviews: qp.myReviews.all(acc.device).map((r) => ({ ...r, place: r.place ? parse(r.place) : undefined })) })
+  }
+  const here = qp.getUser.get(device)
+  if (here) qp.linkGoogle.run(sub, email, device)
+  else qp.insBare.run(device, JSON.stringify({ name: str(givenName, 40) }), now, now, sub, email)
+  return ok({ existing: false, device, email, name: str(givenName, 40) })
+}
+
+/** avaliação "Quem foi" (moderação do comentário feita no server.mjs antes de chegar aqui) */
+export function insertReview(body, device, verdict) {
+  if (!RE.device.test(device)) return bad('device')
+  const id = str(body.id, 30), placeId = String(body.placeId ?? '')
+  if (!/^rv-[a-z0-9-]{1,24}$/.test(id) || !RE.place.test(placeId) || !(body.verdict in VERDICT_SCORE)) return bad('review')
+  const rid = RE.request.test(String(body.requestId ?? '')) ? body.requestId : null
+  const sp = snap(body.place)
+  const name = userName(device) ?? str(body.name, 40) ?? 'Alguém'
+  qp.insReview.run(id, device, placeId, rid, body.verdict, str(body.note, 400), name || 'Alguém', int(body.hue, 82), sp ? JSON.stringify(sp) : null,
+    verdict.ok ? 'ok' : 'revisao', verdict.motivo || null, int(body.at, Date.now()))
+  return ok({ ok: true, status: verdict.ok ? 'ok' : 'revisao' })
+}
+
+function groupView(g, device) {
+  return {
+    id: g.id, name: g.name, mine: g.owner_device === device, updatedAt: g.updated_at,
+    members: qp.members.all(g.id).map((m) => ({ name: m.name, hue: m.hue, me: m.device === device })),
+    requests: qp.groupRequests.all(g.id).map((r) => ({ id: r.id, text: parse(r.data)?.text ?? '', createdAt: r.created_at, decided: !!r.decided_place })),
+  }
+}
+/** quem vota/sugere num pedido de turma entra nela */
+function joinGroupOf(requestId, device, name, hue) {
+  const r = q.getReq.get(requestId)
+  if (!r?.group_id) return
+  const now = Date.now()
+  qp.addMember.run(r.group_id, device, str(name, 40) || 'Alguém', int(hue, 200), now, now)
+  qp.touchGroup.run(now, r.group_id)
+}
+
+function handlePeople(method, path, body, device, now) {
+  let m
+  if (method === 'GET' && path === '/api/me') {
+    const u = qp.getUser.get(device)
+    return u ? ok({ profile: parse(u.data), consentAt: u.consent_at, email: u.email ?? undefined }) : bad('not_found', 404)
+  }
+  if (method === 'POST' && path === '/api/me') {
+    const consentAt = int(body.consentAt, 0)
+    if (!consentAt) return bad('consent')
+    const p = cleanProfile(body)
+    if (p.name.length < 2) return bad('profile')
+    const ex = qp.getUser.get(device)
+    qp.putUser.run(device, JSON.stringify(p), p.hood, p.home?.lat ?? null, p.home?.lng ?? null, consentAt, ex?.created_at ?? now, now)
+    return ok({ ok: true })
+  }
+  if (method === 'POST' && path === '/api/me/delete') {
+    db.exec('BEGIN')
+    try {
+      db.prepare('DELETE FROM users WHERE device = ?').run(device)
+      db.prepare('DELETE FROM reviews WHERE device = ?').run(device)
+      db.prepare('DELETE FROM group_members WHERE device = ?').run(device)
+      db.prepare("UPDATE votes SET voter = 'Alguém' WHERE device = ?").run(device)
+      db.prepare("UPDATE suggestions SET by_name = 'Alguém' WHERE device = ?").run(device)
+      db.prepare('DELETE FROM feedback WHERE device = ?').run(device)
+      db.prepare('DELETE FROM leads WHERE device = ?').run(device)
+      db.prepare('DELETE FROM events WHERE device = ?').run(device)
+      db.exec('COMMIT')
+    } catch (e) { db.exec('ROLLBACK'); throw e }
+    return ok({ ok: true })
+  }
+  if (method === 'GET' && path === '/api/reviews/mine') return ok(qp.myReviews.all(device).map((r) => ({ ...r, place: r.place ? parse(r.place) : undefined })))
+  if ((m = path.match(/^\/api\/places\/([^/]{2,130})\/reviews$/)) && method === 'GET') {
+    if (!RE.place.test(m[1])) return bad('place')
+    const rows = qp.placeReviews.all(m[1], device)
+    const okRows = rows.filter((r) => r.status === 'ok')
+    const score = okRows.length ? Math.round((okRows.reduce((a, r) => a + VERDICT_SCORE[r.verdict], 0) / okRows.length) * 10) / 10 : null
+    return ok({ score, count: okRows.length, items: rows.map((r) => ({ id: r.id, name: r.name, hue: r.hue, verdict: r.verdict, note: r.note, at: r.at, mine: r.device === device, pending: r.status !== 'ok' })) })
+  }
+  if (method === 'GET' && path === '/api/ratings') {
+    const acc = {}
+    for (const r of qp.ratings.all()) { const a = (acc[r.place_id] ??= [0, 0]); a[0] += VERDICT_SCORE[r.verdict] * r.n; a[1] += r.n }
+    return ok(Object.fromEntries(Object.entries(acc).map(([k, [sum, n]]) => [k, [Math.round((sum / n) * 10) / 10, n]])))
+  }
+  if (method === 'GET' && path === '/api/groups') return ok(qp.myGroups.all(device).map((g) => groupView(g, device)))
+  if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/(name|leave)$/)) && method === 'POST') {
+    if (!qp.member.get(m[1], device)) return bad('not_member', 403)
+    if (m[2] === 'leave') { qp.leave.run(m[1], device); return ok({ ok: true }) }
+    qp.renameGroup.run(str(body.name, 40).trim() || null, m[1])
+    return ok({ ok: true })
+  }
+  return null
+}
+
 export function handleApi(method, path, req, body) {
   const device = str(req.headers['x-device'], 40)
   const write = method === 'POST'
@@ -218,6 +397,11 @@ export function handleApi(method, path, req, body) {
   let m
 
   if (method === 'GET' && path === '/api/health') return ok({ ok: true, db: true, at: now })
+  if (/^\/api\/(me|reviews|ratings|groups)\b|^\/api\/places\/[^/]+\/reviews$/.test(path)) {
+    if (!RE.device.test(device)) return bad('device')
+    const out = handlePeople(method, path, body, device, now)
+    if (out) return out
+  }
 
   /* ---- catálogo comunitário ---- */
   if (method === 'GET' && path === '/api/places') {
@@ -269,7 +453,18 @@ export function handleApi(method, path, req, body) {
     if (!data) return bad('too_large', 413)
     const ins = q.insReq.run(id, data, device, int(body.createdAt, now))
     if (!ins.changes) q.updReq.run(data, id, device) // o autor pode atualizar (ex.: novas opções); os outros não
-    return ok({ ok: true })
+    // turma: reaproveita a indicada (se o autor é membro) ou cria uma nova com o autor
+    const cur = q.getReq.get(id)
+    let groupId = cur.group_id
+    if (cur.author_device === device) {
+      const want = RE_GROUP.test(String(body.groupId ?? '')) && qp.member.get(body.groupId, device) ? body.groupId : null
+      if (want && want !== groupId) groupId = want
+      if (!groupId) { groupId = `t-${randomBytes(8).toString('hex').slice(0, 10)}`; qp.insGroup.run(groupId, null, device, now, now) }
+      q.setGroup.run(groupId, id)
+      qp.addMember.run(groupId, device, str(body.author?.name, 40) || 'Alguém', int(body.author?.hue, 82), now, now)
+      qp.touchGroup.run(now, groupId)
+    }
+    return ok({ ok: true, groupId })
   }
 
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})$/)) && method === 'GET') {
@@ -283,6 +478,7 @@ export function handleApi(method, path, req, body) {
     const value = str(body.value, 60)
     if (!value || (kind === 'place' && !RE.place.test(value))) return bad('vote')
     q.vote.run(m[1], device, kind, value, str(body.voter, 40) || 'Alguém', now)
+    joinGroupOf(m[1], device, body.voter, body.hue)
     return ok({ ok: true })
   }
 
@@ -304,6 +500,7 @@ export function handleApi(method, path, req, body) {
       if (ps) data.places = [...(data.places ?? []).filter((p) => p[0] !== placeId), ps].slice(-6)
       db.prepare('UPDATE requests SET data = ? WHERE id = ?').run(JSON.stringify(data), m[1])
     }
+    joinGroupOf(m[1], device, by, body.hue)
     return ok({ ok: true, duplicate: !ins.changes })
   }
 

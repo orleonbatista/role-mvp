@@ -8,6 +8,7 @@ import { OCCASIONS, VIBES, nicheLabel, occasionLabel, vibeLabel } from '../lib/l
 import { track } from '../lib/track'
 import { isVague, parseRequest } from '../mocks/ranker'
 import { parseText, useCreateRequest } from '../lib/api'
+import { turmaName, useTurmas } from './Turmas'
 import type { Criteria, Occasion, Vibe } from '../lib/types'
 
 const EXAMPLES = [
@@ -32,6 +33,8 @@ export function NewRequest() {
   const [vibes, setVibes] = useState<Vibe[]>([])
   const [clarify, setClarify] = useState(false)
   const [ex, setEx] = useState(0)
+  const turmaId = params.get('turma') ?? undefined
+  const turma = useTurmas().data?.find((t) => t.id === turmaId)
   const ta = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -68,7 +71,7 @@ export function NewRequest() {
     const now = parseRequest(text)
     const vague = isVague({ ...now, occasion: occasion ?? now.occasion, vibes: [...now.vibes, ...vibes] })
     if (vague && !force && !clarify) { setClarify(true); track('clarify_shown', { text }); return }
-    const { id } = await create.mutateAsync({ text, overrides: { occasion, groupSize: group, vibes: vibes.length ? [...new Set([...(parsed?.vibes ?? []), ...vibes])] : undefined } })
+    const { id } = await create.mutateAsync({ text, groupId: turmaId, overrides: { occasion, groupSize: group, vibes: vibes.length ? [...new Set([...(parsed?.vibes ?? []), ...vibes])] : undefined } })
     track('request_created', { vague, clarified: clarify, groupSize: group ?? now.groupSize, occasion: occasion ?? now.occasion, niches: now.niches, unmet })
     nav(`/pedido/${id}`, { replace: true })
   }
@@ -98,6 +101,11 @@ export function NewRequest() {
     <Page footer={footer}>
       <TopBar title="Novo pedido" />
       <div className="px-5 pt-2">
+        {turma && (
+          <p className="mb-3 flex items-center gap-2 rounded-full bg-accent/10 px-4 py-2 text-[13px] text-accent">
+            <Users size={14} />Pra {turmaName(turma)} · {turma.members.length} pessoas
+          </p>
+        )}
         <motion.div layoutId="composer" transition={{ type: 'spring', stiffness: 300, damping: 34 }} className="relative rounded-[28px] border border-line bg-surface p-4">
           <div className="relative">
             <textarea

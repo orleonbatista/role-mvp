@@ -26,6 +26,8 @@ const ImportSubmission = lazy(() => import('../features/ImportSubmission').then(
 const CreatorPage = lazy(() => import('../features/CreatorPage').then((m) => ({ default: m.CreatorPage })))
 const IndicarPage = lazy(() => import('../features/Indicar').then((m) => ({ default: m.IndicarPage })))
 const FundadorPage = lazy(() => import('../features/Fundador').then((m) => ({ default: m.FundadorPage })))
+const PrivacidadePage = lazy(() => import('../features/Privacidade').then((m) => ({ default: m.PrivacidadePage })))
+const TurmasPage = lazy(() => import('../features/Turmas').then((m) => ({ default: m.TurmasPage })))
 const TestesPage = lazy(() => import('../features/Testes').then((m) => ({ default: m.TestesPage })))
 
 const TAB_ROUTES = ['/', '/perfil']
@@ -41,7 +43,7 @@ function Fallback() {
 export function App() {
   const location = useLocation()
   const { data: profile, isLoading } = useProfile()
-  const isPublic = ['/r/', '/s/', '/e/', '/p/', '/lugar/', '/divulgar', '/indicar', '/fundador', '/testes'].some((p) => location.pathname.startsWith(p))
+  const isPublic = ['/r/', '/s/', '/e/', '/p/', '/lugar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
   const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !isPublic
   const showFeedback = !['/onboarding', '/r/', '/s/', '/i/', '/e/', '/c/', '/p/', '/divulgar', '/testes'].some((p) => location.pathname.startsWith(p))
 
@@ -66,7 +68,7 @@ export function App() {
                     ['/onboarding', <Onboarding />], ['/novo', <NewRequest />], ['/pedido/:id', <Results />], ['/r/:id', <VotePage />],
                     ['/lugar/:id', <PlacePage />], ['/avaliar/:id', <ReviewPage />], ['/perfil', <ProfilePage />], ['/testes', <TestesPage />],
                     ['/s/:id', <SuggestPage />], ['/i/:id', <ImportSuggestion />],
-                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />],
+                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />],
                   ].map(([path, el]) => (
                     <Route key={path as string} path={path as string} element={<Suspense fallback={<Fallback />}>{el}</Suspense>} />
                   ))}
