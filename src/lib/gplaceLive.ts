@@ -85,11 +85,20 @@ export async function liveInfo(p: Place, opts: { group?: boolean } = {}): Promis
     const week = hours?.weekdayDescriptions
     const dow = (new Date().getDay() + 6) % 7 // Google: segunda = 0
     const ph = g.photos?.[0]
+    // o <img> direto no endpoint /media falha por causa do redirecionamento; pedimos o endereço final (photoUri,
+    // temporário) na mesma chamada cobrada — fica só em memória
+    let photoUrl: string | undefined
+    if (ph) {
+      try {
+        const pr = await fetch(`https://places.googleapis.com/v1/${ph.name}/media?maxWidthPx=800&skipHttpRedirect=true&key=${KEY}`, { signal: AbortSignal.timeout(8000) })
+        if (pr.ok) photoUrl = ((await pr.json()) as { photoUri?: string }).photoUri
+      } catch { /* sem foto */ }
+    }
     const info: LiveInfo = {
       placeId: pid, status: g.businessStatus, mapsUri: g.googleMapsUri, address: g.formattedAddress,
       openNow: hours?.openNow, week, today: week?.[dow]?.replace(/^[^:]+:\s*/, ''),
       rating: g.rating, ratings: g.userRatingCount, phone: g.nationalPhoneNumber,
-      photo: ph ? { url: `https://places.googleapis.com/v1/${ph.name}/media?maxWidthPx=800&key=${KEY}`, author: ph.authorAttributions?.[0]?.displayName, authorUri: ph.authorAttributions?.[0]?.uri } : undefined,
+      photo: ph && photoUrl ? { url: photoUrl, author: ph.authorAttributions?.[0]?.displayName, authorUri: ph.authorAttributions?.[0]?.uri } : undefined,
       group: opts.group ? { goodForGroups: g.goodForGroups, reservable: g.reservable, liveMusic: g.liveMusic, outdoorSeating: g.outdoorSeating } : undefined,
     }
     mem.set(ck, info)
