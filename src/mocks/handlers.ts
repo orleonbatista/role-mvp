@@ -132,7 +132,7 @@ function noteFrom(ds: string[], f: PickFact, chosen: PickFact[]): string | null 
   const k = f.distancia_km, n = f.nota_google, c = f.avaliacoes_google ?? 0
   // 1) o que diferencia ESTE lugar dos outros escolhidos (sempre conferido nos fatos)
   let diff: string | null = null
-  if (k != null && k <= minKm && chosen.length > 1) diff = `o mais perto de você (${fmt1(k)} km)`
+  if (k != null && k <= minKm && chosen.length > 1) diff = `o mais perto (${fmt1(k)} km de quem pediu)`
   else if (n != null && n >= maxNota && c >= 50) diff = `a melhor nota no Google entre as opções (${fmt1(n)}, ${fmtN(c)} avaliações)`
   else if (c >= maxCount && c >= 500) diff = `o mais avaliado (${fmtN(c)} avaliações, nota ${fmt1(n ?? 0)})`
   else if (n != null && n >= 4.6 && c >= 200) diff = `nota ${fmt1(n)} com ${fmtN(c)} avaliações`
