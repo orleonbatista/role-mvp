@@ -51,7 +51,25 @@ async function boot() {
   void applyRatings().then(() => qc.invalidateQueries())
   if (me?.onboarded) discoverForTaste(centerOf(me), me.niches).then(applyRatings).then(() => qc.invalidateQueries()).catch(() => {})
   // perfil no banco (só com consentimento): mantém nome, gosto e região atualizados
-  if (me?.consentAt) void pushMe(me)
+  // e se o servidor estava fora na abertura (túnel trocando, PC dormindo), tenta de novo até conseguir:
+  // nenhum cadastro fica só no celular, e um reset feito no servidor chega mesmo pra quem abriu offline
+  let synced = false
+  const reconcile = async () => {
+    const r = await import('./mocks/remote')
+    if (!(await r.apiBase(synced ? false : true))) return
+    const local = Number(localStorage.getItem('role.profileEpoch') ?? 0)
+    if (r.serverEpoch > local) {
+      localStorage.setItem('role.profileEpoch', String(r.serverEpoch))
+      if (await db.profile.get('me')) { await db.profile.delete('me'); location.assign(import.meta.env.BASE_URL + 'onboarding'); return }
+    }
+    if (synced) return
+    const cur = await db.profile.get('me')
+    synced = !cur?.consentAt || !!(await pushMe(cur))
+  }
+  void reconcile()
+  const timer = setInterval(() => { if (synced) clearInterval(timer); else void reconcile() }, 45_000)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void reconcile() })
+  window.addEventListener('online', () => void reconcile())
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <QueryClientProvider client={qc}>
