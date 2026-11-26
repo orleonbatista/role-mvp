@@ -118,15 +118,48 @@ function factsOf(r: Ranked, i: number, c: Criteria, profile: Profile | null | un
     nota_comunidade: !p.source && p.ratingCount > 0 ? p.rating : isCurated(p) && p.ratingCount > 0 ? p.rating : null,
     area_externa: L?.outdoor ?? (p.niches.includes('ao-ar-livre') && !p.source ? true : null),
     cerveja: L?.beer ?? null, drinks: L?.cocktails ?? null, musica_ao_vivo: L?.music ?? null, bom_pra_grupo: L?.groups ?? null,
-    aberto_no_horario_pedido: open, ...(c.budget ? { preco_estimado: p.price } : {}),
+    aberto_no_horario_pedido: open, ...(c.budget ? { preco_estimado: p.price } : {}), curado_pela_comunidade: isCurated(p),
   }
 }
+/** destaques escolhidos pela IA → frase, só com o que os fatos confirmam (superlativos conferidos entre os escolhidos) */
+const fmt1 = (n: number) => n.toFixed(1).replace('.', ',')
+const fmtN = (n: number) => (n >= 1000 ? `${fmt1(n / 1000)} mil` : String(n))
+function noteFrom(ds: string[], f: PickFact, chosen: PickFact[]): string | null {
+  const minKm = Math.min(...chosen.map((x) => x.distancia_km ?? 99))
+  const maxNota = Math.max(...chosen.map((x) => x.nota_google ?? 0))
+  const parts: string[] = []
+  for (const d of ds) {
+    const k = f.distancia_km, n = f.nota_google, c = f.avaliacoes_google ?? 0
+    if (d === 'mais_perto' && k != null && k <= minKm) parts.push(`o mais perto de você (${fmt1(k)} km)`)
+    else if ((d === 'perto' || d === 'mais_perto') && k != null && k <= 1.5) parts.push(`fica pertinho (${fmt1(k)} km)`)
+    else if (d === 'melhor_nota' && n != null && n >= maxNota) parts.push(`a melhor nota no Google entre as opções (${fmt1(n)}, ${fmtN(c)} avaliações)`)
+    else if ((d === 'nota_alta' || d === 'melhor_nota') && n != null && n >= 4.6 && c >= 200) parts.push(`nota ${fmt1(n)} no Google com ${fmtN(c)} avaliações`)
+    else if (d === 'muito_avaliado' && c >= 1000) parts.push(`muito bem avaliado por muita gente (${fmtN(c)} avaliações)`)
+    else if (d === 'area_externa' && f.area_externa) parts.push('área externa confirmada')
+    else if (d === 'cerveja' && f.cerveja) parts.push('serve cerveja')
+    else if (d === 'drinks' && f.drinks) parts.push('tem drinks')
+    else if (d === 'musica_ao_vivo' && f.musica_ao_vivo) parts.push('tem música ao vivo')
+    else if (d === 'bom_pra_grupo' && f.bom_pra_grupo) parts.push('bom pra grupo')
+    else if (d === 'aberto_no_horario' && f.aberto_no_horario_pedido) parts.push('aberto no horário que você pediu')
+    else if (d === 'curado_pela_comunidade' && f.curado_pela_comunidade) parts.push('indicado pela comunidade')
+  }
+  const uniq = [...new Set(parts)]
+  if (!uniq.length) return null
+  const s = uniq.join(' e ')
+  return s[0].toUpperCase() + s.slice(1) + '.'
+}
+
 async function curateWithLLM(req: RoleRequest, cands: Ranked[], profile: Profile | null | undefined): Promise<Ranked[] | null> {
   if (cands.length < 3) return null
   const out = await pickWithLLM(req.text, cands.map((r, i) => factsOf(r, i, req.criteria, profile)))
   if (!out?.escolhas.length) return null
+  const facts = cands.map((r, i) => factsOf(r, i, req.criteria, profile))
   const notes = new Map<string, string>()
-  const chosen = out.escolhas.filter((e) => cands[e.i]).map((e) => { notes.set(cands[e.i].place.id, e.motivo); return { ...cands[e.i], aiNote: e.motivo } })
+  const chosen = out.escolhas.filter((e) => cands[e.i]).map((e) => {
+    const note = noteFrom(e.destaques, facts[e.i], facts.filter((_, j) => out.escolhas.some((x) => x.i === j)))
+    if (note) notes.set(cands[e.i].place.id, note)
+    return { ...cands[e.i], aiNote: note ?? undefined }
+  })
   if (chosen.length < 3) return null
   aiNotes.set(req.id, notes)
   // completa com o ranking se a IA escolheu menos de 5

@@ -3,7 +3,7 @@
 //  - Dados: /api/* (api.mjs, SQLite) com pedidos, votos, sugestões, curadoria e métricas compartilhados entre aparelhos.
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
-import { askBody, moderateBody, moderationRules, ollamaBody, pickBody } from '../src/mocks/llmPrompt.ts'
+import { DESTAQUES, askBody, moderateBody, moderationRules, ollamaBody, pickBody } from '../src/mocks/llmPrompt.ts'
 import { adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
 import { geoFromCep, geoReverse } from './geo.mjs'
 
@@ -193,6 +193,7 @@ const server = http.createServer(async (req, res) => {
       ...Object.fromEntries(['distancia_km', 'nota_google', 'avaliacoes_google', 'nota_comunidade'].map((k) => [k, Number.isFinite(Number(c?.[k])) && c?.[k] !== null ? Number(c[k]) : null])),
       ...(Number.isFinite(Number(c?.preco_estimado)) && c?.preco_estimado != null ? { preco_estimado: Number(c.preco_estimado) } : {}),
       ...Object.fromEntries(['area_externa', 'cerveja', 'drinks', 'musica_ao_vivo', 'bom_pra_grupo', 'aberto_no_horario_pedido'].map((k) => [k, typeof c?.[k] === 'boolean' ? c[k] : null])),
+      curado_pela_comunidade: c?.curado_pela_comunidade === true,
     }))
     const job = queue.then(async () => {
       const t0 = Date.now()
@@ -205,7 +206,7 @@ const server = http.createServer(async (req, res) => {
       const seen = new Set()
       const escolhas = (Array.isArray(j.escolhas) ? j.escolhas : [])
         .filter((e) => Number.isInteger(e?.i) && e.i >= 0 && e.i < clean.length && !seen.has(e.i) && seen.add(e.i))
-        .slice(0, 5).map((e) => ({ i: e.i, motivo: String(e.motivo ?? '').trim().slice(0, 140) }))
+        .slice(0, 5).map((e) => ({ i: e.i, destaques: (Array.isArray(e.destaques) ? e.destaques : []).filter((d) => DESTAQUES.includes(d)).slice(0, 2) }))
       return { escolhas, model: MODEL, ms: Date.now() - t0 }
     })
     queue = job.catch(() => {})

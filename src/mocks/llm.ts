@@ -190,7 +190,7 @@ export async function askPollLLM(question: string, pedido: string, facts: PlaceF
 }
 
 /** curadoria da IA sobre os candidatos: devolve a ordem escolhida e um motivo por lugar (ou null sem LLM) */
-export async function pickWithLLM(pedido: string, cands: PickFact[]): Promise<{ escolhas: { i: number; motivo: string }[]; ms: number } | null> {
+export async function pickWithLLM(pedido: string, cands: PickFact[]): Promise<{ escolhas: { i: number; destaques: string[] }[]; ms: number } | null> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 14000)
   const t0 = performance.now()

@@ -164,26 +164,30 @@ export interface PickFact {
   aberto_no_horario_pedido: boolean | null
   /** só quando o pedido fala de orçamento; é estimativa, não preço confirmado */
   preco_estimado?: number
+  curado_pela_comunidade: boolean
 }
+
+export const DESTAQUES = ['mais_perto', 'perto', 'melhor_nota', 'nota_alta', 'muito_avaliado', 'area_externa', 'cerveja', 'drinks',
+  'musica_ao_vivo', 'bom_pra_grupo', 'aberto_no_horario', 'curado_pela_comunidade'] as const
 
 export const PICK_SYSTEM = `Você é o curador do app rolê. Recebe o pedido de uma pessoa e uma lista de lugares candidatos,
 cada um só com FATOS verificados (null = não se sabe). Escolha os 5 que melhor atendem AO PEDIDO (menos só se não houver 5 aceitáveis), nesta ordem de prioridade:
 1) o que o pedido exige explicitamente (ex.: área externa, música ao vivo, cerveja, aberto no horário, distância);
-2) o clima e a ocasião que o pedido sugere (date, grupo grande, sozinho, barato, animado);
+2) o clima e a ocasião que o pedido sugere (date, grupo grande, sozinho, animado);
 3) qualidade: nota alta com muitas avaliações vale mais que nota alta com poucas.
 Descarte quem contraria um requisito explícito (ex.: area_externa=false quando o pedido quer ao ar livre; aberto_no_horario_pedido=false).
-Para cada escolhido escreva "motivo": UMA frase curta (até 16 palavras), em português do Brasil, ligando o lugar ao pedido,
-citando só fatos da lista. Cada motivo deve destacar o que diferencia AQUELE lugar dos outros (ex.: a nota mais alta com
-muitas avaliações, o mais perto, o que abre mais cedo, o único com música ao vivo) — não repita o mesmo texto.
-Nunca invente (cardápio, preço, ambiente, música) nem repita o nome do lugar. preco_estimado é só estimativa: não afirme que é barato.
-Responda JSON {"escolhas": [{"i": número do candidato, "motivo": "..."}]}.`
+Para cada escolhido, dê 1 ou 2 "destaques" — o que mais justifica AQUELE lugar para ESTE pedido e o diferencia dos outros:
+mais_perto (o menor distancia_km da lista), perto (até 1,5 km), melhor_nota (a maior nota_google da lista), nota_alta (4,6+ com 200+ avaliações),
+muito_avaliado (1000+ avaliações), area_externa, cerveja, drinks, musica_ao_vivo, bom_pra_grupo, aberto_no_horario, curado_pela_comunidade.
+Só use destaque cujo fato seja verdadeiro na lista. Varie: não dê os mesmos destaques para todos.
+Responda JSON {"escolhas": [{"i": número do candidato, "destaques": ["..."]}]}.`
 
 export const PICK_SCHEMA = {
   type: 'object',
   properties: {
     escolhas: {
       type: 'array', maxItems: 5,
-      items: { type: 'object', properties: { i: { type: 'integer' }, motivo: { type: 'string' } }, required: ['i', 'motivo'] },
+      items: { type: 'object', properties: { i: { type: 'integer' }, destaques: { type: 'array', maxItems: 2, items: { type: 'string', enum: [...DESTAQUES] } } }, required: ['i', 'destaques'] },
     },
   },
   required: ['escolhas'],
