@@ -107,7 +107,8 @@ const parse = (s) => { try { return JSON.parse(s) } catch { return null } }
 const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map((x) => str(x, 20))
 function snap(v) {
   if (!Array.isArray(v) || !/^(g-[A-Za-z0-9_-]{5,120}|o-[nwr]\d{1,14})$/.test(String(v[0]))) return null
-  return [String(v[0]), str(v[1], 80), ['bar', 'restaurante', 'balada', 'evento'].includes(v[2]) ? v[2] : 'bar', str(v[3], 40), list(v[4], 3), int(v[5]), list(v[6], 2), list(v[7], 3)]
+  const out = [String(v[0]), str(v[1], 80), ['bar', 'restaurante', 'balada', 'evento'].includes(v[2]) ? v[2] : 'bar', str(v[3], 40), list(v[4], 3), int(v[5]), list(v[6], 2), list(v[7], 3)]
+  return v[8] === 'b' ? [...out, 'b'] : out // 'b' = sem curadoria (Google ao vivo)
 }
 
 function isAdmin(req) {
@@ -203,9 +204,11 @@ function stats() {
 }
 
 /** catálogo comunitário: chamado pelo server.mjs depois da moderação (regras + LLM) */
+const curatedSnap = (v) => snap(v)?.slice(0, 8) ?? null // no catálogo da comunidade o lugar é curado: sem a marca 'b'
+
 export function insertPlace(body, device, verdict) {
   if (!RE.device.test(device)) return bad('device')
-  const sp = snap(body.place)
+  const sp = curatedSnap(body.place)
   if (!sp) return bad('place')
   const existing = q.getPlace.get(sp[0])
   if (existing) { q.usePlace.run(sp[0]); return ok({ ok: true, status: existing.status, existing: true }) }
@@ -217,7 +220,7 @@ export function insertPlace(body, device, verdict) {
   return ok({ ok: true, status, motivo: verdict.motivo || undefined })
 }
 export const placeForModeration = (body) => {
-  const sp = snap(body.place)
+  const sp = curatedSnap(body.place)
   return sp ? { name: sp[1], comment: str(body.comment, 200), exists: !!q.getPlace.get(sp[0]) } : null
 }
 

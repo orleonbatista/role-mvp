@@ -133,11 +133,13 @@ export async function searchGoogle(query: string): Promise<PlacesResult> {
 /* ---------- lugar do catálogo comunitário circulando entre aparelhos ----------
    Do Google só o place_id (permitido guardar). Nome, bairro, estilo, vibe, ocasião e faixa de preço são os que
    a pessoa confirmou ao sugerir: conteúdo da comunidade. Nota/horário: link pro Google Maps. */
-export type PlaceSnap = [id: string, name: string, kind: PlaceKind, hood: string, niches: Niche[], price: number, vibes: Vibe[], occasions: Occasion[]]
-export const snapOf = (p: Place): PlaceSnap => [p.id, p.name, p.kind, p.hood, p.niches, p.price, p.vibes, p.occasions]
+export type PlaceSnap = [id: string, name: string, kind: PlaceKind, hood: string, niches: Niche[], price: number, vibes: Vibe[], occasions: Occasion[], base?: 'b']
+/** 9º item 'b' = lugar sem curadoria (descoberta ao vivo no Google): do outro lado não vira curado nem é salvo no aparelho */
+export const snapOf = (p: Place): PlaceSnap => (p.curation === 'base' ? [p.id, p.name, p.kind, p.hood, p.niches, p.price, p.vibes, p.occasions, 'b'] : [p.id, p.name, p.kind, p.hood, p.niches, p.price, p.vibes, p.occasions]) as PlaceSnap
 export function fromSnap(s: unknown): Place | null {
   if (!Array.isArray(s) || typeof s[0] !== 'string' || !/^(g-[A-Za-z0-9_-]{5,120}|o-[nwr]\d{1,14})$/.test(s[0])) return null
-  const [id, name, kind, hood, niches, price, vibes, occasions] = s as PlaceSnap
+  const [id, name, kind, hood, niches, price, vibes, occasions, b] = s as PlaceSnap
+  const base = b === 'b'
   const k: PlaceKind = ['bar', 'restaurante', 'balada', 'evento'].includes(kind) ? kind : 'bar'
   const periods: OpenPeriod[] = [{ days: [0, 1, 2, 3, 4, 5, 6], open: 0, close: 24 }]
   const arr = (v: unknown, n: number) => (Array.isArray(v) ? v.map(String).slice(0, n) : [])
@@ -145,7 +147,8 @@ export function fromSnap(s: unknown): Place | null {
   return {
     id, name: String(name).slice(0, 80), kind: k, hood: String(hood).slice(0, 40), niches: arr(niches, 3) as Niche[],
     vibes: arr(vibes, 2) as Vibe[], occasions: occ.length ? occ : ['amigos'], price: Number(price) || 0, capacity: 40, rating: 8, ratingCount: 0,
-    hue: hueOf(id), tagline: 'Sugerido pela comunidade', description: '', highlights: [], address: String(hood).slice(0, 40), hours: 'Ver horário no Google Maps',
+    hue: hueOf(id), tagline: base ? (k === 'restaurante' ? 'Restaurante' : k === 'balada' ? 'Balada' : 'Bar') : 'Sugerido pela comunidade', description: '', highlights: [], address: String(hood).slice(0, 40), hours: 'Ver horário no Google Maps',
     tags: [], privateSpace: false, periods, source: id.startsWith('o-') ? 'osm' : 'google', mapsUrl: mapsUrlOf(id, String(name), String(hood)),
+    ...(base ? { curation: 'base' as const } : {}),
   }
 }

@@ -16,7 +16,12 @@ export function adoptSnaps(snaps: unknown, max = 12): number {
     const p = fromSnap(s)
     if (!p) continue
     const cur = placeById.get(p.id)
-    if (!cur || cur.curation === 'base') { registerPlace(p); void db.gplaces.put({ id: p.id, snap: s as PlaceSnap }).catch(() => {}); n++ }
+    if (!cur || (cur.curation === 'base' && p.curation !== 'base')) {
+      registerPlace(p)
+      // sem curadoria (Google ao vivo) fica só em memória; curado pela comunidade fica no aparelho
+      if (p.curation !== 'base') void db.gplaces.put({ id: p.id, snap: s as PlaceSnap }).catch(() => {})
+      n++
+    }
   }
   return n
 }
@@ -29,4 +34,5 @@ export async function loadGooglePlaces() {
 }
 /** resumos dos lugares do Google entre estes ids (para mandar junto no link / backend) */
 /** resumos dos lugares da comunidade entre estes ids (o outro aparelho pode não tê-los) */
-export const snapsFor = (ids: string[]) => ids.map((id) => placeById.get(id)).filter((p) => p && p.source && p.curation !== 'base').map((p) => snapOf(p!))
+/** resumo dos lugares externos (Google) das opções: curados e também os sem curadoria (marcados 'b') */
+export const snapsFor = (ids: string[]) => ids.map((id) => placeById.get(id)).filter((p) => p && p.source).map((p) => snapOf(p!))
