@@ -13,6 +13,8 @@ import { loadBase } from './mocks/base'
 import { loadExtraEvents } from './mocks/extraEvents'
 import { loadGooglePlaces } from './mocks/gplaces'
 import { App } from './app/App'
+import { db } from './db/db'
+import { loadRegion } from './mocks/region'
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: false } } })
 
@@ -22,6 +24,9 @@ async function boot() {
   if (await demoOn()) { registerDemoSeeds(); await seedIfEmpty() } else await purgeSeeds()
   await Promise.all([loadExtraEvents(), loadGooglePlaces()])
   await loadBase()
+  // região de quem já se cadastrou: lugares em volta vindos do banco do PC (não trava a abertura)
+  const me = await db.profile.get('me')
+  if (me?.home) loadRegion(me.home).then((n) => { if (n) qc.invalidateQueries() }).catch(() => {})
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <QueryClientProvider client={qc}>

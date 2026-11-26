@@ -8,6 +8,13 @@ Inventário do MVP (nov/2026). Entre parênteses, a rota da tela.
 - **Perfil** (`/perfil`): gostos, diário de rolês, modo demo (amigos e curadores simulados, liga/desliga),
   atalhos pra Divulgar evento e Painel de testes, zerar dados locais.
 
+## Região (cadastro)
+- **Onde você costuma sair?** "Usar minha localização" ou CEP (bairro da lista como alternativa). O backend carrega os
+  lugares reais do OpenStreetMap em volta (raio 2,5 km, uma vez por região) e eles entram na base. A Home mostra
+  "N lugares reais perto de você esperando curadoria".
+- **Ficha ao vivo do Google:** foto com crédito, aberto agora, horário, nota do Google (discreta), telefone e mapa.
+  Em pedido de grupo aparecem também "bom pra grupo", "aceita reserva" e "música ao vivo". Nada é salvo.
+
 ## Curadoria
 - **Indicar um lugar** (`/indicar`, pública): busca no catálogo (curados + base real do OSM) e no Google;
   escolhe e escreve como é. A IA marca estilo, vibe e ocasião ("Entendi: …"), a pessoa ajusta e o lugar

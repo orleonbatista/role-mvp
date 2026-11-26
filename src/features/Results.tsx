@@ -147,7 +147,7 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
   const votes = detail.tally.find((t) => t.placeId === placeId)?.count ?? 0
   const p = r.place
   return (
-    <Link to={`/lugar/${p.id}`} className="group block overflow-hidden rounded-[28px] border border-line bg-surface">
+    <Link to={`/lugar/${p.id}${detail.request.criteria.groupSize >= 6 || detail.request.criteria.occasion === 'aniversario' ? '?grupo=1' : ''}`} className="group block overflow-hidden rounded-[28px] border border-line bg-surface">
       <div className="relative">
         <Cover hue={p.hue} icon={placeIcon(p)} iconSize={64} layoutId={`cover-${p.id}`} className="h-44 w-full" rounded="rounded-none" />
         <span className="absolute left-4 top-4 font-serif text-5xl italic leading-none text-white/90 drop-shadow">{rank}</span>

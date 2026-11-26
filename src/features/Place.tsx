@@ -1,7 +1,8 @@
 import { motion, useScroll, useTransform } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { StoryCard } from '../lib/storyCard'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { GoogleLive } from './GoogleLive'
 import { CalendarCheck, ChevronLeft, Clock, MapPin, Megaphone, Minus, Plus, Share2, Star, Ticket, Users } from 'lucide-react'
 import { Link } from 'react-router'
 import { PromoteSheet } from './PromoteSheet'
@@ -21,6 +22,7 @@ import { KIND_LABEL, VERDICT_LABEL, nicheLabel, occasionLabel, priceLabel, timeA
 
 export function PlacePage() {
   const { id = '' } = useParams()
+  const [sp] = useSearchParams()
   const nav = useNavigate()
   const toast = useToast()
   const { data, isError } = usePlace(id)
@@ -117,6 +119,8 @@ export function PlacePage() {
               </motion.div>
             ))}
           </motion.div>
+
+          {google && <GoogleLive place={place} group={sp.get('grupo') === '1'} />}
 
           <div className="mt-6 flex flex-wrap gap-1.5">
             {place.niches.map((n) => <Tag key={n} tone="accent">{nicheLabel(n)}</Tag>)}

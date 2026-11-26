@@ -1,13 +1,16 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { ArrowRight, Sparkles } from 'lucide-react'
+import { ArrowRight, LoaderCircle, LocateFixed, MapPin, Sparkles } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button, Chip, Page } from '../ui/primitives'
 import { ease } from '../ui/motion'
 import { HOODS, NICHES, VIBES } from '../lib/labels'
 import { useProfile, useSaveProfile } from '../lib/api'
 import { track } from '../lib/track'
-import type { Niche, Vibe } from '../lib/types'
+import type { Home, Niche, Vibe } from '../lib/types'
+import { ensureRegion, homeFromCep, homeFromGps, hoodFor } from '../mocks/region'
+import { useToast } from '../ui/Toast'
 
 const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
 
@@ -22,17 +25,34 @@ export function Onboarding() {
   const [hood, setHood] = useState(me?.hood ?? 'Pinheiros')
   const [niches, setNiches] = useState<Niche[]>(me?.niches ?? [])
   const [vibes, setVibes] = useState<Vibe[]>(me?.vibes ?? [])
+  const [home, setHome] = useState<Home | undefined>(me?.home)
+  const [loadingRegion, setLoadingRegion] = useState(false)
+  const qc = useQueryClient()
+  const toast = useToast()
 
   const go = (n: number) => { setDir(n > step ? 1 : -1); setStep(n) }
   const canNext = [true, name.trim().length > 1, niches.length > 0, vibes.length > 0][step]
 
   async function finish() {
     const first = name.trim().split(' ')[0]
+    const finalHood = home ? hoodFor(home) : hood
     await save.mutateAsync({
       name: name.trim(), handle: '@' + first.toLowerCase().normalize('NFD').replace(/[^a-z]/g, ''),
-      hood, niches, vibes, onboarded: true,
+      hood: finalHood, home, niches, vibes, onboarded: true,
     })
-    track(me?.onboarded ? 'taste_edited' : 'onboarding_done', { niches, vibes, hood })
+    track(me?.onboarded ? 'taste_edited' : 'onboarding_done', { niches, vibes, hood: finalHood, via: home?.via ?? 'bairro' })
+    // lugares reais em volta: o PC busca no OpenStreetMap (1ª vez da região pode levar ~1 min) — espera até 12 s
+    // e segue em segundo plano; quando terminar, atualiza o feed
+    if (home && home.via !== 'bairro') {
+      setLoadingRegion(true)
+      const job = ensureRegion(home).then((r) => {
+        track('region_loaded', { n: r.loaded, fresh: r.fresh, ok: r.ok })
+        if (r.loaded) { qc.invalidateQueries(); toast(`${r.loaded} lugares reais perto de ${finalHood} entraram na base`) }
+        return r
+      }).catch(() => null)
+      await Promise.race([job, new Promise((res) => setTimeout(res, 12000))])
+      setLoadingRegion(false)
+    }
     // veio de um convite (ex.: evento divulgado): volta pro que a pessoa estava fazendo
     let next: string | null = null
     try { next = localStorage.getItem('role.next'); localStorage.removeItem('role.next') } catch { /* */ }
@@ -78,10 +98,7 @@ export function Onboarding() {
                   placeholder="Seu nome"
                   className="mt-10 w-full border-b border-line bg-transparent pb-3 text-2xl outline-none placeholder:text-faint focus:border-accent transition-colors"
                 />
-                <p className="mt-10 mb-3 text-sm text-mute">Seu bairro base</p>
-                <div className="flex flex-wrap gap-2">
-                  {HOODS.map((h) => <Chip key={h} active={hood === h} onClick={() => setHood(h)}>{h}</Chip>)}
-                </div>
+                <Region home={home} setHome={setHome} hood={hood} setHood={setHood} />
               </>
             )}
             {step === 2 && (
@@ -135,15 +152,66 @@ export function Onboarding() {
         {step > 0 ? <Button variant="ghost" onClick={() => go(step - 1)}>Voltar</Button> : <span />}
         <Button
           size="lg"
-          disabled={!canNext || save.isPending}
+          disabled={!canNext || save.isPending || loadingRegion}
           onClick={() => (step < 3 ? go(step + 1) : finish())}
           icon={step === 3 ? <Sparkles size={16} /> : undefined}
         >
-          {step === 0 ? 'Começar' : step === 3 ? 'Montar meu feed' : 'Continuar'}
+          {loadingRegion ? <><LoaderCircle size={16} className="animate-spin" />Buscando lugares perto de você…</> : step === 0 ? 'Começar' : step === 3 ? 'Montar meu feed' : 'Continuar'}
           {step < 3 && <ArrowRight size={16} />}
         </Button>
       </div>
     </Page>
+  )
+}
+
+/** região: localização (GPS) ou CEP; escolher bairro fica como alternativa */
+function Region({ home, setHome, hood, setHood }: { home?: Home; setHome: (h?: Home) => void; hood: string; setHood: (h: string) => void }) {
+  const [cep, setCep] = useState('')
+  const [busy, setBusy] = useState<'gps' | 'cep' | null>(null)
+  const [err, setErr] = useState('')
+  const [manual, setManual] = useState(!!home && home.via === 'bairro')
+  const MSG = { negado: 'Localização bloqueada. Use o CEP ou escolha o bairro.', indisponivel: 'Não deu pra pegar a localização. Tente o CEP.', cep: 'CEP inválido.', offline: 'Não achei esse CEP (ou o servidor está fora). Escolha o bairro.' } as const
+  async function run(kind: 'gps' | 'cep') {
+    setBusy(kind); setErr('')
+    const r = kind === 'gps' ? await homeFromGps() : await homeFromCep(cep)
+    setBusy(null)
+    if (r.ok) { setHome(r.home); setManual(false); track('region_set', { via: r.home.via }) } else setErr(MSG[r.reason])
+  }
+  const fmtCep = (v: string) => { const d = v.replace(/\D/g, '').slice(0, 8); return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d }
+  return (
+    <div className="mt-10">
+      <p className="mb-1 text-sm text-mute">Onde você costuma sair?</p>
+      <p className="mb-3 text-xs text-faint">A gente carrega os lugares reais perto de você. Guardamos só a região (~1 km), nunca o endereço.</p>
+      {home && home.via !== 'bairro' ? (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-accent/40 bg-accent/[0.06] px-4 py-3">
+          <span className="flex min-w-0 items-center gap-2 text-[15px]"><MapPin size={16} className="shrink-0 text-accent" /><span className="truncate">{home.label}{home.city && home.city !== home.label ? ` · ${home.city}` : ''}</span></span>
+          <button className="shrink-0 text-[13px] text-mute underline-offset-4 hover:underline" onClick={() => setHome(undefined)}>trocar</button>
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          <Button variant="soft" className="w-full" disabled={!!busy} onClick={() => run('gps')}
+            icon={busy === 'gps' ? <LoaderCircle size={16} className="animate-spin" /> : <LocateFixed size={16} />}>
+            Usar minha localização
+          </Button>
+          <div className="flex gap-2">
+            <input inputMode="numeric" autoComplete="postal-code" value={cep} onChange={(e) => setCep(fmtCep(e.target.value))} placeholder="ou seu CEP"
+              onKeyDown={(e) => { if (e.key === 'Enter' && cep.replace(/\D/g, '').length === 8) run('cep') }}
+              className="h-11 min-w-0 flex-1 rounded-full border border-line bg-white/[0.03] px-4 outline-none placeholder:text-faint focus:border-accent" />
+            <Button variant="soft" disabled={!!busy || cep.replace(/\D/g, '').length !== 8} onClick={() => run('cep')}
+              icon={busy === 'cep' ? <LoaderCircle size={16} className="animate-spin" /> : undefined}>Buscar</Button>
+          </div>
+          {err && <p className="text-[13px] text-[#ff8a8a]">{err}</p>}
+          <button className="mt-1 w-fit text-[13px] text-mute underline-offset-4 hover:underline" onClick={() => setManual((m) => !m)}>
+            {manual ? 'esconder bairros' : 'prefiro escolher um bairro'}
+          </button>
+          {manual && (
+            <div className="flex flex-wrap gap-2">
+              {HOODS.map((h) => <Chip key={h} active={!home && hood === h} onClick={() => { setHood(h); setHome(undefined) }}>{h}</Chip>)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 

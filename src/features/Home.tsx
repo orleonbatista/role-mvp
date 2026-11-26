@@ -7,6 +7,7 @@ import { useEvents, useFeed, useForYou, useProfile } from '../lib/api'
 import { KIND_LABEL, OCCASIONS, occasionLabel, priceLabel, timeAgo } from '../lib/labels'
 import { distanceKm, fmtKm, openStatus } from '../lib/hours'
 import { placeIcon } from '../ui/placeIcon'
+import { places } from '../mocks/seeds/places'
 
 function greeting() {
   const h = new Date().getHours()
@@ -16,6 +17,7 @@ function greeting() {
 export function Home() {
   const nav = useNavigate()
   const { data: me } = useProfile()
+  const waiting = me?.hood ? places.filter((p) => p.curation === 'base' && (distanceKm(me.hood, p.hood) ?? 99) <= 2).length : 0
   const forYou = useForYou()
   const events = useEvents()
   const feed = useFeed()
@@ -64,6 +66,7 @@ export function Home() {
           <Link to="/fundador" className="mx-5 block rounded-[24px] border border-dashed border-accent/40 bg-accent/[0.05] p-5">
             <p className="font-serif text-[26px] leading-none">O rolê está começando<span className="text-accent">.</span></p>
             <p className="mt-2 text-[14px] text-ink/80">Aqui só entra lugar que alguém da comunidade conhece e indicou. Seja um dos primeiros curadores: indique 3 lugares que você ama{me?.hood ? ` perto de ${me.hood}` : ''}.</p>
+            {waiting > 0 && <p className="mt-2 text-[13px] text-mute">{waiting} lugares reais perto de você esperando curadoria.</p>}
             <span className="mt-3 inline-flex items-center gap-1.5 text-[14px] font-medium text-accent">Virar curador fundador →</span>
           </Link>
         )}

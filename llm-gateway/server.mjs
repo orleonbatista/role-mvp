@@ -4,7 +4,8 @@
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { askBody, moderateBody, moderationRules, ollamaBody } from '../src/mocks/llmPrompt.ts'
-import { adminKeyFile, dataDir, handleApi, insertPlace, placeForModeration } from './api.mjs'
+import { adminKeyFile, areaFresh, cellOf, dataDir, handleApi, insertPlace, nearRows, placeForModeration, saveArea, validLatLng } from './api.mjs'
+import { aroundQuery, geoFromCep, geoReverse, hoodNear, overpass, toRows } from './osm.mjs'
 
 const PORT = Number(process.env.PORT ?? 8787)
 const OLLAMA = process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434'
@@ -16,6 +17,7 @@ const PER_MIN = 20
 const PER_DAY = 400
 
 const hits = new Map() // ip -> timestamps (ms)
+const loading = new Map() // célula da base regional -> carga em andamento
 let queue = Promise.resolve()
 const stats = { ok: 0, fail: 0, limited: 0, since: new Date().toISOString() }
 
@@ -93,6 +95,46 @@ const server = http.createServer(async (req, res) => {
       let raw = ''
       for await (const chunk of req) { raw += chunk; if (raw.length > 16_000) return send(res, 413, { error: 'too_large' }, origin) }
       try { body = JSON.parse(raw || '{}') } catch { return send(res, 400, { error: 'bad_json' }, origin) }
+    }
+    // região de quem se cadastra: CEP ou GPS (arredondado a ~1 km) → nome da região
+    let gm
+    if (req.method === 'GET' && (gm = path.match(/^\/api\/geo\/cep\/(\d{8})$/))) {
+      try { const g = await geoFromCep(gm[1]); return g ? send(res, 200, g, origin) : send(res, 404, { error: 'cep' }, origin) }
+      catch (e) { console.warn('cep:', e.message); return send(res, 502, { error: 'geo' }, origin) }
+    }
+    if (req.method === 'GET' && path === '/api/geo/rev') {
+      const u = new URL(req.url, 'http://x').searchParams
+      const lat = Number(u.get('lat')), lng = Number(u.get('lng'))
+      if (!validLatLng(lat, lng)) return send(res, 400, { error: 'coords' }, origin)
+      try { return send(res, 200, await geoReverse(lat, lng), origin) }
+      catch (e) { console.warn('rev:', e.message); return send(res, 502, { error: 'geo' }, origin) }
+    }
+    // carga da base regional: lugares reais do OSM perto de quem se cadastrou, uma vez por célula de ~2 km
+    if (write && path === '/api/base/load') {
+      const lat = Math.round(Number(body.lat) * 100) / 100, lng = Math.round(Number(body.lng) * 100) / 100
+      const label = String(body.label ?? 'Minha região').slice(0, 40)
+      if (!validLatLng(lat, lng)) return send(res, 400, { error: 'coords' }, origin)
+      const cell = cellOf(lat, lng)
+      const fresh = areaFresh(cell)
+      if (fresh) return send(res, 200, { ok: true, cached: true, count: fresh.count, label: fresh.label }, origin)
+      try {
+        let job = loading.get(cell)
+        if (!job) {
+          job = (async () => {
+            const t0 = Date.now()
+            const rows = toRows(await overpass(aroundQuery([[lat, lng]], 2500), { attempts: 4, timeout: 60_000 }), (p) => hoodNear(p, label))
+            saveArea(cell, lat, lng, label, rows)
+            console.log(`[${new Date().toLocaleTimeString('pt-BR')}] base ${label} (${cell}): ${rows.length} lugares em ${Date.now() - t0}ms`)
+            return rows.length
+          })().finally(() => loading.delete(cell))
+          loading.set(cell, job)
+        }
+        const count = await job
+        return send(res, 200, { ok: true, cached: false, count, label, near: nearRows(lat, lng, 3).length }, origin)
+      } catch (e) {
+        console.warn('base:', e.message)
+        return send(res, 502, { error: 'overpass' }, origin)
+      }
     }
     // catálogo comunitário: regras + LLM decidem se o lugar entra direto ou vai pra revisão da curadoria
     if (write && path === '/api/places') {

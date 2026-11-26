@@ -61,6 +61,18 @@ public/       og.jpg, ícones
 docs/         esta documentação
 ```
 
+## Banco do backend (SQLite no PC, `llm-gateway/data/role.db`)
+Além de pedidos, votos, sugestões, catálogo e métricas, o banco guarda:
+- `base_places` e `base_areas`: base regional do OSM, carregada por célula de ~2 km;
+- `gmatch`: liga o id do OSM ao `place_id` do Google.
+
+Rotas novas:
+- `GET /api/geo/cep/:cep` e `GET /api/geo/rev`: BrasilAPI/ViaCEP + Nominatim;
+- `POST /api/base/load` e `GET /api/base/near`;
+- `GET|POST /api/gmatch`.
+
+O código do OSM fica em `llm-gateway/osm.mjs`.
+
 ## Camadas de lugares
 
 | Camada | Origem | Onde vive | Aparece |

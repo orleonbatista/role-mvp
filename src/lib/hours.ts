@@ -71,6 +71,21 @@ const HOOD_COORD: Record<string, [number, number]> = {
   'Santa Cecília': [-23.539, -46.651], Liberdade: [-23.559, -46.634], 'Vila Prudente': [-23.583, -46.58],
 }
 
+/** região nova (de quem se cadastrou fora dos bairros conhecidos, ou carregada da base regional) */
+export function registerHood(name: string, at: [number, number]) {
+  if (name && !HOOD_COORD[name]) HOOD_COORD[name] = at
+}
+export const hoodCoord = (name?: string) => (name ? HOOD_COORD[name] : undefined)
+/** bairro conhecido mais perto (até 1,8 km) — mantém filtros e a base estática funcionando */
+export function knownHoodNear(lat: number, lng: number, max = 1.8) {
+  let best: [string, number] | null = null
+  for (const [h, [la, lo]] of Object.entries(HOOD_COORD)) {
+    const d = Math.hypot((la - lat) * 111, (lo - lng) * 102)
+    if (!best || d < best[1]) best = [h, d]
+  }
+  return best && best[1] <= max ? best[0] : null
+}
+
 export function distanceKm(a?: string, b?: string) {
   if (!a || !b || !HOOD_COORD[a] || !HOOD_COORD[b]) return undefined
   if (a === b) return 0.8

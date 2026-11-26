@@ -66,6 +66,8 @@ export interface Profile extends Person {
   niches: Niche[]
   vibes: Vibe[]
   onboarded: boolean
+  /** região de quem usa (GPS ou CEP), arredondada a ~1 km; nunca o endereço exato */
+  home?: Home
   /** simula curadores e amigos votando; desligar para testes com pessoas reais */
   demoMode: boolean
 }
@@ -231,3 +233,5 @@ export interface EventSubmission extends EventDraft {
 }
 /** matches = em quantos pedidos o evento entraria no top 5 do ranking */
 export interface EventFit { total: number; matches: number; top: { text: string; match: number; pos: number }[] }
+
+export interface Home { lat: number; lng: number; label: string; city?: string; via: 'gps' | 'cep' | 'bairro' }

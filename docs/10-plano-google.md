@@ -1,6 +1,6 @@
 # 10 · Plano de uso do Google Places
 
-Status: **planejado, não implementado**. Preços da tabela global do Google Maps Platform (nov/2026), câmbio de
+Status: **implementado (26/11/2026)**: opção A + base regional por localização/CEP. Preços da tabela global do Google Maps Platform (nov/2026), câmbio de
 referência R$ 5,50.
 
 ## 1. Custo nas fases
@@ -24,21 +24,22 @@ Enterprise + Atmosphere 1.000; Photos 1.000. **A foto é a primeira a estourar**
 - Ficha do Google **só para lugares sem foto ou dado próprio**: o custo cai à medida que o acervo da comunidade e das casas cresce.
 - Manter as cotas diárias no console como trava.
 
-### Opção B, pedida pelo Orleon: salvar o conteúdo do Google e virar ao vivo depois
-**Não recomendada.**
-- **Viola os termos:** guardar foto, nota, avaliação ou horário, inclusive reescritos pela LLM, viola os Service Specific Terms.
-- **Quanto economiza:** na fase de teste, nada, porque o ao vivo já sai R$ 0. Com ~1.000 usuários, ~R$ 550/mês.
-- **Riscos:**
-  - bloqueio da chave sem aviso;
-  - base contaminada numa due diligence de investimento ou venda;
-  - notificação do Google;
-  - exposição pessoal (atividade paralela, emprego em banco).
-- **Se for adotada mesmo assim**, a virada precisa ser planejada desde o início:
-  - campo `origem: 'google'` em todo dado salvo;
-  - prazo de corte definido;
-  - script que apaga tudo que tem essa origem e troca pela leitura ao vivo.
+### Opção B (salvar o conteúdo do Google e virar ao vivo depois): **não implementada**
+O Orleon pediu essa opção em 26/11/2026, mas ela não foi implementada:
+- **Termos:** guardar foto, nota, avaliação ou horário, inclusive reescritos pela LLM, viola os termos do Google. As fotos ainda têm direito autoral de quem tirou. Não cabe a nós dispensar essa regra.
+- **Economia:** quase nenhuma. Com cerca de 1.000 usuários, são ~R$ 550/mês.
+- **O que resolve o custo no lugar dela:**
+  - **Base regional própria (OpenStreetMap, ODbL):** pode ser guardada à vontade e cobre a IA, o feed de lacunas e a busca.
+  - **Google ao vivo:** só na ficha, com o `place_id` guardado.
 
-**Decisão:** pendente do Orleon. O padrão é a opção A.
+### Base regional (implementada)
+- **Cadastro:** no passo do nome, "Usar minha localização" (GPS) ou CEP. Escolher um bairro da lista continua como alternativa.
+- **Privacidade:** guardamos só a região arredondada a ~1 km. O CEP e o endereço não são salvos.
+- **CEP:** BrasilAPI/ViaCEP dão rua e bairro; o Nominatim (OSM) converte em coordenada. A BrasilAPI costuma devolver o centro da cidade, por isso fica por último. O GPS passa por geocodificação reversa no Nominatim (máx. 1 req/s, com User-Agent) pra obter o nome do bairro.
+- **Carga:** o gateway (`POST /api/base/load`) consulta o Overpass num raio de 2,5 km, uma vez por célula de ~2 km, e grava no SQLite do PC (`base_places`, `base_areas`). A célula vale 30 dias, e quem mora perto aproveita a carga de quem chegou antes.
+- **No app:** `GET /api/base/near` devolve os lugares num raio de 3 km. O app registra como camada base e o bairro novo entra no cálculo de distância. O cadastro espera até 12 s pela carga; se demorar mais, segue em segundo plano e atualiza o feed ao terminar.
+- **Gosto:** a base traz todos os bares, restaurantes e baladas da região. O gosto ordena e filtra no app (ranker, "falta curar" do fundador).
+- **OSM → Google:** a tabela `gmatch` liga o lugar do OSM ao `place_id`. A ligação é descoberta pela Text Search "IDs only", que não tem custo.
 
 ## 3. O que o Google retorna e o que usar na experiência
 
@@ -76,9 +77,9 @@ A SKU cobrada é a do campo mais caro pedido no field mask, então a escolha dos
   Só quando o pedido é de grupo ou aniversário.
 - **Mapa:** Maps Embed por `place_id`, sem chamada à Places API.
 
-## 5. Ordem de implementação (quando o PC estiver ligado)
-1. `businessStatus` na busca e limpeza de fechados da base.
-2. Ficha ao vivo: foto + crédito, horário, nota discreta, telefone, mapa embutido.
-3. Atmosphere só em pedido de grupo; sugestões pro curador no `/indicar`.
-4. Prioridade de foto: casa/comunidade → embed do Instagram → Google → ícone do estilo.
-5. Métrica de custo em `/testes`: chamadas por SKU no mês × preço, contra a franquia.
+## 5. Ordem de implementação
+1. ✅ `businessStatus` na busca (fechados definitivamente saem) e aviso de fechado na ficha.
+2. ✅ Ficha ao vivo (`src/features/GoogleLive.tsx`): foto + crédito, aberto agora, horário de hoje e da semana, nota discreta, telefone, mapa embutido (ativo quando a Maps Embed API estiver liberada na chave: `VITE_MAPS_EMBED=1`). Só em memória; guarda de 25 fichas/dia por aparelho.
+3. ✅ Atmosphere só em pedido de grupo (≥ 6 pessoas ou aniversário → `/lugar/:id?grupo=1`). ⏭ Sugestões pro curador no `/indicar`.
+4. ⏭ Prioridade de foto: casa/comunidade → embed do Instagram → Google → ícone do estilo.
+5. ⏭ Métrica de custo em `/testes`: chamadas por SKU no mês × preço, contra a franquia.
