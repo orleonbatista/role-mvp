@@ -111,7 +111,7 @@ export async function askLLM(text: string, signal?: AbortSignal): Promise<{ raw:
     const res = await fetch(`${c.url}/extract`, { method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
     if (!res.ok) throw new Error(`gateway ${res.status}`)
     const j = await res.json()
-    return { raw: j.raw ?? {}, model: j.model ?? c.model ?? 'LLM', via: c.owner && c.owner !== 'override' ? `GPU do ${c.owner}` : 'GPU remota' }
+    return { raw: j.raw ?? {}, model: j.model ?? c.model ?? 'LLM', via: j.via ?? (c.owner && c.owner !== 'override' ? `GPU do ${c.owner}` : 'GPU remota') }
   } catch (e) {
     downUntil = Date.now() + 60_000 // fora do ar: não fica esperando a cada pedido
     throw e
@@ -179,7 +179,7 @@ export async function askPollLLM(question: string, pedido: string, facts: PlaceF
     const res = await fetch(`${c.url}/ask`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, pedido, facts }) })
     if (!res.ok) throw new Error(`gateway ${res.status}`)
     const j = await res.json()
-    return { answer: j.answer, model: j.model, via: c.owner && c.owner !== 'override' ? `GPU do ${c.owner}` : 'GPU remota', ms: Math.round(performance.now() - t0) }
+    return { answer: j.answer, model: j.model, via: j.via ?? (c.owner && c.owner !== 'override' ? `GPU do ${c.owner}` : 'GPU remota'), ms: Math.round(performance.now() - t0) }
   } catch (e) {
     if (!DEV_URL) downUntil = Date.now() + 60_000
     console.warn('[rolê] pergunta sem LLM, usando regras:', e)

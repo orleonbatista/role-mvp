@@ -93,7 +93,7 @@ export function Results() {
               {data.request.criteria.source && (
                 <p className="mt-2 text-[11px] text-faint">
                   {data.request.criteria.source.engine === 'llm'
-                    ? `entendido por ${data.request.criteria.source.model} rodando na ${data.request.criteria.source.via ?? 'sua GPU'} · ${((data.request.criteria.source.ms ?? 0) / 1000).toFixed(1)}s`
+                    ? `entendido por ${data.request.criteria.source.model} ${/GPU/.test(data.request.criteria.source.via ?? 'GPU') ? 'rodando na' : 'via'} ${data.request.criteria.source.via ?? 'sua GPU'} · ${((data.request.criteria.source.ms ?? 0) / 1000).toFixed(1)}s`
                     : 'entendido pelo parser local (regras)'}
                 </p>
               )}
