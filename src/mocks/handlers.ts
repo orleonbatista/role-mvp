@@ -15,7 +15,7 @@ import { approveLocally, fitOf, isPast, sanitizeDraft } from './extraEvents'
 import * as remote from './remote'
 import { track } from '../lib/track'
 import { moderationRules } from './llmPrompt'
-import { rememberPlace } from './gplaces'
+import { adoptSnaps, rememberPlace, snapsFor } from './gplaces'
 import { centerOf, discoverForRequest, discoverForTaste } from '../lib/gdiscover'
 import { snapOf } from '../lib/places'
 
@@ -186,6 +186,7 @@ async function buildDetail(id: string): Promise<RequestDetail | null> {
   const pinned = request.eventId ? placeById.get(request.eventId) : undefined
   const all = await db.answers.where('requestId').equals(id).toArray()
   // as opções que a IA escolheu na criação (snapshot do pedido); só recalcula se os lugares não estão mais na memória
+  if (request.optSnaps?.length) adoptSnaps(request.optSnaps, 8)
   const fromAnswers = new Set(all.map((x) => x.placeId))
   const who = request.authorId === 'me' ? profile : null
   const opts = (request.optionIds ?? []).filter((x) => !fromAnswers.has(x) && x !== pinned?.id).map((x) => placeById.get(x)).filter((p): p is Place => !!p)
@@ -276,7 +277,7 @@ export const handlers = [
     const day = ev.periods[0]?.days[0]
     const req: RoleRequest = {
       id: uid('r'), authorId: 'me', text, criteria, createdAt: Date.now(), status: 'aberto',
-      optionIds: [ev.id, ...alts], eventId: ev.id,
+      optionIds: [ev.id, ...alts], eventId: ev.id, optSnaps: snapsFor([ev.id, ...alts]),
       times: day !== undefined ? [`${DAY_SHORT[day]} ${ev.periods[0].open % 24}h`] : timeOptions(criteria),
     }
     await db.requests.add(req)
@@ -435,6 +436,7 @@ export const handlers = [
     track(servedByCurated ? 'request_curated' : 'request_uncurated', { best: top[0]?.match, niches: criteria.niches, hood: criteria.hood })
     req.optionIds = [...top.map((r) => r.place.id), ...answers.map((a) => a.placeId)]
       .filter((x, i, arr) => arr.indexOf(x) === i).slice(0, 5)
+    req.optSnaps = snapsFor(req.optionIds)
     await db.requests.add(req)
     await db.answers.bulkAdd(answers)
     void authorInfo().then((a) => remote.pushRequest(req, a))
@@ -444,11 +446,12 @@ export const handlers = [
 
   /** link compartilhado: cria localmente o pedido que veio de outro aparelho */
   http.post('/api/requests/import', async ({ request }) => {
-    const p = (await request.json()) as { id: string; text: string; criteria: Criteria; optionIds: string[]; times: string[]; author: { name: string; hue: number }; createdAt: number }
+    const p = (await request.json()) as { id: string; text: string; criteria: Criteria; optionIds: string[]; times: string[]; author: { name: string; hue: number }; createdAt: number; snaps?: unknown[] }
+    if (p.snaps?.length) adoptSnaps(p.snaps, 8)
     if (!(await db.requests.get(p.id))) {
       await db.requests.add({
         id: p.id, authorId: `ext-${p.id}`, text: p.text, criteria: p.criteria, createdAt: p.createdAt, status: 'aberto',
-        optionIds: p.optionIds.filter((x) => placeById.has(x)), times: p.times, externalAuthor: p.author,
+        optionIds: p.optionIds.filter((x) => placeById.has(x)), times: p.times, externalAuthor: p.author, optSnaps: p.snaps,
       })
     }
     return HttpResponse.json({ ok: true })

@@ -27,6 +27,11 @@ async function boot() {
   await Promise.all([loadExtraEvents(), loadGooglePlaces()])
   // região de quem já se cadastrou: lugares em volta vindos do banco do PC (não trava a abertura)
   const me = await db.profile.get('me')
+  // termos do Google: resumo de lugares sem curadoria guardado nos pedidos some depois de 30 dias
+  const cut = Date.now() - 30 * 86_400_000
+  void db.requests.filter((r) => r.createdAt < cut && !!r.optSnaps?.some((s) => Array.isArray(s) && s[8] === 'b')).modify((r) => {
+    r.optSnaps = r.optSnaps!.filter((s) => !(Array.isArray(s) && s[8] === 'b'))
+  }).catch(() => {})
   // nota da comunidade (avaliações "Quem foi" de todo mundo) aplicada aos lugares carregados
   const applyRatings = () => ratings().then((r) => {
     for (const [id, [score, n]] of Object.entries(r ?? {})) { const p = placeById.get(id); if (p) { p.rating = score; p.ratingCount = n } }

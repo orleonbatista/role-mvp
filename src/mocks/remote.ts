@@ -84,10 +84,16 @@ interface RemoteState {
 }
 
 const pushed = new Set<string>()
+/** junta resumos por id (o primeiro vence) */
+function mergeSnaps(a: unknown[], b?: unknown[]) {
+  const seen = new Set<string>()
+  return [...a, ...(b ?? [])].filter((s) => Array.isArray(s) && typeof s[0] === 'string' && !seen.has(s[0]) && seen.add(s[0]))
+}
+
 export async function pushRequest(r: RoleRequest, author: { name: string; hue: number }) {
   const ok = await call<{ ok: boolean; groupId?: string }>('POST', '/api/requests', {
     id: r.id, text: r.text, criteria: r.criteria, optionIds: r.optionIds ?? [], times: r.times ?? [], author, createdAt: r.createdAt, eventId: r.eventId,
-    places: snapsFor(r.optionIds ?? []), groupId: r.groupId,
+    places: mergeSnaps(snapsFor(r.optionIds ?? []), r.optSnaps), groupId: r.groupId,
   })
   if (ok) pushed.add(r.id)
   if (ok?.groupId && ok.groupId !== r.groupId) await db.requests.update(r.id, { groupId: ok.groupId })
@@ -105,13 +111,17 @@ export async function syncRequest(id: string): Promise<boolean> {
   adoptSnaps([...(s.request.places ?? []), ...s.suggestions.map((x) => x.place).filter(Boolean)])
   const optionIds = s.request.optionIds.filter((x) => placeById.has(x))
   const local = await db.requests.get(id)
+  const snaps = mergeSnaps(s.request.places ?? [], local?.optSnaps)
   if (!local) {
     await db.requests.add({
       id, authorId: mine ? 'me' : `ext-${id}`, text: s.request.text, criteria: s.request.criteria, createdAt: s.request.createdAt,
       status: 'aberto', optionIds, times: s.request.times, eventId: s.request.eventId, ...(mine ? {} : { externalAuthor: s.request.author }),
+      optSnaps: snaps,
     })
-  } else if (optionIds.length && optionIds.join() !== (local.optionIds ?? []).join()) {
-    await db.requests.update(id, { optionIds })
+  } else {
+    // nunca encolhe a lista local por falta de resumo: só acrescenta opções novas (ex.: sugestão de alguém)
+    const merged = [...(local.optionIds ?? []), ...optionIds.filter((x) => !(local.optionIds ?? []).includes(x))].slice(0, 6)
+    if (merged.join() !== (local.optionIds ?? []).join() || snaps.length !== (local.optSnaps?.length ?? 0)) await db.requests.update(id, { optionIds: merged, optSnaps: snaps })
   }
   if (s.decision) {
     const cur = await db.requests.get(id)

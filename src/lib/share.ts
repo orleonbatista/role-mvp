@@ -17,6 +17,7 @@ export interface SharePayload {
   times: string[]
   author: { name: string; hue: number }
   createdAt: number
+  snaps?: unknown[]
 }
 
 const toB64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
@@ -57,6 +58,7 @@ function expand(arr: unknown): SharePayload | null {
     id, text, criteria, times: timeOptions(criteria),
     optionIds: (idx ?? []).map(idOf).filter(Boolean) as string[],
     author: { name: name || 'Alguém', hue: Number(hue) || 82 }, createdAt: Date.now(),
+    snaps: Array.isArray(gs) ? gs.slice(0, 8) : undefined,
   }
 }
 

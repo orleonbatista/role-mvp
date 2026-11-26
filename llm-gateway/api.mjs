@@ -461,7 +461,16 @@ export function handleApi(method, path, req, body) {
     }, 12000)
     if (!data) return bad('too_large', 413)
     const ins = q.insReq.run(id, data, device, int(body.createdAt, now))
-    if (!ins.changes) q.updReq.run(data, id, device) // o autor pode atualizar (ex.: novas opções); os outros não
+    if (!ins.changes) {
+      // o autor pode atualizar (ex.: novas opções); os outros não. Resumos de lugares se juntam (não somem)
+      const prev = parse(q.getReq.get(id)?.data ?? 'null')
+      const next = parse(data)
+      if (prev?.places?.length) {
+        const have = new Set(next.places.map((p) => p[0]))
+        next.places = [...next.places, ...prev.places.filter((p) => !have.has(p[0]))].slice(-8)
+      }
+      q.updReq.run(JSON.stringify(next), id, device)
+    }
     // turma: reaproveita a indicada (se o autor é membro) ou cria uma nova com o autor
     const cur = q.getReq.get(id)
     let groupId = cur.group_id

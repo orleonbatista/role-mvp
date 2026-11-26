@@ -110,6 +110,8 @@ export interface RoleRequest {
   times?: string[]
   /** pedido criado a partir de um convite de evento: o evento fica fixo como 1ª opção */
   eventId?: string
+  /** resumo dos lugares do Google das opções (some da memória ao recarregar); apagado após 30 dias */
+  optSnaps?: unknown[]
   /** a IA escolheu e ordenou as opções (a ordem de optionIds é a dela) */
   aiPicked?: boolean
   /** turma (grupo de quem votou junto) — reaproveitada em "novo rolê com essa turma" */
