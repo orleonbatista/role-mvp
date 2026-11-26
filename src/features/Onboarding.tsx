@@ -14,7 +14,7 @@ import { centerOf, discoverForTaste } from '../lib/gdiscover'
 import { registerHood } from '../lib/hours'
 import { useToast } from '../ui/Toast'
 import { GoogleButton } from './GoogleButton'
-import type { LoginOutcome } from '../lib/googleAuth'
+import { startWithoutAccount, type LoginOutcome } from '../lib/googleAuth'
 
 const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
 
@@ -172,7 +172,7 @@ export function Onboarding() {
         <Button
           size="lg"
           disabled={!canNext || save.isPending || loadingRegion}
-          onClick={() => (step < LAST ? go(step + 1) : finish())}
+          onClick={() => { if (step === 0 && !email) { startWithoutAccount(); setEmail(undefined) } step < LAST ? go(step + 1) : finish() }}
           icon={step === LAST ? <Sparkles size={16} /> : undefined}
         >
           {loadingRegion ? <><LoaderCircle size={16} className="animate-spin" />Buscando lugares perto de você…</> : step === 0 ? 'Começar' : step === LAST ? 'Montar meu feed' : 'Continuar'}

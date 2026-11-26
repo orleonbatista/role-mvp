@@ -43,12 +43,23 @@ export async function renderGoogleButton(el: HTMLElement, onToken: (credential: 
   return true
 }
 
+/** "Começar" sem Google num aparelho que já foi ligado a uma conta: sessão nova, anônima (o aparelho antigo continua sendo da conta) */
+export function startWithoutAccount() {
+  try {
+    if (!localStorage.getItem('role.googleLinked')) return
+    localStorage.removeItem('role.googleLinked')
+    localStorage.removeItem('role.device')
+    ;(window as unknown as { google?: { accounts?: { id?: { disableAutoSelect?: () => void } } } }).google?.accounts?.id?.disableAutoSelect?.()
+  } catch { /* */ }
+}
+
 export type LoginOutcome = { ok: false } | { ok: true; existing: true } | { ok: true; existing: false; email: string; name?: string }
 
 /** valida no backend e, se a conta já existe, traz o perfil, as avaliações e assume o aparelho dela */
 export async function loginWithGoogle(credential: string): Promise<LoginOutcome> {
   const r: GoogleLogin | null = await googleLogin(credential)
   if (!r) return { ok: false }
+  try { localStorage.setItem('role.googleLinked', '1') } catch { /* */ }
   if (!r.existing) {
     const cur = await db.profile.get('me')
     if (cur) await db.profile.update('me', { email: r.email })
