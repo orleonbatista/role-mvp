@@ -94,7 +94,7 @@ export function FundadorPage() {
             </motion.div>
           ))}
         </motion.div>
-        <p className="mt-2 px-5 text-right text-[11px] text-faint">lugares reais © colaboradores do OpenStreetMap</p>
+        <p className="mt-2 px-5 text-right text-[11px] text-faint">Dados de lugares: Google Maps</p>
       </section>
 
       <section className="mt-8 pb-8">

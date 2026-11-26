@@ -125,7 +125,7 @@ export function IndicarPage() {
             </label>
             {!q && fHood && <p className="mt-4 text-[12px] uppercase tracking-[0.14em] text-mute">Você conhece algum destes? {fNiche ? `${nicheLabel(fNiche)} · ` : ''}{fHood}</p>}
             <div className="mt-3 grid gap-2"><AnimatePresence initial={false}>{results.map(row)}</AnimatePresence></div>
-            {results.some((p) => p.curation === 'base') && <p className="mt-2 text-right text-[11px] text-faint">lugares reais © colaboradores do OpenStreetMap</p>}
+            {results.some((p) => p.curation === 'base') && <p className="mt-2 text-right text-[11px] text-faint">Dados de lugares: Google Maps</p>}
             {placesEnabled() && q.trim().length >= 3 && !google && (
               <button onClick={searchG} className="mt-4 flex w-full items-center gap-3 rounded-[20px] border border-dashed border-white/15 px-4 py-3 text-left">
                 <MapPin size={18} className="shrink-0 text-accent" />

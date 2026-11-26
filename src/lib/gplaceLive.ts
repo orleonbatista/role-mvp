@@ -1,5 +1,4 @@
 import type { Place } from './types'
-import { gmatchGet, gmatchPut } from '../mocks/remote'
 
 /* Google ao vivo na ficha do lugar (docs/10-plano-google.md).
    Nada do que vem daqui é salvo — fica só em memória enquanto o app está aberto. O único dado guardado é o
@@ -35,12 +34,12 @@ const left = () => { try { return DEVICE_DAILY - Number(localStorage.getItem(day
 const spend = () => { try { localStorage.setItem(dayKey(), String(Number(localStorage.getItem(dayKey()) ?? 0) + 1)) } catch { /* */ } }
 
 const mem = new Map<string, LiveInfo>() // só memória: some ao fechar o app
+const oMatch = new Map<string, string | null>() // lugares antigos do OSM (catálogo legado) → place_id
 
 async function resolvePlaceId(p: Place): Promise<string | null> {
   if (p.id.startsWith('g-')) return p.id.slice(2)
   if (!p.id.startsWith('o-')) return null
-  const known = await gmatchGet(p.id)
-  if (known) return known.placeId
+  if (oMatch.has(p.id)) return oMatch.get(p.id)!
   const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': KEY!, 'X-Goog-FieldMask': 'places.id' }, // "IDs only": sem custo
@@ -52,7 +51,7 @@ async function resolvePlaceId(p: Place): Promise<string | null> {
   })
   if (!r.ok) throw new Error(String(r.status))
   const id = ((await r.json()) as { places?: { id: string }[] }).places?.[0]?.id ?? null
-  gmatchPut(p.id, id)
+  oMatch.set(p.id, id)
   return id
 }
 

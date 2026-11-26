@@ -9,12 +9,12 @@ import './index.css'
 import { startMocks } from './mocks/browser'
 import { demoOn, purgeSeeds, seedIfEmpty } from './db/db'
 import { registerDemoSeeds } from './mocks/seeds/places'
-import { loadBase } from './mocks/base'
 import { loadExtraEvents } from './mocks/extraEvents'
 import { loadGooglePlaces } from './mocks/gplaces'
 import { App } from './app/App'
 import { db } from './db/db'
-import { ensureRegion } from './mocks/region'
+import { discoverForTaste, centerOf } from './lib/gdiscover'
+import { registerHood } from './lib/hours'
 import { pushMe, ratings } from './mocks/remote'
 import { placeById } from './mocks/seeds/places'
 
@@ -25,16 +25,16 @@ async function boot() {
   // ordem importa: fictícios (só demo) primeiro, depois curados (comunidade, eventos), por último a base OSM
   if (await demoOn()) { registerDemoSeeds(); await seedIfEmpty() } else await purgeSeeds()
   await Promise.all([loadExtraEvents(), loadGooglePlaces()])
-  await loadBase()
   // região de quem já se cadastrou: lugares em volta vindos do banco do PC (não trava a abertura)
   const me = await db.profile.get('me')
   // nota da comunidade (avaliações "Quem foi" de todo mundo) aplicada aos lugares carregados
   const applyRatings = () => ratings().then((r) => {
     for (const [id, [score, n]] of Object.entries(r ?? {})) { const p = placeById.get(id); if (p) { p.rating = score; p.ratingCount = n } }
   }).catch(() => {})
-  // garante a região no banco (raio de 5 km; refaz a carga de quem entrou com o raio antigo) e carrega no aparelho
-  if (me?.home) ensureRegion(me.home).then(applyRatings).then(() => qc.invalidateQueries()).catch(() => {})
-  else void applyRatings().then(() => qc.invalidateQueries())
+  // descoberta ao vivo no Google: lugares abertos em até 5 km que combinam com o gosto (não trava a abertura)
+  if (me?.home) registerHood(me.hood, [me.home.lat, me.home.lng])
+  void applyRatings().then(() => qc.invalidateQueries())
+  if (me?.onboarded) discoverForTaste(centerOf(me), me.niches).then(applyRatings).then(() => qc.invalidateQueries()).catch(() => {})
   // perfil no banco (só com consentimento): mantém nome, gosto e região atualizados
   if (me?.consentAt) void pushMe(me)
   createRoot(document.getElementById('root')!).render(

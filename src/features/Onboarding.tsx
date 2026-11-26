@@ -9,7 +9,9 @@ import { HOODS, NICHES, VIBES } from '../lib/labels'
 import { useProfile, useSaveProfile } from '../lib/api'
 import { track } from '../lib/track'
 import type { Home, Niche, Vibe } from '../lib/types'
-import { ensureRegion, homeFromCep, homeFromGps, hoodFor } from '../mocks/region'
+import { homeFromCep, homeFromGps, hoodFor } from '../mocks/region'
+import { centerOf, discoverForTaste } from '../lib/gdiscover'
+import { registerHood } from '../lib/hours'
 import { useToast } from '../ui/Toast'
 import { GoogleButton } from './GoogleButton'
 import type { LoginOutcome } from '../lib/googleAuth'
@@ -53,18 +55,13 @@ export function Onboarding() {
       hood: finalHood, home, niches, vibes, onboarded: true, consentAt: me?.consentAt ?? Date.now(), email,
     })
     track(me?.onboarded ? 'taste_edited' : 'onboarding_done', { niches, vibes, hood: finalHood, via: home?.via ?? 'bairro' })
-    // lugares reais em volta: o PC busca no OpenStreetMap (1ª vez da região pode levar ~1 min) — espera até 12 s
-    // e segue em segundo plano; quando terminar, atualiza o feed
-    if (home && home.via !== 'bairro') {
-      setLoadingRegion(true)
-      const job = ensureRegion(home).then((r) => {
-        track('region_loaded', { n: r.loaded, fresh: r.fresh, ok: r.ok })
-        if (r.loaded) { qc.invalidateQueries(); toast(`${r.loaded} lugares reais perto de ${finalHood} entraram na base`) }
-        return r
-      }).catch(() => null)
-      await Promise.race([job, new Promise((res) => setTimeout(res, 12000))])
-      setLoadingRegion(false)
-    }
+    // lugares reais em volta, ao vivo no Google: abertos, até 5 km, do gosto escolhido
+    if (home) registerHood(finalHood, [home.lat, home.lng])
+    setLoadingRegion(true)
+    const n = await Promise.race([discoverForTaste(centerOf({ home, hood: finalHood }), niches), new Promise<number>((res) => setTimeout(() => res(-1), 9000))])
+    setLoadingRegion(false)
+    track('region_loaded', { n, via: home?.via ?? 'bairro' })
+    if (n > 0) { qc.invalidateQueries(); toast(`${n} lugares abertos perto de você que combinam com seu gosto`) }
     // veio de um convite (ex.: evento divulgado): volta pro que a pessoa estava fazendo
     let next: string | null = null
     try { next = localStorage.getItem('role.next'); localStorage.removeItem('role.next') } catch { /* */ }

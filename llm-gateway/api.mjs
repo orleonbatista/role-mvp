@@ -181,7 +181,7 @@ function stats() {
   }
   const devices = new Set(events.map((e) => e.device)).size
   return {
-    counts, total: events.length, devices, bySrc, base: qb.countAll.get(), people: peopleStats(),
+    counts, total: events.length, devices, bySrc, people: peopleStats(),
     firstAt: events[0]?.at, lastAt: events[events.length - 1]?.at,
     recent: events.slice(-30).reverse().map((e) => ({ ...e, props: parse(e.props) ?? {} })),
     feedback: db.prepare('SELECT data, at FROM feedback ORDER BY at DESC LIMIT 100').all().map((f) => ({ ...parse(f.data), at: f.at })),
@@ -219,38 +219,26 @@ const ok = (body) => [200, body]
 const bad = (error, status = 400) => [status, { error }]
 
 /** devolve [status, body]; quem chama cuida de CORS, limite e leitura do corpo */
-/* ---------- base regional ---------- */
-const AREA_TTL = 30 * 86_400_000
-/** célula de ~2 km: a carga é por célula, então quem mora perto aproveita a carga de quem chegou antes */
-export const cellOf = (lat, lng) => `${Math.round(lat * 50)}:${Math.round(lng * 50)}`
-const qb = {
-  area: db.prepare('SELECT * FROM base_areas WHERE cell = ?'),
-  putArea: db.prepare('INSERT OR REPLACE INTO base_areas (cell, lat, lng, label, count, at, radius) VALUES (?, ?, ?, ?, ?, ?, ?)'),
-  putPlace: db.prepare('INSERT OR REPLACE INTO base_places (id, row, lat, lng, area, at) VALUES (?, ?, ?, ?, ?, ?)'),
-  near: db.prepare('SELECT row FROM base_places WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? LIMIT ?'),
-  areasNear: db.prepare('SELECT label, lat, lng FROM base_areas WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?'),
-  countAll: db.prepare('SELECT (SELECT COUNT(*) FROM base_places) AS places, (SELECT COUNT(*) FROM base_areas) AS areas'),
-  getMatch: db.prepare('SELECT place_id FROM gmatch WHERE osm_id = ?'),
-  putMatch: db.prepare('INSERT OR REPLACE INTO gmatch (osm_id, place_id, at) VALUES (?, ?, ?)'),
-}
-export const BASE_RADIUS = 5000 // metros em volta de quem se cadastra
-export const areaFresh = (cell) => { const a = qb.area.get(cell); return a && Date.now() - a.at < AREA_TTL && a.radius >= BASE_RADIUS ? a : null }
-export function saveArea(cell, lat, lng, label, rows) {
-  const now = Date.now()
-  db.exec('BEGIN')
-  try {
-    for (const r of rows) qb.putPlace.run(r[0], JSON.stringify(r), r[6], r[7], cell, now)
-    qb.putArea.run(cell, lat, lng, label, rows.length, now, BASE_RADIUS)
-    db.exec('COMMIT')
-  } catch (e) { db.exec('ROLLBACK'); throw e }
-}
-export function nearRows(lat, lng, km = 5, limit = 2500) {
-  const dLa = km / 111, dLo = km / 102
-  return qb.near.all(lat - dLa, lat + dLa, lng - dLo, lng + dLo, limit).map((r) => parse(r.row)).filter(Boolean)
-}
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : NaN)
 /** coordenadas dentro do Brasil (com folga) */
 export const validLatLng = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat > -34 && lat < 6 && lng > -74 && lng < -34
+
+/** remove nome/bairro de lugares do Google (g-) de pedidos e sugestões com mais de 30 dias, exceto os que a
+ *  comunidade confirmou (tabela places). Fica só o place_id. */
+export function purgeGoogleSnaps() {
+  const cut = Date.now() - 30 * 86_400_000
+  const community = new Set(db.prepare("SELECT id FROM places WHERE status = 'ok'").all().map((r) => r.id))
+  let n = 0
+  for (const r of db.prepare('SELECT id, data FROM requests WHERE created_at < ?').all(cut)) {
+    const d = parse(r.data)
+    if (!d?.places?.length) continue
+    const keep = d.places.filter((p) => !String(p[0]).startsWith('g-') || community.has(p[0]))
+    if (keep.length !== d.places.length) { d.places = keep; db.prepare('UPDATE requests SET data = ? WHERE id = ?').run(JSON.stringify(d), r.id); n++ }
+  }
+  n += db.prepare("UPDATE suggestions SET place = NULL WHERE place IS NOT NULL AND at < ? AND place_id LIKE 'g-%' AND place_id NOT IN (SELECT id FROM places WHERE status = 'ok')").run(cut).changes
+  db.prepare("UPDATE reviews SET place = NULL WHERE place IS NOT NULL AND at < ? AND place_id LIKE 'g-%' AND place_id NOT IN (SELECT id FROM places WHERE status = 'ok')").run(cut)
+  if (n) console.log(`purga Google: ${n} registros com mais de 30 dias`)
+}
 
 /* ---------- pessoas: perfil, avaliações, turmas ---------- */
 const NICHES = new Set(['jazz', 'listening', 'eletronica', 'drinks', 'boteco', 'gastronomia', 'ao-ar-livre', 'samba', 'rock', 'indie'])
@@ -423,24 +411,6 @@ export function handleApi(method, path, req, body) {
   }
 
   // eventos aprovados = publicados pra todo mundo (substitui o eventos.json manual)
-  if (method === 'GET' && path === '/api/base/near') {
-    const u = new URL(req.url ?? '', 'http://x').searchParams
-    const lat = num(u.get('lat')), lng = num(u.get('lng'))
-    if (!validLatLng(lat, lng)) return bad('coords')
-    const km = Math.min(6, Math.max(1, num(u.get('km')) || 5))
-    const dLa = (km + 2) / 111, dLo = (km + 2) / 102
-    return ok({ rows: nearRows(lat, lng, km), areas: qb.areasNear.all(lat - dLa, lat + dLa, lng - dLo, lng + dLo), source: '© colaboradores do OpenStreetMap (ODbL)' })
-  }
-  if ((m = path.match(/^\/api\/gmatch\/(o-[nwr]\d{1,14})$/)) && method === 'GET') {
-    const r = qb.getMatch.get(m[1])
-    return r ? ok({ placeId: r.place_id }) : bad('not_found', 404)
-  }
-  if (write && path === '/api/gmatch') {
-    const osm = String(body.osm ?? ''), pid = body.placeId === null ? null : String(body.placeId ?? '')
-    if (!/^o-[nwr]\d{1,14}$/.test(osm) || (pid !== null && !/^[A-Za-z0-9_-]{5,120}$/.test(pid))) return bad('gmatch')
-    qb.putMatch.run(osm, pid, now)
-    return ok({ ok: true })
-  }
   if (method === 'GET' && path === '/api/events') return ok(q.published.all().map((r) => ({ ...parse(r.data), status: 'aprovado' })))
 
   if (write && path === '/api/requests') {

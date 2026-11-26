@@ -151,7 +151,7 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
       <div className="relative">
         <Cover hue={p.hue} icon={placeIcon(p)} iconSize={64} layoutId={`cover-${p.id}`} className="h-44 w-full" rounded="rounded-none" />
         <span className="absolute left-4 top-4 font-serif text-5xl italic leading-none text-white/90 drop-shadow">{rank}</span>
-        {p.curation === 'base' && <span className="absolute bottom-3 left-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] text-ink/90 backdrop-blur-md">sem curadoria · OpenStreetMap</span>}
+        {p.curation === 'base' && <span className="absolute bottom-3 left-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] text-ink/90 backdrop-blur-md">sem curadoria · Google Maps</span>}
         {isCommunity(p) && <span className="absolute bottom-3 left-3 rounded-full bg-accent/90 px-2.5 py-1 text-[11px] font-medium text-accent-ink">curado pela comunidade</span>}
         <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-black/45 px-2.5 py-1 text-xs backdrop-blur-md">
           <span className="relative size-4">

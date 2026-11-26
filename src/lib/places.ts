@@ -12,7 +12,7 @@ const ENDPOINT = 'https://places.googleapis.com/v1/places:searchText'
 // Os campos pedidos definem a faixa cobrada: só campos da faixa Pro (5.000 buscas grátis/mês).
 // Nota, nº de avaliações, nível de preço e horário são Enterprise (1.000/mês) e os termos não deixam
 // guardá-los — quem vê nota e horário abre o Google Maps pelo link.
-const FIELDS = [
+export const FIELDS = [
   'places.id', 'places.displayName', 'places.formattedAddress', 'places.shortFormattedAddress', 'places.location',
   'places.primaryType', 'places.primaryTypeDisplayName', 'places.types', 'places.priceRange',
   'places.googleMapsUri', 'places.addressComponents', 'places.businessStatus',

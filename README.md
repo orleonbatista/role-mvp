@@ -126,9 +126,8 @@ passada somem do feed sozinhos.
 
 - **Curado** (visível): lugares indicados pela comunidade em `/indicar` ou confirmados ao sugerir. O feed, o
   "Pra você" (gosto + distância do bairro) e a 1ª opção da IA usam só essa camada.
-- **Base** (invisível): 1.267 lugares reais de 12 bairros vindos do OpenStreetMap (`public/base-sp.json`,
-  gerado por `node llm-gateway/tools/fetch-osm.mjs`, licença ODbL). A IA só usa quando falta curado, marca
-  "sem curadoria" e convida a comunidade a indicar.
+- **Base** (descoberta): lugares abertos do Google, buscados ao vivo perto de você e pelo seu gosto (até 5 km) e
+  a cada pedido. Aparecem marcados "sem curadoria". Do Google, só o `place_id` fica guardado.
 - **Curador fundador:** `/fundador` mostra o que falta curar (estilo × bairro) e gera o link de convite.
 - **Modo demo** (fictício): desligado por padrão; liga/desliga em `/testes`.
 

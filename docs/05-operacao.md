@@ -106,13 +106,14 @@ use `/testes` → "URL do gateway".
 - **Para aumentar o limite:** suba as cotas aos poucos e acompanhe "Faturamento → Relatórios" antes de passar
   da cota grátis.
 
-## Base de lugares reais (OpenStreetMap)
-- **Atualizar:** no PC, `node llm-gateway\tools\fetch-osm.mjs`. Ele consulta o Overpass (com espelhos e
-  novas tentativas), gera `public/base-sp.json` e o app passa a usar a nova base no próximo deploy.
-- **Mais bairros:** edite `HOODS` no script e em `src/lib/hours.ts` (coordenadas) e `src/lib/labels.ts`
-  (lista).
-- **Licença ODbL:** manter o crédito "© colaboradores do OpenStreetMap" onde a base aparece (já está nas
-  telas).
+## Descoberta de lugares (Google ao vivo)
+- Desde 26/11/2026 a descoberta é só pelo Google; a base do OpenStreetMap foi removida por ter muitos lugares fechados.
+- **Quando busca:**
+  - ao abrir o app: até 3 Text Search pelos estilos do gosto, raio de 5 km da região;
+  - a cada pedido: 1 ou 2 buscas, no raio pedido ("até 8 km") ou no bairro.
+- **Filtro:** só entram lugares `OPERATIONAL`.
+- **Armazenamento:** os resultados ficam só em memória. O backend apaga nome e bairro de lugares do Google em pedidos e sugestões com mais de 30 dias (`purgeGoogleSnaps`), exceto os confirmados pela comunidade.
+- **Cotas:** guarda de 30 buscas por aparelho por dia; no Google Cloud, SearchText 150/dia (Text Search Pro: 5.000 grátis/mês).
 
 ## Login com Google (Google Cloud, projeto role-mvp)
 Configuração:

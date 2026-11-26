@@ -4,8 +4,8 @@
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { askBody, moderateBody, moderationRules, ollamaBody } from '../src/mocks/llmPrompt.ts'
-import { BASE_RADIUS, adminKeyFile, areaFresh, googleLogin, insertReview, cellOf, dataDir, handleApi, insertPlace, nearRows, placeForModeration, saveArea, validLatLng } from './api.mjs'
-import { aroundQuery, geoFromCep, geoReverse, hoodNear, overpass, toRows } from './osm.mjs'
+import { adminKeyFile, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
+import { geoFromCep, geoReverse } from './geo.mjs'
 
 const PORT = Number(process.env.PORT ?? 8787)
 const OLLAMA = process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434'
@@ -19,7 +19,6 @@ const PER_MIN = 20
 const PER_DAY = 400
 
 const hits = new Map() // ip -> timestamps (ms)
-const loading = new Map() // célula da base regional -> carga em andamento
 let queue = Promise.resolve()
 const stats = { ok: 0, fail: 0, limited: 0, since: new Date().toISOString() }
 
@@ -110,33 +109,6 @@ const server = http.createServer(async (req, res) => {
       if (!validLatLng(lat, lng)) return send(res, 400, { error: 'coords' }, origin)
       try { return send(res, 200, await geoReverse(lat, lng), origin) }
       catch (e) { console.warn('rev:', e.message); return send(res, 502, { error: 'geo' }, origin) }
-    }
-    // carga da base regional: lugares reais do OSM perto de quem se cadastrou, uma vez por célula de ~2 km
-    if (write && path === '/api/base/load') {
-      const lat = Math.round(Number(body.lat) * 100) / 100, lng = Math.round(Number(body.lng) * 100) / 100
-      const label = String(body.label ?? 'Minha região').slice(0, 40)
-      if (!validLatLng(lat, lng)) return send(res, 400, { error: 'coords' }, origin)
-      const cell = cellOf(lat, lng)
-      const fresh = areaFresh(cell)
-      if (fresh) return send(res, 200, { ok: true, cached: true, count: fresh.count, label: fresh.label }, origin)
-      try {
-        let job = loading.get(cell)
-        if (!job) {
-          job = (async () => {
-            const t0 = Date.now()
-            const rows = toRows(await overpass(aroundQuery([[lat, lng]], BASE_RADIUS), { attempts: 4, timeout: 110_000 }), (p) => hoodNear(p, label))
-            saveArea(cell, lat, lng, label, rows)
-            console.log(`[${new Date().toLocaleTimeString('pt-BR')}] base ${label} (${cell}): ${rows.length} lugares em ${Date.now() - t0}ms`)
-            return rows.length
-          })().finally(() => loading.delete(cell))
-          loading.set(cell, job)
-        }
-        const count = await job
-        return send(res, 200, { ok: true, cached: false, count, label, near: nearRows(lat, lng, 5).length }, origin)
-      } catch (e) {
-        console.warn('base:', e.message)
-        return send(res, 502, { error: 'overpass' }, origin)
-      }
     }
     // login com Google: valida o ID token no Google (assinatura, validade, público = nosso app, e-mail verificado)
     if (write && path === '/api/auth/google') {
@@ -266,6 +238,11 @@ const server = http.createServer(async (req, res) => {
     send(res, 502, { error: 'llm_failed' }, origin)
   }
 })
+
+// termos do Google: só o place_id pode ficar guardado. Nome/bairro de lugares do Google que entraram em pedidos
+// (opções da votação) saem depois de 30 dias, a não ser que a comunidade tenha confirmado o lugar (catálogo).
+purgeGoogleSnaps()
+setInterval(purgeGoogleSnaps, 12 * 3600_000).unref()
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`gateway do rolê em http://127.0.0.1:${PORT}  (modelo ${MODEL}, origens: ${ORIGINS.join(', ')})`)

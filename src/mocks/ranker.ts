@@ -1,6 +1,6 @@
 import type { Criteria, Niche, Occasion, Place, Profile, Ranked, Tag, Vibe, When } from '../lib/types'
 import { HOODS, nicheLabel, occasionLabel, vibeLabel } from '../lib/labels'
-import { DAY_LONG, DAY_SHORT, distanceKm, isOpenAt } from '../lib/hours'
+import { DAY_LONG, DAY_SHORT, distanceKm, isOpenAt, kmBetween } from '../lib/hours'
 
 /* "IA" local: texto livre -> critérios estruturados -> ranking explicável.
    Casamento por palavra inteira (não por pedaço), tolerante a 1 erro de digitação,
@@ -105,7 +105,7 @@ export function parseRequest(text: string): Criteria {
 
   let budget: number | undefined
   const raw = ` ${norm(text)} `
-  const b = raw.match(/r\$\s*(\d{2,4})/) ?? raw.match(/(\d{2,4})\s*(reais|conto|pila)/) ?? raw.match(/ate\s+(\d{2,4})\b/)
+  const b = raw.match(/r\$\s*(\d{2,4})/) ?? raw.match(/(\d{2,4})\s*(reais|conto|pila)/) ?? raw.match(/ate\s+(\d{2,4})\b(?!\s*(km|quilometr|minuto|min\b|h\b))/)
   if (b) budget = Number(b[1])
   if (!budget && /\bbarat/.test(raw)) budget = 60
   if (/sem limite|tanto faz o preco|nao importa o preco/.test(raw)) budget = undefined
@@ -118,7 +118,10 @@ export function parseRequest(text: string): Criteria {
   let hood = HOODS.find((h) => joined.includes(` ${norm(h)} `))
   if (!hood) hood = HOOD_ALIAS.find(([a]) => joined.includes(` ${a} `))?.[1]
 
-  return { occasion, groupSize, budget, hood, niches, vibes, tags, when: parseWhen(tokens, joined), unmet: [] }
+  const k = raw.match(/(?:ate|em|raio de|no maximo|max(?:imo)?|a)\s*(\d{1,2})\s*(?:km|quilometros?)\b/)
+  const maxKm = k ? Math.min(30, Math.max(1, Number(k[1]))) : /minha regiao|perto de mim|perto de casa|aqui perto|perto daqui|do lado de casa/.test(raw) ? 5 : undefined
+
+  return { occasion, groupSize, budget, hood, maxKm, niches, vibes, tags, when: parseWhen(tokens, joined), unmet: [] }
 }
 
 const NICHE_REASON: Record<Niche, string> = {
@@ -136,7 +139,7 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
   // pontuação máxima possível para os critérios pedidos — base do match calibrado
   const max =
     c.niches.length * 3 + c.vibes.length * 1.6 + (c.occasion ? 3 : 0) + (c.groupSize >= 8 ? 2 : 0) + (bigGroup ? 2 : 0) +
-    (c.budget ? 1.5 : 0) + (c.hood ? 2.5 : 0) + c.tags.length * 2.5 + (c.when ? 1.5 : 0) + 2 +
+    (c.budget ? 1.5 : 0) + (c.hood ? 2.5 : c.maxKm && profile?.home ? 1.2 : 0) + c.tags.length * 2.5 + (c.when ? 1.5 : 0) + 2 +
     (isVague(c) && profile ? profile.niches.length * 1.4 + profile.vibes.length * 0.5 + 0.8 : 0)
 
   const out = places.map((place) => {
@@ -144,7 +147,7 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
     const why: [number, string][] = []
     const warn: string[] = []
 
-    // lugar sem curadoria: estilo veio do tipo/nome no OpenStreetMap — o motivo diz isso, sem elogio inventado
+    // lugar sem curadoria: estilo veio do tipo do lugar no Google — o motivo diz isso, sem elogio inventado
     const base = place.curation === 'base'
     for (const n of c.niches) if (place.niches.includes(n)) { score += 3; why.push([3, base ? `${nicheLabel(n)}, pelo tipo do lugar` : NICHE_REASON[n]]) }
     if (!c.niches.length && profile) for (const n of profile.niches) if (place.niches.includes(n)) { score += 1.4; why.push([1.4, `Bate com seu gosto por ${nicheLabel(n).toLowerCase()}`]) }
@@ -177,6 +180,10 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
     if (c.hood) {
       if (place.hood === c.hood) { score += 2.5; why.push([2.4, `Fica em ${place.hood}`]) }
       else score -= 0.5
+    } else if (c.maxKm && profile?.home && place.lat != null) {
+      const km = kmBetween(profile.home, place) ?? 99
+      if (km <= c.maxKm) { score += 1.2; why.push([1.6, `A ~${km.toFixed(km < 10 ? 1 : 0).replace('.', ',')} km de você`]) }
+      else { score -= 6; warn.push(`A ~${Math.round(km)} km, fora do raio pedido`) }
     } else if (profile?.hood) {
       const km = distanceKm(profile.hood, place.hood)
       if (km !== undefined && km < 3) { score += 0.8; why.push([0.8, `Perto de você (${place.hood})`]) }

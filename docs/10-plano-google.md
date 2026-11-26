@@ -32,7 +32,7 @@ O Orleon pediu essa opção em 26/11/2026, mas ela não foi implementada:
   - **Base regional própria (OpenStreetMap, ODbL):** pode ser guardada à vontade e cobre a IA, o feed de lacunas e a busca.
   - **Google ao vivo:** só na ficha, com o `place_id` guardado.
 
-### Base regional (implementada)
+### Base regional pelo OpenStreetMap (removida em 26/11/2026: muitos lugares fechados; ver decisão 24)
 - **Cadastro:** no passo do nome, "Usar minha localização" (GPS) ou CEP. Escolher um bairro da lista continua como alternativa.
 - **Privacidade:** guardamos só a região arredondada a ~1 km. O CEP e o endereço não são salvos.
 - **CEP:** BrasilAPI/ViaCEP dão rua e bairro; o Nominatim (OSM) converte em coordenada. A BrasilAPI costuma devolver o centro da cidade, por isso fica por último. O GPS passa por geocodificação reversa no Nominatim (máx. 1 req/s, com User-Agent) pra obter o nome do bairro.

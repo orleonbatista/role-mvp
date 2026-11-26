@@ -63,15 +63,12 @@ docs/         esta documentação
 
 ## Banco do backend (SQLite no PC, `llm-gateway/data/role.db`)
 Além de pedidos, votos, sugestões, catálogo e métricas, o banco guarda:
-- `base_places` e `base_areas`: base regional do OSM, carregada por célula de ~2 km;
-- `gmatch`: liga o id do OSM ao `place_id` do Google.
+- `base_places`, `base_areas` e `gmatch`: tabelas antigas da base do OSM, sem uso desde 26/11;
 
 Rotas novas:
 - `GET /api/geo/cep/:cep` e `GET /api/geo/rev`: BrasilAPI/ViaCEP + Nominatim;
-- `POST /api/base/load` e `GET /api/base/near`;
-- `GET|POST /api/gmatch`.
 
-O código do OSM fica em `llm-gateway/osm.mjs`.
+A geocodificação (CEP/GPS → bairro) fica em `llm-gateway/geo.mjs`.
 
 ## Pessoas no banco
 Tabelas:
@@ -100,7 +97,7 @@ O app nunca depende do banco: sem servidor, tudo segue funcionando no aparelho.
 |---|---|---|---|
 | Fictício (demo) | `seeds/places.ts` | código | só com o modo demo ligado (`/testes`) |
 | Curado | comunidade (`/indicar`, sugestões confirmadas) + eventos aprovados | backend (`places`, `submissions`) + cache local (`gplaces`) | feed, Pra você, 1ª opção da IA |
-| Base | OpenStreetMap (`public/base-sp.json`, gerado por `llm-gateway/tools/fetch-osm.mjs`) | arquivo estático (~34 KB gzip) | só como reserva da IA, marcado "sem curadoria"; e na busca de indicar/sugerir |
+| Base | Google Text Search ao vivo (`src/lib/gdiscover.ts`), só lugares abertos | memória do app (nada salvo) | "Pra você" (até 5 km, pelo gosto) e reserva da IA, marcado "sem curadoria"; busca de indicar/sugerir |
 
 Ordem de carga no boot (`main.tsx`): demo (se ligado) → curados (eventos, comunidade) → base. O `registerPlace`
 promove um lugar da base a curado quando alguém o confirma (mesmo id `o-<n|w|r><osm id>`).

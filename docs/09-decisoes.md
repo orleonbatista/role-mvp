@@ -57,3 +57,6 @@ Formato curto: **decisão**, **por quê**, **trade-off**.
 23. **Conta = aparelho principal.** Entrar com Google num celular novo faz ele assumir o id do aparelho da conta.
     Simples e sem sessão nova no backend. *Trade-off:* o id do aparelho continua sendo a credencial; na migração pra
     Supabase/D1, trocar por sessão assinada.
+24. **Descoberta só pelo Google; OpenStreetMap removido.** A base do OSM tinha muitos lugares já fechados. O Google
+    tem `businessStatus` e é mais atual. *Trade-off:* custo por busca (Text Search Pro, 5.000 grátis/mês) e nada fica
+    salvo; a cada abertura o app busca de novo, com limite por aparelho.

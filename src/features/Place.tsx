@@ -177,7 +177,7 @@ export function PlacePage() {
                   <div className="mt-3 rounded-[18px] border border-dashed border-accent/40 bg-accent/[0.04] p-3">
                     <p className="text-[13px] text-ink/90">Ainda <b className="font-medium">sem curadoria</b>: é um lugar real, mas ninguém da comunidade indicou. Estilo e preço são estimados.</p>
                     <Link to={`/indicar?id=${encodeURIComponent(place.id)}`} className="mt-2 inline-flex text-[13px] font-medium text-accent">Conhece? Indicar pro rolê →</Link>
-                    <p className="mt-2 text-[11px] text-faint">Dados: © colaboradores do OpenStreetMap</p>
+                    <p className="mt-2 text-[11px] text-faint">Dados de lugares: Google Maps</p>
                   </div>
                 ) : (
                   <p className="mt-1 text-[11px] text-faint">Lugar do catálogo da comunidade: nome, estilo e faixa de preço vêm de quem sugeriu. Nota, endereço completo e horário: <span className="text-mute">Google Maps</span>.</p>

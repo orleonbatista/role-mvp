@@ -15,6 +15,7 @@ import * as remote from './remote'
 import { track } from '../lib/track'
 import { moderationRules } from './llmPrompt'
 import { rememberPlace } from './gplaces'
+import { discoverForRequest } from '../lib/gdiscover'
 import { snapOf } from '../lib/places'
 
 const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`
@@ -326,6 +327,8 @@ export const handlers = [
     const body = (await request.json()) as { text: string; overrides?: Partial<Criteria>; groupId?: string }
     const criteria = await analyze(body.text, body.overrides)
     const profile = await getProfile()
+    // descoberta ao vivo no Google pro que o pedido descreve (até 6 s; sem Google segue com o que já tem)
+    await Promise.race([discoverForRequest(criteria, profile?.home).catch(() => 0), delay(6000)])
     const req: RoleRequest = {
       id: uid('r'), authorId: 'me', text: body.text.trim(), criteria, createdAt: Date.now(), status: 'aberto',
       times: timeOptions(criteria), groupId: /^t-[a-z0-9]{10}$/.test(body.groupId ?? '') ? body.groupId : undefined,

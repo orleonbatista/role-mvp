@@ -231,7 +231,7 @@ export function SuggestPage() {
             {results?.length === 0 && <p className="py-4 text-center text-sm text-mute">Não achei no catálogo do rolê.{placesEnabled() ? ' Busca no Google Maps aqui embaixo ↓' : ''}</p>}
             <AnimatePresence initial={false}>
               {results?.map((r) => row(r))}
-              {results?.some((r) => r.place.curation === 'base') && <p key="osm" className="text-right text-[11px] text-faint">“sem curadoria”: lugares reais © colaboradores do OpenStreetMap</p>}
+              {results?.some((r) => r.place.curation === 'base') && <p key="osm" className="text-right text-[11px] text-faint">“sem curadoria”: lugares reais do Google Maps que ninguém avaliou ainda</p>}
             </AnimatePresence>
           </div>
 

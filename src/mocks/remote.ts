@@ -230,18 +230,10 @@ export const placesForReview = () => call<PlaceReview[]>('GET', '/api/places/rev
 export const pushPlaceStatus = (id: string, status: 'ok' | 'recusado') =>
   call('POST', `/api/places/${encodeURIComponent(id)}/status`, { status }, { admin: true }).then(Boolean)
 
-/* ---------- região e base regional (OSM) ---------- */
+/* ---------- região (CEP/GPS → bairro) ---------- */
 export interface GeoOut { lat: number; lng: number; label: string; city?: string }
 export const geoCep = (cep: string) => call<GeoOut>('GET', `/api/geo/cep/${cep}`, undefined, { timeout: 15000 })
 export const geoRev = (lat: number, lng: number) => call<GeoOut>('GET', `/api/geo/rev?lat=${lat}&lng=${lng}`, undefined, { timeout: 12000 })
-/** pode levar ~10–60 s na 1ª vez de uma região (consulta o OpenStreetMap); depois fica no banco do PC */
-export const baseLoad = (lat: number, lng: number, label: string) =>
-  call<{ ok: boolean; cached: boolean; count: number; label: string }>('POST', '/api/base/load', { lat, lng, label }, { timeout: 130000 })
-export const baseNear = (lat: number, lng: number, km = 5) =>
-  call<{ rows: unknown[]; areas: { label: string; lat: number; lng: number }[] }>('GET', `/api/base/near?lat=${lat}&lng=${lng}&km=${km}`, undefined, { timeout: 10000 })
-/** lugar do OSM → place_id do Google (único dado do Google que pode ficar guardado) */
-export const gmatchGet = (osm: string) => call<{ placeId: string | null }>('GET', `/api/gmatch/${osm}`, undefined, { timeout: 3000 })
-export const gmatchPut = (osm: string, placeId: string | null) => call('POST', '/api/gmatch', { osm, placeId })
 
 /* ---------- pessoas: perfil, avaliações, turmas (LGPD: perfil só com consentimento) ---------- */
 export const pushMe = (p: Profile) => (p.consentAt ? call('POST', '/api/me', { consentAt: p.consentAt, profile: { name: p.name, handle: p.handle, hue: p.hue, hood: p.hood, niches: p.niches, vibes: p.vibes, home: p.home } }) : Promise.resolve(null))

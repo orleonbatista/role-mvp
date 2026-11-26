@@ -41,7 +41,7 @@ export interface Place {
   promoter?: string
   ticketUrl?: string
   eventDate?: string
-  /** origem externa: Google (só place_id) ou OpenStreetMap (base); sem isso = catálogo próprio/evento */
+  /** origem externa: Google (só place_id) ou OpenStreetMap (catálogo legado); sem isso = catálogo próprio/evento */
   source?: 'google' | 'osm'
   /** 'base' = lugar real ainda sem curadoria (a IA usa como reserva, não aparece no feed) */
   curation?: 'base'
@@ -81,6 +81,8 @@ export interface Criteria {
   groupSize: number
   budget?: number
   hood?: string
+  /** distância máxima de quem pede ("até 8 km", "perto de mim" = 5 km) */
+  maxKm?: number
   niches: Niche[]
   vibes: Vibe[]
   tags: Tag[]

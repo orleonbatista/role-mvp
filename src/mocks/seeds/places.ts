@@ -127,7 +127,7 @@ export const seedPlaces: Place[] = rows.map(
   },
 )
 
-/** registro de lugares do app: [fictícios do demo] + curados (comunidade, eventos) + base (OpenStreetMap) */
+/** registro de lugares do app: [fictícios do demo] + curados (comunidade, eventos) + base (descoberta ao vivo no Google, só em memória) */
 export const places: Place[] = []
 export const placeById = new Map<string, Place>()
 let seeds = 0
