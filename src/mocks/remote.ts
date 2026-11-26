@@ -28,6 +28,8 @@ export const getAdminKey = () => { try { return localStorage.getItem(ADMIN_KEY) 
 export const setAdminKey = (k: string | null) => { try { k ? localStorage.setItem(ADMIN_KEY, k) : localStorage.removeItem(ADMIN_KEY) } catch { /* */ } }
 
 let health: { at: number; base: string | null } | null = null
+/** época dos perfis no servidor (reset geral → cada aparelho refaz o cadastro) */
+export let serverEpoch = 0
 let downUntil = 0
 
 /** URL do backend se ele estiver no ar (cache de 60s; 30s de pausa depois de uma falha) */
@@ -39,7 +41,9 @@ export async function apiBase(force = false): Promise<string | null> {
   if (!base) { health = { at: Date.now(), base: null }; return null }
   try {
     const r = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(3500) })
-    const ok = r.ok && (await r.json()).db === true
+    const j = r.ok ? await r.json() : null
+    const ok = j?.db === true
+    if (ok) serverEpoch = Number(j.profileEpoch ?? 0)
     health = { at: Date.now(), base: ok ? base : null }
     if (!ok) downUntil = Date.now() + 30_000
   } catch {

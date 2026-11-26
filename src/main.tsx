@@ -26,6 +26,16 @@ async function boot() {
   if (await demoOn()) { registerDemoSeeds(); await seedIfEmpty() } else await purgeSeeds()
   await Promise.all([loadExtraEvents(), loadGooglePlaces()])
   // região de quem já se cadastrou: lugares em volta vindos do banco do PC (não trava a abertura)
+  // reset geral de perfis feito no servidor: este aparelho apaga o perfil local e volta pro cadastro
+  // (pedidos, votos, avaliações e turmas ficam)
+  try {
+    const { apiBase, serverEpoch } = await import('./mocks/remote')
+    if (await apiBase()) {
+      const ep = (await import('./mocks/remote')).serverEpoch || serverEpoch
+      const local = Number(localStorage.getItem('role.profileEpoch') ?? 0)
+      if (ep > local) { await db.profile.delete('me'); localStorage.setItem('role.profileEpoch', String(ep)) }
+    }
+  } catch { /* sem backend: segue */ }
   const me = await db.profile.get('me')
   // termos do Google: resumo de lugares sem curadoria guardado nos pedidos some depois de 30 dias
   const cut = Date.now() - 30 * 86_400_000

@@ -74,6 +74,8 @@ db.exec(`
   -- avisos no celular (Web Push): inscrição por aparelho
   CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, device TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_push_device ON push_subs(device);
+  -- época dos perfis: quando sobe, todo aparelho refaz o cadastro (reset geral de perfis)
+  CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
   -- lugar do OSM → place_id do Google (o place_id é o único dado do Google que os termos deixam guardar)
   CREATE TABLE IF NOT EXISTS gmatch (osm_id TEXT PRIMARY KEY, place_id TEXT, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_votes_req ON votes(request_id);
@@ -432,7 +434,7 @@ export function handleApi(method, path, req, body) {
   const now = Date.now()
   let m
 
-  if (method === 'GET' && path === '/api/health') return ok({ ok: true, db: true, at: now })
+  if (method === 'GET' && path === '/api/health') return ok({ ok: true, db: true, at: now, profileEpoch: Number(db.prepare("SELECT v FROM meta WHERE k = 'profile_epoch'").get()?.v ?? 0) })
   if (/^\/api\/(me|reviews|ratings|groups)\b|^\/api\/places\/[^/]+\/reviews$/.test(path)) {
     if (!RE.device.test(device)) return bad('device')
     const out = handlePeople(method, path, body, device, now)
