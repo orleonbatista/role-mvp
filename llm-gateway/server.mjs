@@ -4,7 +4,7 @@
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { askBody, moderateBody, moderationRules, ollamaBody } from '../src/mocks/llmPrompt.ts'
-import { adminKeyFile, areaFresh, googleLogin, insertReview, cellOf, dataDir, handleApi, insertPlace, nearRows, placeForModeration, saveArea, validLatLng } from './api.mjs'
+import { BASE_RADIUS, adminKeyFile, areaFresh, googleLogin, insertReview, cellOf, dataDir, handleApi, insertPlace, nearRows, placeForModeration, saveArea, validLatLng } from './api.mjs'
 import { aroundQuery, geoFromCep, geoReverse, hoodNear, overpass, toRows } from './osm.mjs'
 
 const PORT = Number(process.env.PORT ?? 8787)
@@ -124,7 +124,7 @@ const server = http.createServer(async (req, res) => {
         if (!job) {
           job = (async () => {
             const t0 = Date.now()
-            const rows = toRows(await overpass(aroundQuery([[lat, lng]], 2500), { attempts: 4, timeout: 60_000 }), (p) => hoodNear(p, label))
+            const rows = toRows(await overpass(aroundQuery([[lat, lng]], BASE_RADIUS), { attempts: 4, timeout: 110_000 }), (p) => hoodNear(p, label))
             saveArea(cell, lat, lng, label, rows)
             console.log(`[${new Date().toLocaleTimeString('pt-BR')}] base ${label} (${cell}): ${rows.length} lugares em ${Date.now() - t0}ms`)
             return rows.length
@@ -132,7 +132,7 @@ const server = http.createServer(async (req, res) => {
           loading.set(cell, job)
         }
         const count = await job
-        return send(res, 200, { ok: true, cached: false, count, label, near: nearRows(lat, lng, 3).length }, origin)
+        return send(res, 200, { ok: true, cached: false, count, label, near: nearRows(lat, lng, 5).length }, origin)
       } catch (e) {
         console.warn('base:', e.message)
         return send(res, 502, { error: 'overpass' }, origin)

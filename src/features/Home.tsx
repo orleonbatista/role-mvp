@@ -5,7 +5,7 @@ import { Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitiv
 import { ease, item, list } from '../ui/motion'
 import { useEvents, useFeed, useForYou, useProfile } from '../lib/api'
 import { KIND_LABEL, OCCASIONS, occasionLabel, priceLabel, timeAgo } from '../lib/labels'
-import { distanceKm, fmtKm, openStatus } from '../lib/hours'
+import { distanceKm, fmtKm, kmTo, openStatus } from '../lib/hours'
 import { placeIcon } from '../ui/placeIcon'
 import { places } from '../mocks/seeds/places'
 import { TurmasStrip } from './Turmas'
@@ -18,7 +18,7 @@ function greeting() {
 export function Home() {
   const nav = useNavigate()
   const { data: me } = useProfile()
-  const waiting = me?.hood ? places.filter((p) => p.curation === 'base' && (distanceKm(me.hood, p.hood) ?? 99) <= 2).length : 0
+  const waiting = me ? places.filter((p) => p.curation === 'base' && (kmTo(me, p) ?? 99) <= 5).length : 0
   const forYou = useForYou()
   const events = useEvents()
   const feed = useFeed()
@@ -62,7 +62,7 @@ export function Home() {
       </div>
 
       <section className="mt-9">
-        <SectionTitle aside={<span className="text-xs text-faint">curado pela comunidade</span>}>Pra você</SectionTitle>
+        <SectionTitle aside={<span className="text-xs text-faint">seu gosto · até 5 km</span>}>Pra você</SectionTitle>
         {forYou.data?.length === 0 && (
           <Link to="/fundador" className="mx-5 block rounded-[24px] border border-dashed border-accent/40 bg-accent/[0.05] p-5">
             <p className="font-serif text-[26px] leading-none">O rolê está começando<span className="text-accent">.</span></p>
@@ -70,6 +70,9 @@ export function Home() {
             {waiting > 0 && <p className="mt-2 text-[13px] text-mute">{waiting} lugares reais perto de você esperando curadoria.</p>}
             <span className="mt-3 inline-flex items-center gap-1.5 text-[14px] font-medium text-accent">Virar curador fundador →</span>
           </Link>
+        )}
+        {forYou.data?.some((r) => r.place.curation === 'base') && (
+          <p className="mb-3 px-5 text-[12px] text-faint">Lugares reais perto de você que combinam com seu gosto. Os marcados “sem curadoria” ninguém da comunidade avaliou ainda — <Link to="/fundador" className="text-accent">conhece algum? indique</Link>.</p>
         )}
         <div className="no-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1">
           {forYou.isLoading && [0, 1].map((i) => <Skeleton key={i} className="h-[260px] w-[220px] shrink-0 rounded-[28px]" />)}
@@ -85,6 +88,7 @@ export function Home() {
                   <Cover hue={r.place.hue} icon={placeIcon(r.place)} iconSize={72} layoutId={`cover-${r.place.id}`} className="h-[260px] w-full transition-transform duration-500 group-active:scale-[0.98]" />
                   <div className="absolute left-3 top-3 flex gap-1.5">
                     <Tag tone="accent">{r.match}% seu gosto</Tag>
+                    {r.place.curation === 'base' && <span className="inline-flex h-6 items-center rounded-full bg-black/45 px-2.5 text-[11px] text-white/85 backdrop-blur-md">sem curadoria</span>}
                     {openStatus(r.place).open && !r.place.source && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-black/40 px-2.5 text-[11px] text-white/90 backdrop-blur-md"><span className="size-1.5 rounded-full bg-accent" />aberto</span>}
                   </div>
                   <div className="absolute inset-x-0 bottom-0 rounded-b-[28px] bg-gradient-to-t from-black/80 via-black/30 to-transparent p-4 pt-12">
@@ -93,7 +97,7 @@ export function Home() {
                   </div>
                 </div>
                 <p className="mt-2.5 line-clamp-2 px-1 text-[13px] leading-snug text-mute">{r.place.tagline}</p>
-                <p className="mt-1 px-1 text-[11px] text-faint">{priceLabel(r.place.price)}{me?.hood ? ` · ${fmtKm(distanceKm(me.hood, r.place.hood))}` : ''}</p>
+                <p className="mt-1 px-1 text-[11px] text-faint">{priceLabel(r.place.price)}{me ? ` · ${fmtKm(kmTo(me, r.place))}` : ''}</p>
               </Link>
             </motion.div>
           ))}

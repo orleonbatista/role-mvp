@@ -236,9 +236,9 @@ export const geoCep = (cep: string) => call<GeoOut>('GET', `/api/geo/cep/${cep}`
 export const geoRev = (lat: number, lng: number) => call<GeoOut>('GET', `/api/geo/rev?lat=${lat}&lng=${lng}`, undefined, { timeout: 12000 })
 /** pode levar ~10–60 s na 1ª vez de uma região (consulta o OpenStreetMap); depois fica no banco do PC */
 export const baseLoad = (lat: number, lng: number, label: string) =>
-  call<{ ok: boolean; cached: boolean; count: number; label: string }>('POST', '/api/base/load', { lat, lng, label }, { timeout: 70000 })
-export const baseNear = (lat: number, lng: number, km = 3) =>
-  call<{ rows: unknown[]; areas: { label: string; lat: number; lng: number }[] }>('GET', `/api/base/near?lat=${lat}&lng=${lng}&km=${km}`, undefined, { timeout: 6000 })
+  call<{ ok: boolean; cached: boolean; count: number; label: string }>('POST', '/api/base/load', { lat, lng, label }, { timeout: 130000 })
+export const baseNear = (lat: number, lng: number, km = 5) =>
+  call<{ rows: unknown[]; areas: { label: string; lat: number; lng: number }[] }>('GET', `/api/base/near?lat=${lat}&lng=${lng}&km=${km}`, undefined, { timeout: 10000 })
 /** lugar do OSM → place_id do Google (único dado do Google que pode ficar guardado) */
 export const gmatchGet = (osm: string) => call<{ placeId: string | null }>('GET', `/api/gmatch/${osm}`, undefined, { timeout: 3000 })
 export const gmatchPut = (osm: string, placeId: string | null) => call('POST', '/api/gmatch', { osm, placeId })

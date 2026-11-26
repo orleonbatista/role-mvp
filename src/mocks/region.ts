@@ -52,7 +52,7 @@ export const regionPlaces = () => regionCount
 /** lê do banco do PC os lugares em volta (rápido) e registra como base */
 export async function loadRegion(home: Home) {
   registerHood(hoodFor(home), [home.lat, home.lng])
-  const j = await baseNear(home.lat, home.lng, 3)
+  const j = await baseNear(home.lat, home.lng, 5)
   if (!j) return 0
   for (const a of j.areas ?? []) registerHood(a.label, [a.lat, a.lng])
   let n = 0

@@ -77,6 +77,7 @@ db.exec(`
 // migração: coluna com o resumo do lugar do Google na sugestão (bancos criados antes dela)
 if (!db.prepare("SELECT 1 FROM pragma_table_info('suggestions') WHERE name = 'place'").get()) db.exec('ALTER TABLE suggestions ADD COLUMN place TEXT')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'group_id'").get()) db.exec('ALTER TABLE requests ADD COLUMN group_id TEXT')
+if (!db.prepare("SELECT 1 FROM pragma_table_info('base_areas') WHERE name = 'radius'").get()) db.exec('ALTER TABLE base_areas ADD COLUMN radius INTEGER NOT NULL DEFAULT 2500')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'google_sub'").get()) {
   db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT'); db.exec('ALTER TABLE users ADD COLUMN email TEXT')
 }
@@ -224,7 +225,7 @@ const AREA_TTL = 30 * 86_400_000
 export const cellOf = (lat, lng) => `${Math.round(lat * 50)}:${Math.round(lng * 50)}`
 const qb = {
   area: db.prepare('SELECT * FROM base_areas WHERE cell = ?'),
-  putArea: db.prepare('INSERT OR REPLACE INTO base_areas (cell, lat, lng, label, count, at) VALUES (?, ?, ?, ?, ?, ?)'),
+  putArea: db.prepare('INSERT OR REPLACE INTO base_areas (cell, lat, lng, label, count, at, radius) VALUES (?, ?, ?, ?, ?, ?, ?)'),
   putPlace: db.prepare('INSERT OR REPLACE INTO base_places (id, row, lat, lng, area, at) VALUES (?, ?, ?, ?, ?, ?)'),
   near: db.prepare('SELECT row FROM base_places WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? LIMIT ?'),
   areasNear: db.prepare('SELECT label, lat, lng FROM base_areas WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?'),
@@ -232,17 +233,18 @@ const qb = {
   getMatch: db.prepare('SELECT place_id FROM gmatch WHERE osm_id = ?'),
   putMatch: db.prepare('INSERT OR REPLACE INTO gmatch (osm_id, place_id, at) VALUES (?, ?, ?)'),
 }
-export const areaFresh = (cell) => { const a = qb.area.get(cell); return a && Date.now() - a.at < AREA_TTL ? a : null }
+export const BASE_RADIUS = 5000 // metros em volta de quem se cadastra
+export const areaFresh = (cell) => { const a = qb.area.get(cell); return a && Date.now() - a.at < AREA_TTL && a.radius >= BASE_RADIUS ? a : null }
 export function saveArea(cell, lat, lng, label, rows) {
   const now = Date.now()
   db.exec('BEGIN')
   try {
     for (const r of rows) qb.putPlace.run(r[0], JSON.stringify(r), r[6], r[7], cell, now)
-    qb.putArea.run(cell, lat, lng, label, rows.length, now)
+    qb.putArea.run(cell, lat, lng, label, rows.length, now, BASE_RADIUS)
     db.exec('COMMIT')
   } catch (e) { db.exec('ROLLBACK'); throw e }
 }
-export function nearRows(lat, lng, km = 3, limit = 600) {
+export function nearRows(lat, lng, km = 5, limit = 2500) {
   const dLa = km / 111, dLo = km / 102
   return qb.near.all(lat - dLa, lat + dLa, lng - dLo, lng + dLo, limit).map((r) => parse(r.row)).filter(Boolean)
 }
@@ -425,7 +427,7 @@ export function handleApi(method, path, req, body) {
     const u = new URL(req.url ?? '', 'http://x').searchParams
     const lat = num(u.get('lat')), lng = num(u.get('lng'))
     if (!validLatLng(lat, lng)) return bad('coords')
-    const km = Math.min(6, Math.max(1, num(u.get('km')) || 3))
+    const km = Math.min(6, Math.max(1, num(u.get('km')) || 5))
     const dLa = (km + 2) / 111, dLo = (km + 2) / 102
     return ok({ rows: nearRows(lat, lng, km), areas: qb.areasNear.all(lat - dLa, lat + dLa, lng - dLo, lng + dLo), source: '© colaboradores do OpenStreetMap (ODbL)' })
   }

@@ -14,7 +14,7 @@ import { loadExtraEvents } from './mocks/extraEvents'
 import { loadGooglePlaces } from './mocks/gplaces'
 import { App } from './app/App'
 import { db } from './db/db'
-import { loadRegion } from './mocks/region'
+import { ensureRegion } from './mocks/region'
 import { pushMe, ratings } from './mocks/remote'
 import { placeById } from './mocks/seeds/places'
 
@@ -32,7 +32,8 @@ async function boot() {
   const applyRatings = () => ratings().then((r) => {
     for (const [id, [score, n]] of Object.entries(r ?? {})) { const p = placeById.get(id); if (p) { p.rating = score; p.ratingCount = n } }
   }).catch(() => {})
-  if (me?.home) loadRegion(me.home).then(applyRatings).then(() => qc.invalidateQueries()).catch(() => {})
+  // garante a região no banco (raio de 5 km; refaz a carga de quem entrou com o raio antigo) e carrega no aparelho
+  if (me?.home) ensureRegion(me.home).then(applyRatings).then(() => qc.invalidateQueries()).catch(() => {})
   else void applyRatings().then(() => qc.invalidateQueries())
   // perfil no banco (só com consentimento): mantém nome, gosto e região atualizados
   if (me?.consentAt) void pushMe(me)

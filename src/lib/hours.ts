@@ -95,4 +95,13 @@ export function distanceKm(a?: string, b?: string) {
   return Math.round(2 * R * Math.asin(Math.sqrt(h)) * 1.3 * 10) / 10 // ×1.3 ≈ ruas, não linha reta
 }
 
+/** distância real entre coordenadas (×1,3 ≈ ruas) */
+export function kmBetween(a?: { lat: number; lng: number }, b?: { lat?: number; lng?: number }) {
+  if (!a || b?.lat == null || b?.lng == null) return undefined
+  return Math.round(Math.hypot((a.lat - b.lat) * 111, (a.lng - b.lng) * 102) * 1.3 * 10) / 10
+}
+/** distância de quem usa até o lugar: pela coordenada (região do cadastro) ou pelo bairro */
+export const kmTo = (me?: { home?: { lat: number; lng: number }; hood?: string } | null, p?: { lat?: number; lng?: number; hood: string }) =>
+  (me?.home && p?.lat != null ? kmBetween(me.home, p) : undefined) ?? distanceKm(me?.hood, p?.hood)
+
 export const fmtKm = (km?: number) => (km === undefined ? '' : km < 1 ? 'pertinho' : `~${km.toFixed(km < 10 ? 1 : 0).replace('.', ',')} km`)

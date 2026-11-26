@@ -10,7 +10,7 @@ Inventário do MVP (nov/2026). Entre parênteses, a rota da tela.
 
 ## Região (cadastro)
 - **Onde você costuma sair?** "Usar minha localização" ou CEP (bairro da lista como alternativa). O backend carrega os
-  lugares reais do OpenStreetMap em volta (raio 2,5 km, uma vez por região) e eles entram na base. A Home mostra
+  lugares reais do OpenStreetMap em volta (raio de 5 km, uma vez por região) e eles entram na base. A Home mostra
   "N lugares reais perto de você esperando curadoria".
 - **Ficha ao vivo do Google:** foto com crédito, aberto agora, horário, nota do Google (discreta), telefone e mapa.
   Em pedido de grupo aparecem também "bom pra grupo", "aceita reserva" e "música ao vivo". Nada é salvo.

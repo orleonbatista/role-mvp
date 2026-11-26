@@ -9,7 +9,7 @@ import { refineWithLLM } from './llm'
 import { people } from './seeds/people'
 import { isCurated, placeById, places } from './seeds/places'
 import { KIND_LABEL, nicheLabel, occasionLabel } from '../lib/labels'
-import { DAY_SHORT, distanceKm } from '../lib/hours'
+import { DAY_SHORT, kmTo } from '../lib/hours'
 import { approveLocally, fitOf, isPast, sanitizeDraft } from './extraEvents'
 import * as remote from './remote'
 import { track } from '../lib/track'
@@ -162,11 +162,17 @@ export const handlers = [
     const profile = await getProfile()
     const c: Criteria = { groupSize: 2, niches: [], vibes: [], tags: [], unmet: [] }
     await latency()
-    // só curado, por gosto + perto do bairro de quem acessa
-    const ranked = rank(places.filter((p) => isCurated(p) && p.kind !== 'evento'), c, profile)
-      .map((r) => ({ r, s: r.score - (distanceKm(profile?.hood, r.place.hood) ?? 4) * 0.6 }))
-      .sort((a, b) => b.s - a.s).map((x) => x.r)
-    return HttpResponse.json(ranked.slice(0, 8))
+    // curados primeiro (gosto + perto); se ainda não há curadoria suficiente, completa com lugares reais
+    // num raio de 5 km que batem com o gosto (estilo), marcados "sem curadoria" no card
+    const near = (p: Place) => kmTo(profile, p)
+    const curated = rank(places.filter((p) => isCurated(p) && p.kind !== 'evento'), c, profile)
+      .map((r) => ({ r, s: r.score - (near(r.place) ?? 4) * 0.6 }))
+      .sort((a, b) => b.s - a.s).map((x) => x.r).slice(0, 8)
+    const taste = new Set(profile?.niches ?? [])
+    const base = curated.length >= 6 ? [] : rank(places.filter((p) => p.curation === 'base' && (near(p) ?? 99) <= 5 && p.niches.some((n) => taste.has(n))), c, profile)
+      .map((r) => ({ r, s: r.score - (near(r.place) ?? 5) * 0.8 }))
+      .sort((a, b) => b.s - a.s).map((x) => x.r).slice(0, 10 - curated.length)
+    return HttpResponse.json([...curated, ...base])
   }),
 
   http.get('/api/events', async () => {

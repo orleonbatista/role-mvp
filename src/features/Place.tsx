@@ -12,7 +12,7 @@ import { StorySheet } from './StorySheet'
 import { Avatar, Button, Chip, Cover, EmptyState, Page, Skeleton, Tag, cx } from '../ui/primitives'
 import { Sheet } from '../ui/Sheet'
 import { placeIcon } from '../ui/placeIcon'
-import { DAY_SHORT, distanceKm, fmtKm, isOpenAt, openStatus } from '../lib/hours'
+import { DAY_SHORT, fmtKm, isOpenAt, kmTo, openStatus } from '../lib/hours'
 import { track } from '../lib/track'
 import { useCreateLead, useProfile } from '../lib/api'
 import type { Place } from '../lib/types'
@@ -53,7 +53,7 @@ export function PlacePage() {
   const google = !!place.source // lugar real (Google/OSM): horário e capacidade não são nossos
   const base = place.curation === 'base'
   const noHours = google
-  const km = distanceKm(me?.hood, place.hood)
+  const km = kmTo(me, place)
 
   const isEvent = place.kind === 'evento'
   const footer = place.ticketUrl

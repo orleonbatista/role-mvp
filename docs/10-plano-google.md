@@ -36,8 +36,8 @@ O Orleon pediu essa opção em 26/11/2026, mas ela não foi implementada:
 - **Cadastro:** no passo do nome, "Usar minha localização" (GPS) ou CEP. Escolher um bairro da lista continua como alternativa.
 - **Privacidade:** guardamos só a região arredondada a ~1 km. O CEP e o endereço não são salvos.
 - **CEP:** BrasilAPI/ViaCEP dão rua e bairro; o Nominatim (OSM) converte em coordenada. A BrasilAPI costuma devolver o centro da cidade, por isso fica por último. O GPS passa por geocodificação reversa no Nominatim (máx. 1 req/s, com User-Agent) pra obter o nome do bairro.
-- **Carga:** o gateway (`POST /api/base/load`) consulta o Overpass num raio de 2,5 km, uma vez por célula de ~2 km, e grava no SQLite do PC (`base_places`, `base_areas`). A célula vale 30 dias, e quem mora perto aproveita a carga de quem chegou antes.
-- **No app:** `GET /api/base/near` devolve os lugares num raio de 3 km. O app registra como camada base e o bairro novo entra no cálculo de distância. O cadastro espera até 12 s pela carga; se demorar mais, segue em segundo plano e atualiza o feed ao terminar.
+- **Carga:** o gateway (`POST /api/base/load`) consulta o Overpass num raio de 5 km, uma vez por célula de ~2 km, e grava no SQLite do PC (`base_places`, `base_areas`). A célula vale 30 dias, e quem mora perto aproveita a carga de quem chegou antes.
+- **No app:** `GET /api/base/near` devolve os lugares num raio de 5 km. O "Pra você" mostra primeiro os curados; enquanto houver menos de 6, completa com lugares da base num raio de 5 km que batem com o gosto, marcados "sem curadoria". O app registra como camada base e o bairro novo entra no cálculo de distância. O cadastro espera até 12 s pela carga; se demorar mais, segue em segundo plano e atualiza o feed ao terminar.
 - **Gosto:** a base traz todos os bares, restaurantes e baladas da região. O gosto ordena e filtra no app (ranker, "falta curar" do fundador).
 - **OSM → Google:** a tabela `gmatch` liga o lugar do OSM ao `place_id`. A ligação é descoberta pela Text Search "IDs only", que não tem custo.
 
