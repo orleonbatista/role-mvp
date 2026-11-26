@@ -85,13 +85,14 @@ function parseWhen(tokens: string[], joined: string): When | undefined {
   if (m) hour = Number(m[1])
   else if (has(tokens, joined, 'almoco') || has(tokens, joined, 'almocar')) hour = 12.5
   else if (has(tokens, joined, 'cafe da manha')) hour = 9
+  else if (/ (fim|final) d[ae] tarde | happy hour | depois do (trampo|trabalho|expediente) /.test(joined)) hour = 18
   else if (has(tokens, joined, 'tarde') || has(tokens, joined, 'day party')) hour = 16
   else if (has(tokens, joined, 'madrugada') || joined.includes(' ate de manha ') || joined.includes(' amanhecer ')) hour = 2
   else if (has(tokens, joined, 'noite') || has(tokens, joined, 'jantar')) hour = 21
 
   if (day === undefined && hour === undefined) return undefined
   const dl = day === undefined ? '' : day === today ? 'hoje' : day === (today + 1) % 7 ? 'amanhã' : DAY_LONG[day]
-  const hl = hour === undefined ? '' : hour === 12.5 ? 'no almoço' : hour === 16 ? 'à tarde' : hour === 2 ? 'de madrugada' : hour === 21 && !m ? 'à noite' : `às ${hour}h`
+  const hl = hour === undefined ? '' : hour === 12.5 ? 'no almoço' : hour === 16 ? 'à tarde' : hour === 18 && !m ? 'no fim de tarde' : hour === 2 ? 'de madrugada' : hour === 21 && !m ? 'à noite' : `às ${hour}h`
   return { day, hour, label: [dl, hl].filter(Boolean).join(' ') }
 }
 
@@ -139,6 +140,7 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
   // pontuação máxima possível para os critérios pedidos — base do match calibrado
   const max =
     c.niches.length * 3 + c.vibes.length * 1.6 + (c.occasion ? 3 : 0) + (c.groupSize >= 8 ? 2 : 0) + (bigGroup ? 2 : 0) +
+    (c.niches.includes('ao-ar-livre') && places.some((p) => p.live) ? 1.5 : 0) + (places.some((p) => p.live?.rating) ? 2.2 : 0) +
     (c.budget ? 1.5 : 0) + (c.hood ? 2.5 : c.maxKm && profile?.home ? 1.2 : 0) + c.tags.length * 2.5 + (c.when ? 1.5 : 0) + 2 +
     (isVague(c) && profile ? profile.niches.length * 1.4 + profile.vibes.length * 0.5 + 0.8 : 0)
 
@@ -221,14 +223,14 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
       if (L.rating) {
         const conf = Math.min(1, Math.log10((L.count ?? 0) + 1) / 3) // 1.000 avaliações = confiança cheia
         score += (L.rating - 4.2) * 3 * conf
-        if (L.rating >= 4.5 && (L.count ?? 0) >= 100) why.push([1.5, `Nota ${L.rating.toFixed(1).replace('.', ',')} no Google (${(L.count ?? 0) >= 1000 ? `${((L.count ?? 0) / 1000).toFixed(1).replace('.', ',')} mil` : L.count})`])
+        if (L.rating >= 4.5 && (L.count ?? 0) >= 100) why.push([1.7, `Nota ${L.rating.toFixed(1).replace('.', ',')} no Google (${(L.count ?? 0) >= 1000 ? `${((L.count ?? 0) / 1000).toFixed(1).replace('.', ',')} mil` : L.count})`])
       }
     }
 
     score += (place.rating - 8) * 1.5
     if (place.rating >= 8.8) why.push([1.2, place.source === 'google' ? `Nota ${(place.rating / 2).toFixed(1)} no Google (${place.ratingCount})` : `Nota ${place.rating.toFixed(1)} na comunidade`])
 
-    const reasons = why.sort((a, b) => b[0] - a[0]).map(([, s]) => s).filter((s, i, a) => a.indexOf(s) === i).slice(0, 3)
+    const reasons = why.sort((a, b) => b[0] - a[0]).map(([, s]) => s).filter((s, i, a) => a.indexOf(s) === i).slice(0, 4)
     if (!reasons.length) reasons.push(place.tagline)
     if (base) reasons.push('Ninguém da comunidade avaliou ainda')
     for (const t of c.tags) if (!place.tags.includes(t)) warn.push(`Sem confirmação de ${TAG_LABEL[t]}`)
