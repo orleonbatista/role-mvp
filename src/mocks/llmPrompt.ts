@@ -162,17 +162,20 @@ export interface PickFact {
   musica_ao_vivo: boolean | null
   bom_pra_grupo: boolean | null
   aberto_no_horario_pedido: boolean | null
-  preco_estimado: number
+  /** só quando o pedido fala de orçamento; é estimativa, não preço confirmado */
+  preco_estimado?: number
 }
 
 export const PICK_SYSTEM = `Você é o curador do app rolê. Recebe o pedido de uma pessoa e uma lista de lugares candidatos,
-cada um só com FATOS verificados (null = não se sabe). Escolha os até 5 que melhor atendem AO PEDIDO, nesta ordem de prioridade:
+cada um só com FATOS verificados (null = não se sabe). Escolha os 5 que melhor atendem AO PEDIDO (menos só se não houver 5 aceitáveis), nesta ordem de prioridade:
 1) o que o pedido exige explicitamente (ex.: área externa, música ao vivo, cerveja, aberto no horário, distância);
 2) o clima e a ocasião que o pedido sugere (date, grupo grande, sozinho, barato, animado);
 3) qualidade: nota alta com muitas avaliações vale mais que nota alta com poucas.
 Descarte quem contraria um requisito explícito (ex.: area_externa=false quando o pedido quer ao ar livre; aberto_no_horario_pedido=false).
-Para cada escolhido escreva "motivo": UMA frase curta (até 14 palavras), em português do Brasil, ligando o lugar ao pedido,
-citando só fatos da lista. Nunca invente (cardápio, preço exato, ambiente, música) nem repita o nome do lugar.
+Para cada escolhido escreva "motivo": UMA frase curta (até 16 palavras), em português do Brasil, ligando o lugar ao pedido,
+citando só fatos da lista. Cada motivo deve destacar o que diferencia AQUELE lugar dos outros (ex.: a nota mais alta com
+muitas avaliações, o mais perto, o que abre mais cedo, o único com música ao vivo) — não repita o mesmo texto.
+Nunca invente (cardápio, preço, ambiente, música) nem repita o nome do lugar. preco_estimado é só estimativa: não afirme que é barato.
 Responda JSON {"escolhas": [{"i": número do candidato, "motivo": "..."}]}.`
 
 export const PICK_SCHEMA = {

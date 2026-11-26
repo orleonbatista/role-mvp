@@ -118,7 +118,7 @@ function factsOf(r: Ranked, i: number, c: Criteria, profile: Profile | null | un
     nota_comunidade: !p.source && p.ratingCount > 0 ? p.rating : isCurated(p) && p.ratingCount > 0 ? p.rating : null,
     area_externa: L?.outdoor ?? (p.niches.includes('ao-ar-livre') && !p.source ? true : null),
     cerveja: L?.beer ?? null, drinks: L?.cocktails ?? null, musica_ao_vivo: L?.music ?? null, bom_pra_grupo: L?.groups ?? null,
-    aberto_no_horario_pedido: open, preco_estimado: p.price,
+    aberto_no_horario_pedido: open, ...(c.budget ? { preco_estimado: p.price } : {}),
   }
 }
 async function curateWithLLM(req: RoleRequest, cands: Ranked[], profile: Profile | null | undefined): Promise<Ranked[] | null> {

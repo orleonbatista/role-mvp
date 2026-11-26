@@ -190,7 +190,8 @@ const server = http.createServer(async (req, res) => {
     if (!pedido || cands.length < 2) return send(res, 400, { error: 'bad_pick' }, origin)
     const clean = cands.map((c, i) => ({
       i, nome: String(c?.nome ?? '').slice(0, 60), tipo: String(c?.tipo ?? '').slice(0, 40),
-      ...Object.fromEntries(['distancia_km', 'nota_google', 'avaliacoes_google', 'nota_comunidade', 'preco_estimado'].map((k) => [k, Number.isFinite(Number(c?.[k])) && c?.[k] !== null ? Number(c[k]) : null])),
+      ...Object.fromEntries(['distancia_km', 'nota_google', 'avaliacoes_google', 'nota_comunidade'].map((k) => [k, Number.isFinite(Number(c?.[k])) && c?.[k] !== null ? Number(c[k]) : null])),
+      ...(Number.isFinite(Number(c?.preco_estimado)) && c?.preco_estimado != null ? { preco_estimado: Number(c.preco_estimado) } : {}),
       ...Object.fromEntries(['area_externa', 'cerveja', 'drinks', 'musica_ao_vivo', 'bom_pra_grupo', 'aberto_no_horario_pedido'].map((k) => [k, typeof c?.[k] === 'boolean' ? c[k] : null])),
     }))
     const job = queue.then(async () => {
