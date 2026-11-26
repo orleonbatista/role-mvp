@@ -125,27 +125,29 @@ function factsOf(r: Ranked, i: number, c: Criteria, profile: Profile | null | un
 const fmt1 = (n: number) => n.toFixed(1).replace('.', ',')
 const fmtN = (n: number) => (n >= 1000 ? `${fmt1(n / 1000)} mil` : String(n))
 function noteFrom(ds: string[], f: PickFact, chosen: PickFact[]): string | null {
-  const minKm = Math.min(...chosen.map((x) => x.distancia_km ?? 99))
+  const km = (x: PickFact) => x.distancia_km ?? 99
+  const minKm = Math.min(...chosen.map(km))
   const maxNota = Math.max(...chosen.map((x) => x.nota_google ?? 0))
-  const parts: string[] = []
-  for (const d of ds) {
-    const k = f.distancia_km, n = f.nota_google, c = f.avaliacoes_google ?? 0
-    if (d === 'mais_perto' && k != null && k <= minKm) parts.push(`o mais perto de você (${fmt1(k)} km)`)
-    else if ((d === 'perto' || d === 'mais_perto') && k != null && k <= 1.5) parts.push(`fica pertinho (${fmt1(k)} km)`)
-    else if (d === 'melhor_nota' && n != null && n >= maxNota) parts.push(`a melhor nota no Google entre as opções (${fmt1(n)}, ${fmtN(c)} avaliações)`)
-    else if ((d === 'nota_alta' || d === 'melhor_nota') && n != null && n >= 4.6 && c >= 200) parts.push(`nota ${fmt1(n)} no Google com ${fmtN(c)} avaliações`)
-    else if (d === 'muito_avaliado' && c >= 1000) parts.push(`muito bem avaliado por muita gente (${fmtN(c)} avaliações)`)
-    else if (d === 'area_externa' && f.area_externa) parts.push('área externa confirmada')
-    else if (d === 'cerveja' && f.cerveja) parts.push('serve cerveja')
-    else if (d === 'drinks' && f.drinks) parts.push('tem drinks')
-    else if (d === 'musica_ao_vivo' && f.musica_ao_vivo) parts.push('tem música ao vivo')
-    else if (d === 'bom_pra_grupo' && f.bom_pra_grupo) parts.push('bom pra grupo')
-    else if (d === 'aberto_no_horario' && f.aberto_no_horario_pedido) parts.push('aberto no horário que você pediu')
-    else if (d === 'curado_pela_comunidade' && f.curado_pela_comunidade) parts.push('indicado pela comunidade')
+  const maxCount = Math.max(...chosen.map((x) => x.avaliacoes_google ?? 0))
+  const k = f.distancia_km, n = f.nota_google, c = f.avaliacoes_google ?? 0
+  // 1) o que diferencia ESTE lugar dos outros escolhidos (sempre conferido nos fatos)
+  let diff: string | null = null
+  if (k != null && k <= minKm && chosen.length > 1) diff = `o mais perto de você (${fmt1(k)} km)`
+  else if (n != null && n >= maxNota && c >= 50) diff = `a melhor nota no Google entre as opções (${fmt1(n)}, ${fmtN(c)} avaliações)`
+  else if (c >= maxCount && c >= 500) diff = `o mais avaliado (${fmtN(c)} avaliações, nota ${fmt1(n ?? 0)})`
+  else if (n != null && n >= 4.6 && c >= 200) diff = `nota ${fmt1(n)} com ${fmtN(c)} avaliações`
+  else if (k != null && k <= 1.5) diff = `fica pertinho (${fmt1(k)} km)`
+  else if (k != null && n != null) diff = `a ${fmt1(k)} km, nota ${fmt1(n)} no Google`
+  // 2) o que a IA destacou e os fatos confirmam
+  const ok: Record<string, string | false> = {
+    area_externa: !!f.area_externa && 'área externa', cerveja: !!f.cerveja && 'cerveja', drinks: !!f.drinks && 'drinks',
+    musica_ao_vivo: !!f.musica_ao_vivo && 'música ao vivo', bom_pra_grupo: !!f.bom_pra_grupo && 'bom pra grupo',
+    aberto_no_horario: !!f.aberto_no_horario_pedido && 'aberto no horário pedido', curado_pela_comunidade: f.curado_pela_comunidade && 'indicado pela comunidade',
   }
-  const uniq = [...new Set(parts)]
-  if (!uniq.length) return null
-  const s = uniq.join(' e ')
+  const confirmed = [...new Set(ds.map((d) => ok[d]).filter((x): x is string => !!x))]
+  if (!diff && !confirmed.length) return null
+  const tail = confirmed.length ? `${diff ? '; ' : ''}${confirmed.join(', ')} confirmado${confirmed.length > 1 ? 's' : ''}` : ''
+  const s = `${diff ?? ''}${tail}`
   return s[0].toUpperCase() + s.slice(1) + '.'
 }
 
