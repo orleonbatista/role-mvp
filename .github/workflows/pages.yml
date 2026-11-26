@@ -32,6 +32,8 @@ jobs:
           VITE_EVENTS_URL: https://raw.githubusercontent.com/${{ github.repository }}/main/eventos.json
           # chave restrita ao domínio + só Places API + cotas diárias no Google Cloud (ver docs/05-operacao.md)
           VITE_PLACES_KEY: ${{ secrets.PLACES_KEY }}
+          # mapa embutido na ficha (Maps Embed API: sem custo, liberada na mesma chave)
+          VITE_MAPS_EMBED: '1'
       # SPA: qualquer rota desconhecida (ex.: /r/abc) cai no app
       - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5
