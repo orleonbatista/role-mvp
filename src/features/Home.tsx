@@ -1,6 +1,7 @@
 import { motion } from 'motion/react'
 import { Link, useNavigate } from 'react-router'
 import { ArrowUpRight, CalendarDays, MessageCircle, Sparkles, Users } from 'lucide-react'
+import { InvitesList } from './Invites'
 import { Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
 import { useEvents, useFeed, useForYou, useProfile } from '../lib/api'
@@ -129,6 +130,8 @@ export function Home() {
           ))}
         </motion.div>
       </section>
+
+      <InvitesList />
 
       <section className="mt-9">
         <div className="mb-5"><TurmasStrip /></div>

@@ -18,6 +18,7 @@ import type { Place, VoteTally } from '../lib/types'
 import { StorySheet } from './StorySheet'
 import { isCommunity } from '../mocks/seeds/places'
 import { AskBox } from './AskBox'
+import { InvitesList } from './Invites'
 import type { StoryCard } from '../lib/storyCard'
 
 const FRIENDS = ['Bia', 'Caio', 'Duda', 'Léo', 'Mari']
@@ -310,6 +311,7 @@ export function VotePage() {
               setTimeout(() => setHighlight([]), 9000)
             }}
           />
+          <InvitesList exclude={id} compact />
           <AnimatePresence>
             {showCta && (
               <motion.button

@@ -357,6 +357,22 @@ export const handlers = [
     return HttpResponse.json<PlaceDetail>({ place, reviews, myReviews })
   }),
 
+  /** votações que chegaram por link (rolê de outra pessoa): convidado e/ou já votou */
+  http.get('/api/invites', async () => {
+    const me = (() => { try { return localStorage.getItem('role.voter') ?? '' } catch { return '' } })().trim()
+    const reqs = await db.requests.filter((r) => !!r.externalAuthor).toArray()
+    const items = await Promise.all(reqs.map(async (r) => {
+      const votes = await db.votes.where('requestId').equals(r.id).toArray()
+      const decided = r.decidedPlaceId ? placeById.get(r.decidedPlaceId) : undefined
+      return {
+        id: r.id, text: r.text, author: r.externalAuthor!.name, hue: r.externalAuthor!.hue, createdAt: r.createdAt,
+        status: r.status, voted: !!me && votes.some((v) => v.voter === me), votes: votes.filter((v) => (v.kind ?? 'place') === 'place').length,
+        decided: decided ? `${decided.name}${r.decidedTime ? ` · ${r.decidedTime}` : ''}` : undefined,
+      }
+    }))
+    return HttpResponse.json(items.sort((a, b) => Number(a.status === 'decidido') - Number(b.status === 'decidido') || b.createdAt - a.createdAt))
+  }),
+
   http.get('/api/feed', async () => {
     const reqs = await db.requests.orderBy('createdAt').reverse().toArray()
     const items: FeedItem[] = await Promise.all(

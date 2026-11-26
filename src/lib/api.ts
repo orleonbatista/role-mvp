@@ -27,6 +27,8 @@ const post = <T>(path: string, body: unknown) => req<T>(path, { method: 'POST', 
 export const useProfile = () => useQuery({ queryKey: ['me'], queryFn: () => req<Profile | null>('/me') })
 export const useForYou = () => useQuery({ queryKey: ['for-you'], queryFn: () => req<Ranked[]>('/for-you') })
 export const useEvents = () => useQuery({ queryKey: ['events'], queryFn: () => req<Place[]>('/events') })
+export interface Invite { id: string; text: string; author: string; hue: number; createdAt: number; status: 'aberto' | 'decidido'; voted: boolean; votes: number; decided?: string }
+export const useInvites = () => useQuery({ queryKey: ['invites'], queryFn: () => req<Invite[]>('/invites') })
 export const useFeed = () => useQuery({ queryKey: ['feed'], queryFn: () => req<FeedItem[]>('/feed') })
 export const usePlace = (id: string) => useQuery({ queryKey: ['place', id], queryFn: () => req<PlaceDetail>(`/places/${id}`), retry })
 export const useDiary = () =>
@@ -80,7 +82,7 @@ export function useVote(requestId: string) {
         },
       )
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['request', requestId] }),
+    onSettled: () => { qc.invalidateQueries({ queryKey: ['request', requestId] }); qc.invalidateQueries({ queryKey: ['invites'] }) },
   })
 }
 
