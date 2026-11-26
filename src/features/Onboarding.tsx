@@ -27,6 +27,8 @@ export function Onboarding() {
   const [dir, setDir] = useState(1)
   const [name, setName] = useState(me?.name ?? '')
   const [hood, setHood] = useState(me?.hood ?? 'Pinheiros')
+  // região precisa ser escolhida (GPS, CEP ou bairro): antes o app assumia Pinheiros sem avisar
+  const [hoodPicked, setHoodPicked] = useState(!!me?.onboarded)
   const [niches, setNiches] = useState<Niche[]>(me?.niches ?? [])
   const [vibes, setVibes] = useState<Vibe[]>(me?.vibes ?? [])
   const [home, setHome] = useState<Home | undefined>(me?.home)
@@ -47,7 +49,7 @@ export function Onboarding() {
   const go = (n: number) => { setDir(n > step ? 1 : -1); setStep(n) }
   // 2 passos: (1) nome + região, (2) estilos + vibes (opcionais) + aceite
   const LAST = 2
-  const canNext = [true, name.trim().length > 1, niches.length > 0 && consent][step]
+  const canNext = [true, name.trim().length > 1 && (!!home || hoodPicked), niches.length > 0 && consent][step]
 
   async function finish() {
     const first = name.trim().split(' ')[0]
@@ -102,14 +104,16 @@ export function Onboarding() {
             {step === 1 && (
               <>
                 <h1 className="font-serif text-[44px] leading-[0.95] tracking-tight">Como a galera<br /><em className="text-accent">te chama?</em></h1>
+<Region home={home} setHome={setHome} hood={hood} setHood={(h) => { setHood(h); setHoodPicked(true) }} />
                 <input
-                  autoFocus
+                  enterKeyHint="done"
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Seu nome"
-                  className="mt-10 w-full border-b border-line bg-transparent pb-3 text-2xl outline-none placeholder:text-faint focus:border-accent transition-colors"
+                  className="mt-8 w-full border-b border-line bg-transparent pb-3 text-2xl outline-none placeholder:text-faint focus:border-accent transition-colors"
                 />
-                <Region home={home} setHome={setHome} hood={hood} setHood={setHood} />
+                {name.trim().length > 1 && !home && !hoodPicked && <p className="mt-4 text-[13px] text-accent">Falta escolher onde você costuma sair ↑</p>}
               </>
             )}
             {step === 2 && (
@@ -194,8 +198,8 @@ function Region({ home, setHome, hood, setHood }: { home?: Home; setHome: (h?: H
   }
   const fmtCep = (v: string) => { const d = v.replace(/\D/g, '').slice(0, 8); return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d }
   return (
-    <div className="mt-10">
-      <p className="mb-1 text-sm text-mute">Onde você costuma sair?</p>
+    <div className="mt-8">
+      <p className="mb-1 text-sm text-ink">Onde você costuma sair?</p>
       <p className="mb-3 text-xs text-faint">A gente carrega os lugares reais perto de você. Guardamos só a região (~1 km), nunca o endereço.</p>
       {home && home.via !== 'bairro' ? (
         <div className="flex items-center justify-between gap-3 rounded-2xl border border-accent/40 bg-accent/[0.06] px-4 py-3">

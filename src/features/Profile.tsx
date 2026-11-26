@@ -63,6 +63,19 @@ export function ProfilePage() {
         </div>
       </header>
 
+      {!me.email && (
+        <section className="mx-5 mt-6 rounded-[22px] border border-accent/40 bg-accent/[0.05] p-4">
+          <p className="text-[14px] font-medium">Salve seu perfil com a conta Google</p>
+          <p className="mb-3 mt-1 text-[13px] text-mute">Sem login, trocar de celular ou limpar o navegador apaga seu gosto, avaliações e turmas.</p>
+          <GoogleButton text="signin_with" onDone={(r) => {
+            if (!r.ok) return
+            if (r.existing) { window.location.assign(import.meta.env.BASE_URL); return }
+            toast('Conta Google ligada')
+            qc.invalidateQueries({ queryKey: ['me'] })
+          }} />
+        </section>
+      )}
+
       <section className="mt-8">
         <SectionTitle>Seu gosto</SectionTitle>
         <div className="flex flex-wrap gap-1.5 px-5">
@@ -124,21 +137,7 @@ export function ProfilePage() {
       <section className="mt-9">
         <SectionTitle>Conta e dados</SectionTitle>
         <div className="mx-5 divide-y divide-line overflow-hidden rounded-[22px] border border-line">
-          <div className="px-4 py-3.5">
-            {me.email ? (
-              <p className="flex items-center gap-3 text-[14px]"><ShieldCheck size={16} className="text-accent" /><span className="min-w-0 flex-1 truncate">Conta Google · {me.email}</span></p>
-            ) : (
-              <>
-                <p className="mb-2 text-[13px] text-mute">Ligue uma conta Google pra não perder perfil e turmas ao trocar de celular.</p>
-                <GoogleButton text="signin_with" onDone={(r) => {
-                  if (!r.ok) return
-                  if (r.existing) { window.location.assign(import.meta.env.BASE_URL); return }
-                  toast('Conta Google ligada')
-                  qc.invalidateQueries({ queryKey: ['me'] })
-                }} />
-              </>
-            )}
-          </div>
+          {me.email && <p className="flex items-center gap-3 px-4 py-3.5 text-[14px]"><ShieldCheck size={16} className="text-accent" /><span className="min-w-0 flex-1 truncate">Conta Google · {me.email}</span></p>}
           <Link to="/turmas" className="flex items-center gap-3 px-4 py-3.5">
             <Users size={16} className="text-accent" />
             <span className="flex-1 text-[14px]">Suas turmas</span>
