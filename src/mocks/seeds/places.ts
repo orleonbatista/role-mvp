@@ -138,11 +138,13 @@ export function registerDemoSeeds() {
   for (const p of seedPlaces) { places.push(p); placeById.set(p.id, p) }
   seeds = seedPlaces.length
 }
-export function registerPlace(p: Place) {
+export function registerPlace(p: Place, refreshLive = false) {
   const cur = placeById.get(p.id)
   if (cur) {
     // um lugar da base que alguém curou: vira curado (dados da comunidade substituem os da base)
     if (cur.curation === 'base' && p.curation !== 'base') Object.assign(cur, p, { curation: undefined })
+    // confirmação ao vivo do Google (nota, horário, atributos) vale pra qualquer camada — só em memória
+    else if (refreshLive && p.live) { cur.live = p.live; if (p.live.hours && (cur.source || cur.curation === 'base')) cur.periods = p.periods }
     return
   }
   places.push(p)

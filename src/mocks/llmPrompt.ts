@@ -50,7 +50,8 @@ export const SCHEMA = {
 }
 
 /** corpo da chamada /api/chat do Ollama para um pedido */
-export function ollamaBody(model: string, text: string) {
+/** extra = exemplos aprendidos com pedidos parecidos (o gateway busca no banco) */
+export function ollamaBody(model: string, text: string, extra: [string, unknown][] = []) {
   return {
     model,
     stream: false,
@@ -59,7 +60,7 @@ export function ollamaBody(model: string, text: string) {
     options: { temperature: 0, num_predict: 220, repeat_penalty: 1.15 },
     messages: [
       { role: 'system', content: SYSTEM },
-      ...EXAMPLES.flatMap(([q, a]) => [{ role: 'user', content: q }, { role: 'assistant', content: JSON.stringify(a) }]),
+      ...[...EXAMPLES, ...extra].flatMap(([q, a]) => [{ role: 'user', content: q }, { role: 'assistant', content: JSON.stringify(a) }]),
       { role: 'user', content: text },
     ],
   }

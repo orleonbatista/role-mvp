@@ -60,3 +60,8 @@ Formato curto: **decisão**, **por quê**, **trade-off**.
 24. **Descoberta só pelo Google; OpenStreetMap removido.** A base do OSM tinha muitos lugares já fechados. O Google
     tem `businessStatus` e é mais atual. *Trade-off:* custo por busca (Text Search Pro, 5.000 grátis/mês) e nada fica
     salvo; a cada abertura o app busca de novo, com limite por aparelho.
+25. **Pedido confirmado ao vivo (Enterprise + Atmosphere) em 1 chamada.** Uma Text Search rica traz 20 lugares com
+    nota, horário e atributos. Custa menos que 5 Place Details e tira os motivos "chutados". *Trade-off:* SKU mais cara
+    (1.000 grátis/mês), com limite por aparelho.
+26. **IA aprende por exemplos, não por treino.** Os pedidos confirmados viram exemplos no prompt (busca por
+    similaridade). Melhora já, sem GPU extra. Ajuste fino só com volume.

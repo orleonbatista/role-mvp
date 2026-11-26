@@ -115,6 +115,19 @@ use `/testes` → "URL do gateway".
 - **Armazenamento:** os resultados ficam só em memória. O backend apaga nome e bairro de lugares do Google em pedidos e sugestões com mais de 30 dias (`purgeGoogleSnaps`), exceto os confirmados pela comunidade.
 - **Cotas:** guarda de 30 buscas por aparelho por dia; no Google Cloud, SearchText 150/dia (Text Search Pro: 5.000 grátis/mês).
 
+## Pedido: busca rica com confirmação ao vivo
+- **Busca:** cada pedido faz 1 Text Search com a frase do pedido limpa (sem distância, dia, hora e nº de pessoas). O raio vale de verdade: retângulo, 5 km por padrão ou o que a pessoa pedir.
+- **Confirmação no Google:** nota, nº de avaliações, horário, área externa, cerveja, drinks, grupo e música ao vivo. Isso cai na faixa Enterprise + Atmosphere (1.000 grátis/mês; depois US$ 40 por mil).
+- **Limite:** 12 por aparelho por dia; passando disso, cai pra busca simples, sem confirmação.
+- **Uso:** os dados ficam só em memória e servem pra ordenar e justificar ("Área externa (confirmado no Google)", "Aberto sexta (horário do Google)", "Nota 4,8 no Google").
+- **Votação:** 5 opções.
+
+## Aprendizado da IA
+- **O que guarda:** cada pedido salva no banco (`examples`) o que a IA entendeu e o que ficou depois dos chips corrigidos, no formato da LLM, com o trecho exato do texto.
+- **Como usa:** o gateway busca até 3 pedidos parecidos (palavras em comum), priorizando os corrigidos por gente, e coloca como exemplos no prompt. A IA melhora sem precisar treinar.
+- **Painel `/testes`:** mostra quantos exemplos já existem e quais termos as pessoas pedem que o app ainda não cobre (candidatos a estilo novo).
+- **Ajuste fino (fase 2):** com alguns milhares de exemplos, dá pra exportar `examples` e treinar um LoRA do qwen2.5.
+
 ## Login com Google (Google Cloud, projeto role-mvp)
 Configuração:
 - **Plataforma de autenticação:** app "rolê", público externo, em produção. Escopos só básicos (openid, e-mail, perfil), então não precisa de verificação do Google.

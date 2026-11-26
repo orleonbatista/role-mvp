@@ -149,7 +149,12 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
 
     // lugar sem curadoria: estilo veio do tipo do lugar no Google — o motivo diz isso, sem elogio inventado
     const base = place.curation === 'base'
-    for (const n of c.niches) if (place.niches.includes(n)) { score += 3; why.push([3, base ? `${nicheLabel(n)}, pelo tipo do lugar` : NICHE_REASON[n]]) }
+    for (const n of c.niches) if (place.niches.includes(n)) {
+      score += 3
+      // lugar sem curadoria: o estilo veio da busca no Google; quando há confirmação ao vivo, o motivo vem dela
+      if (base && place.live && ((n === 'ao-ar-livre' && place.live.outdoor !== undefined) || (n === 'boteco' && place.live.beer))) continue
+      why.push([3, base ? `${nicheLabel(n)}, pela busca no Google` : NICHE_REASON[n]])
+    }
     if (!c.niches.length && profile) for (const n of profile.niches) if (place.niches.includes(n)) { score += 1.4; why.push([1.4, `Bate com seu gosto por ${nicheLabel(n).toLowerCase()}`]) }
     for (const v of c.vibes) if (place.vibes.includes(v)) { score += 1.6; why.push([1.6, `Clima ${vibeLabel(v).toLowerCase()}, como você pediu`]) }
     if (profile && isVague(c)) for (const v of profile.vibes) if (place.vibes.includes(v)) score += 0.5
@@ -190,7 +195,7 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
     }
 
     // lugar real (Google/OSM) sem horário confirmado: não afirma "aberto" nem penaliza — a tela manda ver no Maps
-    if (c.when && !place.source) {
+    if (c.when && (!place.source || place.live?.hours)) {
       const d = c.when.day ?? 0
       const h = c.when.hour ?? 21
       const ok = c.when.day === undefined
@@ -198,8 +203,26 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
         : c.when.hour === undefined
           ? [13, 19, 21, 23].some((x) => isOpenAt(place.periods, d, x)) || isOpenAt(place.periods, (d + 1) % 7, 1)
           : isOpenAt(place.periods, d, h)
-      if (ok) { score += 1.5; why.push([2.2, place.kind === 'evento' ? `Acontece ${place.when?.toLowerCase()}` : `Aberto ${c.when.label}`]) }
+      if (ok) { score += 1.5; why.push([2.2, place.kind === 'evento' ? `Acontece ${place.when?.toLowerCase()}` : `Aberto ${c.when.label}${place.live?.hours ? ' (horário do Google)' : ''}`]) }
       else { score -= 6; warn.push(place.kind === 'evento' ? `Só acontece ${place.when}` : c.when.day === undefined ? `Não abre ${c.when.label}` : `Fechado ${c.when.label}`) }
+    }
+
+    // confirmado ao vivo no Google pra este pedido (nada disso é salvo)
+    const L = place.live
+    if (L) {
+      if (c.niches.includes('ao-ar-livre') && L.outdoor !== undefined) {
+        if (L.outdoor) { score += 1.5; why.push([2.6, 'Área externa (confirmado no Google)']) }
+        else { score -= 4; warn.push('Sem área externa, segundo o Google') }
+      }
+      if (c.niches.includes('boteco') && L.beer) why.push([1.4, 'Serve cerveja (Google)'])
+      if (c.niches.includes('drinks') && L.cocktails) why.push([1.4, 'Tem drinks (Google)'])
+      if (c.niches.includes('jazz') && L.music) { score += 1; why.push([1.8, 'Música ao vivo (Google)']) }
+      if (c.groupSize >= 8 && L.groups) { score += 1; why.push([1.6, 'Bom pra grupo (Google)']) }
+      if (L.rating) {
+        const conf = Math.min(1, Math.log10((L.count ?? 0) + 1) / 3) // 1.000 avaliações = confiança cheia
+        score += (L.rating - 4.2) * 3 * conf
+        if (L.rating >= 4.5 && (L.count ?? 0) >= 100) why.push([1.5, `Nota ${L.rating.toFixed(1).replace('.', ',')} no Google (${(L.count ?? 0) >= 1000 ? `${((L.count ?? 0) / 1000).toFixed(1).replace('.', ',')} mil` : L.count})`])
+      }
     }
 
     score += (place.rating - 8) * 1.5
@@ -253,4 +276,41 @@ export function timeOptions(c: Criteria): string[] {
   for (const d of days) for (const h of hours) out.push(`${DAY_SHORT[d]} ${h}h`)
   if (days.length === 1 && out.length < 3) out.push(`${DAY_SHORT[(days[0] + 1) % 7]} ${hours[0]}h`)
   return out.slice(0, 3)
+}
+
+/* ---------- exemplo rotulado pro aprendizado da IA ----------
+   Converte os critérios finais de um pedido no formato que a LLM devolve (com "trecho" = palavras exatas do pedido).
+   Item sem trecho no texto (ex.: ocasião escolhida num chip) fica de fora: o exemplo só ensina o que está escrito. */
+function anchor(text: string, kws: string[]): string | null {
+  const orig = text.split(/\s+/).filter(Boolean)
+  const normed = orig.map((w) => norm(w).replace(/[^a-z0-9$]/g, ''))
+  for (const k of kws) {
+    const star = k.endsWith('*')
+    const kt = norm(k.replace('*', '')).split(' ').filter(Boolean)
+    for (let i = 0; i + kt.length <= normed.length; i++) {
+      let ok = true
+      for (let j = 0; j < kt.length; j++) {
+        const w = normed[i + j], t = kt[j]
+        if (!(w === t || (star && j === kt.length - 1 && w.startsWith(t)))) { ok = false; break }
+      }
+      if (ok) return orig.slice(i, i + kt.length).join(' ').replace(/[.,!?;:]+$/, '')
+    }
+  }
+  return null
+}
+export function toExample(text: string, c: Criteria) {
+  const itens: { valor: string; trecho: string }[] = []
+  const push = (valor: string, kws: string[] | undefined) => { const t = kws && anchor(text, kws); if (t) itens.push({ valor, trecho: t }) }
+  for (const n of c.niches) push(n, NICHE_KW[n])
+  for (const v of c.vibes) push(v, VIBE_KW[v])
+  for (const t of c.tags) push(t, TAG_KW[t])
+  const occ = c.occasion ? anchor(text, OCC_KW.find(([o]) => o === c.occasion)?.[1] ?? []) : null
+  const ppl = text.match(/(?:pra|para|somos|de)?\s*\d{1,3}\s*(?:pessoas|amigos|amigas|convidados|pax)/i)?.[0]?.trim()
+  const bud = c.budget ? text.match(/r\$\s*\d{2,4}|\d{2,4}\s*(?:reais|conto|pila)|at[eé]\s+\d{2,4}(?!\s*km)/i)?.[0] : undefined
+  return {
+    ocasiao: { valor: occ ? c.occasion : 'nenhuma', trecho: occ ?? '' },
+    pessoas: { valor: ppl ? c.groupSize : 0, trecho: ppl ?? '' },
+    orcamento: { valor: bud ? c.budget : 0, trecho: bud ?? '' },
+    itens: itens.slice(0, 5),
+  }
 }

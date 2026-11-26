@@ -67,16 +67,89 @@ export async function discoverForTaste(center: { lat: number; lng: number } | un
   return new Set(lists.flat().map((p) => p.id)).size
 }
 
-/** pedido: busca o que o pedido descreve, perto do bairro pedido (ou de quem pede) */
-export async function discoverForRequest(c: Criteria, home?: Home) {
+/* ---------- pedido: busca rica (1 chamada) com confirmação ao vivo ----------
+   Text Search com nota, horário e atributos (área externa, cerveja, grupo, música): faixa Enterprise + Atmosphere
+   (1.000 grátis/mês) — uma chamada por pedido traz até 20 lugares já com o que precisa ser confirmado. */
+const RICH = [FIELDS, 'places.rating', 'places.userRatingCount', 'places.regularOpeningHours', 'places.outdoorSeating', 'places.servesBeer',
+  'places.goodForGroups', 'places.liveMusic', 'places.servesCocktails'].join(',')
+const RICH_DAILY = 12
+const richKey = () => `role.grich.${new Date().toISOString().slice(0, 10)}`
+const richUsed = () => { try { return Number(localStorage.getItem(richKey()) ?? 0) } catch { return 0 } }
+
+interface GHours { periods?: { open: { day: number; hour: number; minute?: number }; close?: { day: number; hour: number; minute?: number } }[] }
+/** horário do Google → períodos do app (dia 0 = domingo nos dois); fecha depois da meia-noite vira > 24 */
+export function periodsFrom(h?: GHours): Place['periods'] | null {
+  if (!h?.periods?.length) return null
+  if (h.periods.length === 1 && !h.periods[0].close) return [{ days: [0, 1, 2, 3, 4, 5, 6], open: 0, close: 24 }]
+  return h.periods.filter((p) => p.close).map((p) => {
+    const open = p.open.hour + (p.open.minute ?? 0) / 60
+    let close = p.close!.hour + (p.close!.minute ?? 0) / 60
+    if (p.close!.day !== p.open.day || close <= open) close += 24
+    return { days: [p.open.day], open, close }
+  })
+}
+
+/** tira do texto o que não é "o quê" (distância, dia, hora, quantas pessoas) — o Google entende o resto */
+export function cleanQuery(text: string) {
+  return text.toLowerCase()
+    .replace(/\b(ate|até|em|num raio de|raio de|no m[aá]ximo|a)\s*\d{1,2}\s*(km|quil[oô]metros?)\b/g, ' ')
+    .replace(/\b(da|na|perto da|pela)?\s*minha regi[aã]o\b|\bperto de (mim|casa)\b|\baqui perto\b|\bperto daqui\b/g, ' ')
+    .replace(/\b(no|na|de|do|nesse|nessa|neste|nesta|pra|para|à|a)?\s*(fim|final) d[ae] (tarde|semana)\b/g, ' ')
+    .replace(/\b(de|na|no|nesta|neste|nessa|nesse|essa|esse|pra|para|à|a)?\s*(segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)(-feira)?\b/g, ' ')
+    .replace(/\b(hoje|amanh[aã]|agora|[àa] noite|de noite|[àa] tarde|de tarde|de manh[aã])\b/g, ' ')
+    .replace(/\b(pra|para|com|somos)?\s*\d{1,3}\s*(pessoas|amigos|amigas)\b|\bat[eé]\s*r?\$?\s*\d{2,4}\s*(reais|conto)?\b|\br\$\s*\d+/g, ' ')
+    .replace(/\s+/g, ' ').trim()
+}
+
+/** pedido: busca a frase do pedido (limpa) com raio de verdade (retângulo), já confirmando nota/horário/atributos */
+export async function discoverForRequest(c: Criteria, home?: Home, text = '') {
   const at = c.hood ? hoodCoord(c.hood) : undefined
   const center = at ? { lat: at[0], lng: at[1] } : home
-  if (!center) return 0
-  const n = c.niches.slice(0, 2)
-  const qs = n.length ? n.map((x) => QUERY[x] ?? 'bar') : [c.occasion === 'date' ? 'bar para date' : c.occasion === 'aniversario' ? 'bar para aniversário' : 'bar']
-  const radius = c.hood ? 2500 : Math.min(20, c.maxKm ?? 5) * 1000
-  const lists = await Promise.all(qs.map((q) => discover(`${q}${c.hood ? ` ${c.hood}` : ''}`, center, radius)))
-  return lists.flat().length
+  if (!center || !KEY) return 0
+  const radiusKm = c.hood ? 2.5 : Math.min(20, c.maxKm ?? 5)
+  let q = cleanQuery(text)
+  if (q.split(' ').length < 2) q = (c.niches.length ? c.niches.slice(0, 2).map((x) => QUERY[x] ?? 'bar').join(' ') : 'bar') + (q ? ` ${q}` : '')
+  if (c.hood && !q.includes(c.hood.toLowerCase())) q += ` ${c.hood}`
+  const ck = `rich|${q}|${center.lat.toFixed(2)},${center.lng.toFixed(2)}|${radiusKm}`
+  if (done.has(ck)) return (await done.get(ck)!).length
+  if (richUsed() >= RICH_DAILY) {
+    // sem cota rica no aparelho: cai pra busca simples (sem confirmação)
+    const lists = await Promise.all((c.niches.length ? c.niches.slice(0, 2) : (['drinks'] as Niche[])).map((x) => discover(QUERY[x] ?? 'bar', center, radiusKm * 1000)))
+    return lists.flat().length
+  }
+  done.set(ck, (async () => {
+    try {
+      try { localStorage.setItem(richKey(), String(richUsed() + 1)) } catch { /* */ }
+      const dLa = radiusKm / 111, dLo = radiusKm / 102
+      const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': KEY, 'X-Goog-FieldMask': RICH },
+        body: JSON.stringify({
+          textQuery: q, languageCode: 'pt-BR', regionCode: 'BR', pageSize: 20,
+          locationRestriction: { rectangle: { low: { latitude: center.lat - dLa, longitude: center.lng - dLo }, high: { latitude: center.lat + dLa, longitude: center.lng + dLo } } },
+        }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!r.ok) { done.delete(ck); return [] }
+      type G = Parameters<typeof toPlace>[0] & { rating?: number; userRatingCount?: number; regularOpeningHours?: GHours; outdoorSeating?: boolean; servesBeer?: boolean; goodForGroups?: boolean; liveMusic?: boolean; servesCocktails?: boolean }
+      const j = (await r.json()) as { places?: G[] }
+      const out: Place[] = []
+      for (const g of j.places ?? []) {
+        if (g.businessStatus && g.businessStatus !== 'OPERATIONAL') continue
+        const base = toPlace(g, q)
+        if (km(center, base) > radiusKm) continue // raio pedido, em linha reta
+        const periods = periodsFrom(g.regularOpeningHours)
+        const p: Place = {
+          ...base, curation: 'base', ...(periods ? { periods } : {}),
+          live: { rating: g.rating, count: g.userRatingCount, outdoor: g.outdoorSeating, beer: g.servesBeer, groups: g.goodForGroups, music: g.liveMusic, cocktails: g.servesCocktails, hours: !!periods },
+        }
+        registerPlace(p, true)
+        out.push(p)
+      }
+      return out
+    } catch { done.delete(ck); return [] }
+  })())
+  return (await done.get(ck)!).length
 }
 
 /** centro de quem usa: região do cadastro ou centro do bairro escolhido */

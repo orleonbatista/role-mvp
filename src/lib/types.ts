@@ -41,6 +41,8 @@ export interface Place {
   promoter?: string
   ticketUrl?: string
   eventDate?: string
+  /** confirmado ao vivo no Google pra este pedido (só em memória, nunca salvo) */
+  live?: { rating?: number; count?: number; outdoor?: boolean; beer?: boolean; groups?: boolean; music?: boolean; cocktails?: boolean; hours?: boolean }
   /** origem externa: Google (só place_id) ou OpenStreetMap (catálogo legado); sem isso = catálogo próprio/evento */
   source?: 'google' | 'osm'
   /** 'base' = lugar real ainda sem curadoria (a IA usa como reserva, não aparece no feed) */

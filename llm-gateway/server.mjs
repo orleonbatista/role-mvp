@@ -4,7 +4,7 @@
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { askBody, moderateBody, moderationRules, ollamaBody } from '../src/mocks/llmPrompt.ts'
-import { adminKeyFile, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
+import { adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
 import { geoFromCep, geoReverse } from './geo.mjs'
 
 const PORT = Number(process.env.PORT ?? 8787)
@@ -220,7 +220,7 @@ const server = http.createServer(async (req, res) => {
     const t0 = Date.now()
     const r = await fetch(`${OLLAMA}/api/chat`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(ollamaBody(MODEL, text)), signal: AbortSignal.timeout(20_000),
+      body: JSON.stringify(ollamaBody(MODEL, text, similarExamples(text))), signal: AbortSignal.timeout(20_000),
     })
     if (!r.ok) throw new Error(`ollama ${r.status}`)
     const j = await r.json()

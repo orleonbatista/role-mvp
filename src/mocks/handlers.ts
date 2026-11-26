@@ -4,7 +4,7 @@ import type {
   Answer, AnswerDTO, Criteria, DiaryEntry, EventSubmission, Feedback, FeedItem, Lead, Person, Place, PlaceDetail, Profile, RequestDetail, Review,
   RoleRequest, Verdict, Vote, VoteTally,
 } from '../lib/types'
-import { confidenceOf, introFor, parseRequest, rank, timeOptions, unmetFor } from './ranker'
+import { confidenceOf, introFor, parseRequest, rank, timeOptions, toExample, unmetFor } from './ranker'
 import { refineWithLLM } from './llm'
 import { people } from './seeds/people'
 import { isCurated, placeById, places } from './seeds/places'
@@ -36,10 +36,12 @@ async function personById(id: string, req?: RoleRequest): Promise<Person> {
   return people.find((u) => u.id === id) ?? { id, name: 'Alguém', handle: '@alguem', hue: 0, curatorOf: [], reputation: 0 }
 }
 
+let lastAi: Criteria | null = null
 async function analyze(text: string, overrides?: Partial<Criteria>) {
   let c = parseRequest(text)
   c.source = { engine: 'regras' }
   c = await refineWithLLM(text, c)
+  lastAi = { ...c }
   for (const [k, v] of Object.entries(overrides ?? {})) if (v !== undefined && !(Array.isArray(v) && !v.length)) (c as any)[k] = v
   c.unmet = unmetFor(c, places)
   return c
@@ -95,7 +97,7 @@ function rankLayered(c: Criteria, profile: Profile | null | undefined, exclude =
   const good = cur.filter((r) => r.match >= CURATED_OK)
   if (good.length >= n) return good.slice(0, n)
   const base = rank(places.filter((p) => !isCurated(p) && !exclude.has(p.id)), c, profile)
-  return [...good, ...[...cur.filter((r) => r.match < CURATED_OK), ...base].sort((a, b) => b.match - a.match)].slice(0, n)
+  return [...good, ...[...cur.filter((r) => r.match < CURATED_OK), ...base].sort((a, b) => b.score - a.score)].slice(0, n)
 }
 
 async function authorInfo() {
@@ -109,11 +111,15 @@ async function buildDetail(id: string): Promise<RequestDetail | null> {
   const profile = await getProfile()
   const author = await personById(request.authorId, request)
   const pinned = request.eventId ? placeById.get(request.eventId) : undefined
-  const ranked = pinned
-    ? [rank([pinned], request.criteria)[0], ...rankLayered(request.criteria, request.authorId === 'me' ? profile : null, new Set([pinned.id]), 2)]
-    : rankLayered(request.criteria, request.authorId === 'me' ? profile : null)
-  const now = Date.now()
   const all = await db.answers.where('requestId').equals(id).toArray()
+  // as opções que a IA escolheu na criação (snapshot do pedido); só recalcula se os lugares não estão mais na memória
+  const fromAnswers = new Set(all.map((x) => x.placeId))
+  const who = request.authorId === 'me' ? profile : null
+  const opts = (request.optionIds ?? []).filter((x) => !fromAnswers.has(x) && x !== pinned?.id).map((x) => placeById.get(x)).filter((p): p is Place => !!p)
+  const ranked = pinned
+    ? [rank([pinned], request.criteria)[0], ...(opts.length ? rank(opts, request.criteria, who) : rankLayered(request.criteria, who, new Set([pinned.id]), 2))]
+    : opts.length ? rank(opts, request.criteria, who).sort((a, b) => b.score - a.score) : rankLayered(request.criteria, who, new Set(), 5)
+  const now = Date.now()
   const visible = all.filter((a) => a.visibleAt <= now).sort((a, b) => b.helpful - a.helpful || a.createdAt - b.createdAt)
   const helpfulIds = new Set((await db.helpful.toArray()).map((h) => h.id))
   const answers: AnswerDTO[] = await Promise.all(
@@ -166,7 +172,8 @@ export const handlers = [
     // curados primeiro (gosto + perto); se ainda não há curadoria suficiente, completa com lugares reais
     // num raio de 5 km que batem com o gosto (estilo), marcados "sem curadoria" no card
     const near = (p: Place) => kmTo(profile, p)
-    const curated = rank(places.filter((p) => isCurated(p) && p.kind !== 'evento'), c, profile)
+    const curated = rank(places.filter((p) => isCurated(p) && p.kind !== 'evento' && (near(p) ?? 0) <= 8), c, profile)
+      .filter((r) => r.match >= 35)
       .map((r) => ({ r, s: r.score - (near(r.place) ?? 4) * 0.6 }))
       .sort((a, b) => b.s - a.s).map((x) => x.r).slice(0, 8)
     const taste = new Set(profile?.niches ?? [])
@@ -326,21 +333,27 @@ export const handlers = [
   http.post('/api/requests', async ({ request }) => {
     const body = (await request.json()) as { text: string; overrides?: Partial<Criteria>; groupId?: string }
     const criteria = await analyze(body.text, body.overrides)
+    const ai = lastAi ?? criteria
     const profile = await getProfile()
+    // aprendizado: o que a IA entendeu × o que ficou (chips corrigidos), mais termos que o app ainda não cobre
+    {
+      const a = toExample(body.text, ai), f = toExample(body.text, criteria)
+      void remote.pushExample({ text: body.text.trim(), ai: a, final: f, corrected: JSON.stringify(a) !== JSON.stringify(f), unmet: criteria.unmet, engine: ai.source?.engine ?? 'regras' })
+    }
     // descoberta ao vivo no Google pro que o pedido descreve (até 6 s; sem Google segue com o que já tem)
-    await Promise.race([discoverForRequest(criteria, profile?.home).catch(() => 0), delay(6000)])
+    await Promise.race([discoverForRequest(criteria, profile?.home, body.text).catch(() => 0), delay(7000)])
     const req: RoleRequest = {
       id: uid('r'), authorId: 'me', text: body.text.trim(), criteria, createdAt: Date.now(), status: 'aberto',
       times: timeOptions(criteria), groupId: /^t-[a-z0-9]{10}$/.test(body.groupId ?? '') ? body.groupId : undefined,
     }
     const answers = profile?.demoMode ? simulateAnswers(req, profile) : []
     // snapshot das opções de voto: top 3 da IA + indicações dos curadores
-    const top = rankLayered(criteria, profile)
+    const top = rankLayered(criteria, profile, new Set(), 5)
     // métrica-chave da curadoria: pedido atendido com lugar curado (encaixe bom) ou caiu na base
     const servedByCurated = top.some((r) => isCurated(r.place) && r.match >= CURATED_OK)
     track(servedByCurated ? 'request_curated' : 'request_uncurated', { best: top[0]?.match, niches: criteria.niches, hood: criteria.hood })
     req.optionIds = [...top.map((r) => r.place.id), ...answers.map((a) => a.placeId)]
-      .filter((x, i, arr) => arr.indexOf(x) === i).slice(0, 4)
+      .filter((x, i, arr) => arr.indexOf(x) === i).slice(0, 5)
     await db.requests.add(req)
     await db.answers.bulkAdd(answers)
     void authorInfo().then((a) => remote.pushRequest(req, a))

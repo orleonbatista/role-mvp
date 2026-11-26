@@ -66,6 +66,11 @@ db.exec(`
     PRIMARY KEY (group_id, device)
   );
   CREATE INDEX IF NOT EXISTS ix_gm_device ON group_members(device);
+  -- aprendizado da IA: pedido → critérios confirmados (exemplos pro prompt) + termos que o app não cobre
+  CREATE TABLE IF NOT EXISTS examples (
+    id TEXT PRIMARY KEY, device TEXT NOT NULL, text TEXT NOT NULL, tokens TEXT NOT NULL, ai TEXT NOT NULL, final TEXT NOT NULL,
+    corrected INTEGER NOT NULL, unmet TEXT NOT NULL, engine TEXT, at INTEGER NOT NULL
+  );
   -- lugar do OSM → place_id do Google (o place_id é o único dado do Google que os termos deixam guardar)
   CREATE TABLE IF NOT EXISTS gmatch (osm_id TEXT PRIMARY KEY, place_id TEXT, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_votes_req ON votes(request_id);
@@ -167,6 +172,8 @@ function peopleStats() {
     reviews: one("SELECT COUNT(*) AS n FROM reviews WHERE status = 'ok'"),
     groups: one('SELECT COUNT(*) AS n FROM groups'),
     activeGroups: one('SELECT COUNT(*) AS n FROM (SELECT group_id FROM group_members GROUP BY group_id HAVING COUNT(*) >= 2)'),
+    examples: one('SELECT COUNT(*) AS n FROM examples'), corrected: one('SELECT COUNT(*) AS n FROM examples WHERE corrected = 1'),
+    unmet: (() => { const c = {}; for (const r of db.prepare('SELECT unmet FROM examples').all()) for (const u of parse(r.unmet) ?? []) c[u] = (c[u] ?? 0) + 1; return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 10) })(),
   }
 }
 
@@ -326,6 +333,25 @@ function joinGroupOf(requestId, device, name, hue) {
   qp.touchGroup.run(now, r.group_id)
 }
 
+/* ---------- aprendizado: exemplos parecidos pro prompt da LLM ---------- */
+const normTxt = (s) => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ')
+const STOP = new Set(['de', 'da', 'do', 'com', 'pra', 'para', 'um', 'uma', 'no', 'na', 'em', 'e', 'o', 'a', 'que', 'quero', 'ate', 'os', 'as', 'meu', 'minha'])
+const toks = (s) => [...new Set(normTxt(s).split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w)))]
+const validEx = (e) => e && typeof e === 'object' && e.ocasiao && e.pessoas && e.orcamento && Array.isArray(e.itens) && e.itens.length <= 5 &&
+  e.itens.every((i) => typeof i?.valor === 'string' && typeof i?.trecho === 'string' && i.trecho.length <= 60)
+/** até k exemplos parecidos (Jaccard de palavras), priorizando os corrigidos por gente; só os que ensinam algo */
+export function similarExamples(text, k = 3) {
+  const t = new Set(toks(text))
+  if (!t.size) return []
+  const rows = db.prepare('SELECT text, tokens, final, corrected FROM examples ORDER BY at DESC LIMIT 2000').all()
+  return rows.map((r) => {
+    const o = r.tokens.split(' ')
+    const inter = o.filter((w) => t.has(w)).length
+    return { r, s: inter / (t.size + o.length - inter) + (r.corrected ? 0.1 : 0) }
+  }).filter((x) => x.s >= 0.25 && normTxt(x.r.text).trim() !== normTxt(text).trim()).sort((a, b) => b.s - a.s).slice(0, k)
+    .map(({ r }) => [r.text, parse(r.final)]).filter(([, f]) => validEx(f))
+}
+
 function handlePeople(method, path, body, device, now) {
   let m
   if (method === 'GET' && path === '/api/me') {
@@ -411,6 +437,14 @@ export function handleApi(method, path, req, body) {
   }
 
   // eventos aprovados = publicados pra todo mundo (substitui o eventos.json manual)
+  if (write && path === '/api/examples') {
+    const text = str(body.text, 300).trim()
+    if (text.length < 4 || !validEx(body.final) || !validEx(body.ai)) return bad('example')
+    const unmet = (Array.isArray(body.unmet) ? body.unmet : []).map((u) => str(u, 30)).slice(0, 8)
+    db.prepare('INSERT OR REPLACE INTO examples (id, device, text, tokens, ai, final, corrected, unmet, engine, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(`x-${randomBytes(6).toString('hex')}`, device, text, toks(text).join(' '), JSON.stringify(body.ai), JSON.stringify(body.final), body.corrected ? 1 : 0, JSON.stringify(unmet), str(body.engine, 10), now)
+    return ok({ ok: true })
+  }
   if (method === 'GET' && path === '/api/events') return ok(q.published.all().map((r) => ({ ...parse(r.data), status: 'aprovado' })))
 
   if (write && path === '/api/requests') {

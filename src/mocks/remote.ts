@@ -218,7 +218,7 @@ export interface GlobalStats {
   leads: (Lead & { placeName?: string; at: number })[]
   totals: { requests: number; votes: number; suggestions: number; decided: number }
   base?: { places: number; areas: number }
-  people?: { users: number; withGoogle: number; byHood: Record<string, number>; byNiche: Record<string, number>; reviews: number; groups: number; activeGroups: number }
+  people?: { users: number; withGoogle: number; byHood: Record<string, number>; byNiche: Record<string, number>; reviews: number; groups: number; activeGroups: number; examples?: number; corrected?: number; unmet?: [string, number][] }
 }
 
 /* ---------- catálogo comunitário de lugares ---------- */
@@ -252,3 +252,6 @@ export interface Turma { id: string; name: string | null; mine: boolean; updated
 export const myGroups = () => call<Turma[]>('GET', '/api/groups', undefined, { timeout: 4000 })
 export const renameGroup = (id: string, name: string) => call('POST', `/api/groups/${id}/name`, { name })
 export const leaveGroup = (id: string) => call('POST', `/api/groups/${id}/leave`, {})
+
+/* ---------- aprendizado da IA: exemplos rotulados (pedido → critérios confirmados) ---------- */
+export const pushExample = (e: { text: string; ai: unknown; final: unknown; corrected: boolean; unmet: string[]; engine: string }) => call('POST', '/api/examples', e)
