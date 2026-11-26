@@ -2,14 +2,15 @@
 // Ordem padrão: Gemini → Groq → OpenRouter → Ollama. Quem falhar (limite do plano grátis, fora do ar, JSON inválido)
 // fica 2 min de castigo e a chamada segue pro próximo.
 // Chaves: llm-gateway/data/llm-keys.json (fora do git) ou variáveis de ambiente GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY.
-//   { "gemini": "...", "groq": "...", "openrouter": "...", "order": ["gemini", "groq", "openrouter", "ollama"] }
+//   { "gemini": "...", "groq": "...", "openrouter": "...", "order": ["gemini", "groq", "openrouter", "ollama"],
+//     "models": { "gemini": "gemini-3.5-flash-lite" } }   ← opcional: troca o modelo sem mexer no código
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const OLLAMA = process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434'
 
 const CATALOG = {
-  gemini: { name: 'Gemini', base: 'https://generativelanguage.googleapis.com/v1beta/openai', model: process.env.GEMINI_MODEL ?? 'gemini-flash-latest', env: 'GEMINI_API_KEY', extra: { reasoning_effort: 'none' } },
+  gemini: { name: 'Gemini', base: 'https://generativelanguage.googleapis.com/v1beta/openai', model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite', env: 'GEMINI_API_KEY', extra: {} },
   groq: { name: 'Groq', base: 'https://api.groq.com/openai/v1', model: process.env.GROQ_MODEL ?? 'openai/gpt-oss-20b', env: 'GROQ_API_KEY', extra: { reasoning_effort: 'low' } },
   openrouter: { name: 'OpenRouter', base: 'https://openrouter.ai/api/v1', model: process.env.OPENROUTER_MODEL ?? 'openai/gpt-oss-20b:free', env: 'OPENROUTER_API_KEY', extra: {} },
 }
@@ -32,7 +33,7 @@ export function createLLM({ dataDir, ollamaModel }) {
   const bump = (p, k) => { (stats[p] ??= { ok: 0, fail: 0 })[k]++ }
 
   async function cloud(p, body, timeout) {
-    const c = CATALOG[p]
+    const c = { ...CATALOG[p], model: load().models?.[p] ?? CATALOG[p].model }
     const json = !!body.format
     const messages = json
       ? [{ ...body.messages[0], content: `${body.messages[0].content}\n\nResponda SOMENTE com um JSON válido neste schema: ${JSON.stringify(body.format)}` }, ...body.messages.slice(1)]
@@ -93,7 +94,7 @@ export function createLLM({ dataDir, ollamaModel }) {
   function status() {
     const order = load().order ?? []
     return order.map((p) => ({
-      provider: p, configured: p === 'ollama' || !!(CATALOG[p] && keyOf(p)), model: p === 'ollama' ? ollamaModel : CATALOG[p]?.model,
+      provider: p, configured: p === 'ollama' || !!(CATALOG[p] && keyOf(p)), model: p === 'ollama' ? ollamaModel : load().models?.[p] ?? CATALOG[p]?.model,
       coolingDown: (cooldown.get(p) ?? 0) > Date.now(), ...(stats[p] ?? { ok: 0, fail: 0 }),
     }))
   }
