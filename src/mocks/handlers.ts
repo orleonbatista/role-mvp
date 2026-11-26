@@ -146,7 +146,7 @@ function noteFrom(ds: string[], f: PickFact, chosen: PickFact[]): string | null 
   }
   const confirmed = [...new Set(ds.map((d) => ok[d]).filter((x): x is string => !!x))]
   if (!diff && !confirmed.length) return null
-  const tail = confirmed.length ? `${diff ? '; ' : ''}${confirmed.join(', ')} confirmado${confirmed.length > 1 ? 's' : ''}` : ''
+  const tail = confirmed.length ? `${diff ? '; ' : ''}${confirmed.join(', ')} (confirmado no Google)` : ''
   const s = `${diff ?? ''}${tail}`
   return s[0].toUpperCase() + s.slice(1) + '.'
 }
