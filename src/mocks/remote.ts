@@ -195,6 +195,12 @@ export async function pullQueue(): Promise<boolean> {
 export const pushReview = (id: string, status: EventSubmission['status']) =>
   call('POST', `/api/submissions/${encodeURIComponent(id)}/status`, { status }, { admin: true }).then(Boolean)
 export const checkAdmin = async () => !!(await call('GET', '/api/admin/check', undefined, { admin: true }))
+/** papel deste aparelho (conta Google na lista de admins, curador promovido, ou chave da curadoria) */
+export type Role = 'admin' | 'curador' | 'usuario'
+export const myRole = async (): Promise<Role> => ((await call<{ ok: boolean; role: Role }>('GET', '/api/admin/check', undefined, { admin: true, timeout: 3000 }))?.role ?? 'usuario')
+export interface AdminUser { device: string; name: string; hood: string | null; email: string | null; google: boolean; role: Role; createdAt: number }
+export const adminUsers = () => call<AdminUser[]>('GET', '/api/admin/users', undefined, { admin: true, timeout: 5000 })
+export const setUserRole = (device: string, role: 'usuario' | 'curador') => call<{ ok: boolean }>('POST', `/api/admin/users/${device}/role`, { role }, { admin: true })
 export const publishedEvents = () => call<(EventDraft & { id: string; hue: number; at: number })[]>('GET', '/api/events', undefined, { timeout: 3000 })
 
 /* ---------- métricas, feedback, leads ---------- */

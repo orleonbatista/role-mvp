@@ -167,7 +167,7 @@ export function useReviewSubmission() {
 }
 
 /* ---------- backend compartilhado (PC) ---------- */
-export const useSync = () => useQuery({ queryKey: ['sync'], queryFn: () => req<{ online: boolean; admin: boolean }>('/sync'), staleTime: 30_000, refetchInterval: 60_000 })
+export const useSync = () => useQuery({ queryKey: ['sync'], queryFn: () => req<{ online: boolean; admin: boolean; curator: boolean; role: 'admin' | 'curador' | 'usuario' }>('/sync'), staleTime: 30_000, refetchInterval: 60_000 })
 export const useGlobalStats = (enabled: boolean) => useQuery({ queryKey: ['testes-global'], queryFn: () => req<import('../mocks/remote').GlobalStats | null>('/testes/global'), enabled, refetchInterval: 15_000 })
 
 /* ---------- catálogo comunitário ---------- */

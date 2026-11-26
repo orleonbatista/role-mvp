@@ -7,7 +7,7 @@ import { deleteMe } from '../mocks/remote'
 import { useToast } from '../ui/Toast'
 import { AnimatedNumber, Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
-import { useDiary, useProfile } from '../lib/api'
+import { useDiary, useProfile, useSync } from '../lib/api'
 import { placeIcon } from '../ui/placeIcon'
 import { NICHES, VERDICT_LABEL, nicheLabel, timeAgo, vibeLabel } from '../lib/labels'
 import { resetAll } from '../db/db'
@@ -16,6 +16,7 @@ export function ProfilePage() {
   const nav = useNavigate()
   const { data: me } = useProfile()
   const { data } = useDiary()
+  const sync = useSync().data
   const qc = useQueryClient()
   const toast = useToast()
   async function eraseAll() {
@@ -176,11 +177,11 @@ export function ProfilePage() {
             <span className="flex-1 text-[14px]">Divulgar um evento</span>
             <ArrowUpRight size={14} className="text-mute" />
           </Link>
-          <Link to="/testes" className="flex items-center gap-3 px-4 py-3.5">
+          {sync?.curator && <Link to="/testes" className="flex items-center gap-3 px-4 py-3.5">
             <BarChart3 size={16} className="text-mute" />
-            <span className="flex-1 text-[14px]">Painel de testes</span>
+            <span className="flex-1 text-[14px]">{sync.admin ? 'Painel do admin' : 'Painel da curadoria'}</span>
             <ArrowUpRight size={14} className="text-mute" />
-          </Link>
+          </Link>}
         </div>
       </section>
 

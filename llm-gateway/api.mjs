@@ -88,6 +88,7 @@ db.exec(`
 if (!db.prepare("SELECT 1 FROM pragma_table_info('suggestions') WHERE name = 'place'").get()) db.exec('ALTER TABLE suggestions ADD COLUMN place TEXT')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'group_id'").get()) db.exec('ALTER TABLE requests ADD COLUMN group_id TEXT')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('base_areas') WHERE name = 'radius'").get()) db.exec('ALTER TABLE base_areas ADD COLUMN radius INTEGER NOT NULL DEFAULT 2500')
+if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'role'").get()) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'usuario'")
 if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'google_sub'").get()) {
   db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT'); db.exec('ALTER TABLE users ADD COLUMN email TEXT')
 }
@@ -123,11 +124,29 @@ function snap(v) {
   return info ? [...out, v[8] === 'b' ? 'b' : '', info] : v[8] === 'b' ? [...out, 'b'] : out
 }
 
-function isAdmin(req) {
+const keyOk = (req) => {
   const k = Buffer.from(String(req.headers['x-admin-key'] ?? ''))
   const a = Buffer.from(ADMIN_KEY)
   return k.length === a.length && timingSafeEqual(k, a)
 }
+/* ---------- papéis (RBAC): admin > curador > usuario ----------
+   admin = e-mail Google na lista (data/admins.json ou ADMIN_EMAILS) ou quem tem a chave da curadoria (acesso de emergência).
+   Papel vale só pra aparelho ligado a conta Google — o id do aparelho sozinho não promove ninguém. */
+const ADMINS_FILE = join(DATA, 'admins.json')
+if (!existsSync(ADMINS_FILE)) writeFileSync(ADMINS_FILE, JSON.stringify(['orleonbatista@gmail.com']))
+const adminEmails = () => {
+  try { return new Set([...JSON.parse(readFileSync(ADMINS_FILE, 'utf8')), ...String(process.env.ADMIN_EMAILS ?? '').split(',')].map((e) => String(e).trim().toLowerCase()).filter(Boolean)) } catch { return new Set() }
+}
+export function roleOf(device) {
+  if (!RE.device.test(String(device ?? ''))) return 'usuario'
+  const u = db.prepare('SELECT email, role, google_sub FROM users WHERE device = ?').get(device)
+  if (!u?.google_sub) return 'usuario'
+  if (u.email && adminEmails().has(String(u.email).toLowerCase())) return 'admin'
+  return u.role === 'curador' || u.role === 'admin' ? u.role : 'usuario'
+}
+const devOf = (req) => String(req.headers['x-device'] ?? '')
+function isAdmin(req) { return keyOk(req) || roleOf(devOf(req)) === 'admin' }
+function isCurator(req) { return isAdmin(req) || roleOf(devOf(req)) === 'curador' }
 
 /* ---------- consultas ---------- */
 const q = {
@@ -391,7 +410,7 @@ function handlePeople(method, path, body, device, now) {
   let m
   if (method === 'GET' && path === '/api/me') {
     const u = qp.getUser.get(device)
-    return u ? ok({ profile: parse(u.data), consentAt: u.consent_at, email: u.email ?? undefined }) : bad('not_found', 404)
+    return u ? ok({ profile: parse(u.data), consentAt: u.consent_at, email: u.email ?? undefined, role: roleOf(device) }) : bad('not_found', 404)
   }
   if (method === 'POST' && path === '/api/me') {
     const consentAt = int(body.consentAt, 0)
@@ -460,11 +479,11 @@ export function handleApi(method, path, req, body) {
     return ok(q.okPlaces.all().map((r) => parse(r.snap)))
   }
   if (method === 'GET' && path === '/api/places/review') {
-    if (!isAdmin(req)) return bad('admin', 401)
+    if (!isCurator(req)) return bad('admin', 401)
     return ok(q.reviewPlaces.all().map((r) => ({ place: parse(r.snap), comment: r.comment, status: r.status, motivo: r.motivo, at: r.at, uses: r.uses })))
   }
   if ((m = path.match(/^\/api\/places\/(g-[A-Za-z0-9_-]{5,120}|o-[nwr]\d{1,14})\/status$/)) && write) {
-    if (!isAdmin(req)) return bad('admin', 401)
+    if (!isCurator(req)) return bad('admin', 401)
     const status = ['ok', 'recusado'].includes(body.status) ? body.status : null
     if (!status) return bad('status')
     const upd = q.setPlace.run(status, now, m[1])
@@ -601,17 +620,34 @@ export function handleApi(method, path, req, body) {
     return ok(q.mySubs.all(device))
   }
   if (method === 'GET' && path === '/api/submissions') {
-    if (!isAdmin(req)) return bad('admin', 401)
+    if (!isCurator(req)) return bad('admin', 401)
     return ok(q.subs.all().map((s) => ({ ...parse(s.data), id: s.id, status: s.status, at: s.at, reviewedAt: s.reviewed_at })))
   }
   if ((m = path.match(/^\/api\/submissions\/(ev-u-[a-z0-9-]{1,40})\/status$/)) && write) {
-    if (!isAdmin(req)) return bad('admin', 401)
+    if (!isCurator(req)) return bad('admin', 401)
     const status = ['aprovado', 'recusado', 'pendente'].includes(body.status) ? body.status : null
     if (!status) return bad('status')
     const upd = q.setSub.run(status, now, m[1])
     return upd.changes ? ok({ ok: true }) : bad('not_found', 404)
   }
-  if (method === 'GET' && path === '/api/admin/check') return isAdmin(req) ? ok({ ok: true }) : bad('admin', 401)
+  if (method === 'GET' && path === '/api/admin/check') {
+    const role = keyOk(req) ? 'admin' : roleOf(devOf(req))
+    return role === 'usuario' ? bad('admin', 401) : ok({ ok: true, role })
+  }
+  if (method === 'GET' && path === '/api/admin/users') {
+    if (!isAdmin(req)) return bad('admin', 401)
+    return ok(db.prepare('SELECT device, data, hood, email, role, google_sub, consent_at, created_at FROM users ORDER BY created_at DESC LIMIT 300').all()
+      .map((u) => ({ device: u.device, name: parse(u.data)?.name ?? '', hood: u.hood, email: u.email ?? null, google: !!u.google_sub, role: roleOf(u.device), createdAt: u.created_at })))
+  }
+  if ((m = path.match(/^\/api\/admin\/users\/([a-z0-9-]{8,40})\/role$/)) && write) {
+    if (!isAdmin(req)) return bad('admin', 401)
+    const role = ['usuario', 'curador'].includes(body.role) ? body.role : null // admin só pela lista de e-mails
+    if (!role) return bad('role')
+    const u = db.prepare('SELECT google_sub FROM users WHERE device = ?').get(m[1])
+    if (!u?.google_sub) return bad('sem_google') // papel só pra quem entrou com Google
+    db.prepare('UPDATE users SET role = ? WHERE device = ?').run(role, m[1])
+    return ok({ ok: true })
+  }
 
   /* ---- métricas, feedback, leads ---- */
   if (write && path === '/api/track') {

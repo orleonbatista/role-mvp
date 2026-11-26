@@ -2,8 +2,8 @@ import { apiBase } from '../mocks/remote'
 import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { Cpu, Database, Download, MessageSquareHeart, Store } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
-import { checkAdmin, getAdminKey, setAdminKey } from '../mocks/remote'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { adminUsers, checkAdmin, getAdminKey, setAdminKey, setUserRole } from '../mocks/remote'
 import { useToast } from '../ui/Toast'
 import { cx } from '../ui/primitives'
 import { getLLMOverride, llmStatus, setLLMOverride } from '../mocks/llm'
@@ -155,13 +155,24 @@ export function TestesPage() {
     URL.revokeObjectURL(a.href)
   }
 
+  // RBAC: só admin (tudo) e curador (filas de revisão); usuário vê o aviso — a chave da curadoria fica como acesso de emergência
+  if (sync && !sync.curator) return (
+    <Page>
+      <TopBar title="Área restrita" />
+      <div className="px-5">
+        <p className="font-serif text-[32px] leading-tight">Só pra admins e curadores<span className="text-accent">.</span></p>
+        <p className="mt-3 text-[14px] text-mute">Entre com a conta Google de admin (Perfil → Conta e dados) neste aparelho. {sync.online ? '' : 'O servidor do rolê está fora do ar agora.'}</p>
+        <details className="mt-8 text-[13px] text-faint"><summary className="cursor-pointer">Tenho a chave da curadoria</summary><BackendCard /></details>
+      </div>
+    </Page>
+  )
   if (!data) return <Page><TopBar title="Painel de testes" /><div className="grid gap-3 px-5"><Skeleton className="h-60" /><Skeleton className="h-32" /></div></Page>
   const top = Math.max(1, ...FUNNEL.map((f) => data.counts[f.name] ?? 0))
   const avg = data.feedback.length ? data.feedback.reduce((a, f) => a + f.score, 0) / data.feedback.length : 0
 
   return (
     <Page>
-      <TopBar title="Painel de testes" right={<Button variant="soft" className="h-9 px-3 text-xs" icon={<Download size={13} />} onClick={download}>Exportar</Button>} />
+      <TopBar title={sync?.admin ? 'Painel do admin' : 'Painel da curadoria'} right={<Button variant="soft" className="h-9 px-3 text-xs" icon={<Download size={13} />} onClick={download}>Exportar</Button>} />
       {canGlobal && global && (
         <div className="mx-5 mb-3 grid grid-cols-2 rounded-full bg-white/[0.05] p-1 text-[13px]">
           {(['todos', 'aqui'] as const).map((k) => (
@@ -183,6 +194,7 @@ export function TestesPage() {
           : <>Dados deste aparelho{data.firstAt ? ` desde ${new Date(data.firstAt).toLocaleDateString('pt-BR')}` : ''} · {data.total} eventos.{!canGlobal && ' Com o backend no ar e a chave da curadoria, aqui aparecem todos os aparelhos.'}</>}
       </p>
 
+      {canGlobal && <UsersCard />}
       {canGlobal && global?.apis && <ApisCard apis={global.apis} />}
       <BackendCard />
       <LLMCard />
@@ -361,6 +373,40 @@ function ApisCard({ apis }: { apis: { month: Record<string, number>; today: Reco
           <p className="mt-2 text-[11px] text-faint">Limites grátis: Gemini por minuto/dia no AI Studio (aistudio.google.com → Uso); Groq e OpenRouter nos painéis deles.</p>
         </div>
       </div>
+    </section>
+  )
+}
+
+/* admin: pessoas e papéis (curador aprova lugares e eventos; admin só pela lista de e-mails no servidor) */
+function UsersCard() {
+  const qc = useQueryClient()
+  const users = useQuery({ queryKey: ['admin-users'], queryFn: adminUsers, staleTime: 15_000 })
+  const toast = useToast()
+  return (
+    <section className="mt-7">
+      <SectionTitle aside={<span className="text-xs text-faint">{users.data?.length ?? 0} perfis</span>}>Pessoas e papéis</SectionTitle>
+      <div className="mx-5 divide-y divide-line overflow-hidden rounded-[20px] border border-line">
+        {users.data?.length === 0 && <p className="p-4 text-[13px] text-faint">Ninguém cadastrado ainda.</p>}
+        {users.data?.map((u) => (
+          <div key={u.device} className="flex items-center gap-3 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[14px]">{u.name || '—'} <span className="text-faint">· {u.hood ?? '—'}</span></p>
+              <p className="truncate text-[11px] text-faint">{u.email ?? 'sem conta Google'}</p>
+            </div>
+            {u.role === 'admin' ? <span className="rounded-full bg-accent/15 px-2.5 py-1 text-[11px] text-accent">admin</span>
+              : u.google ? (
+                <select aria-label={`Papel de ${u.name}`} value={u.role} className="h-9 rounded-full border border-line bg-bg px-3 text-[12px]"
+                  onChange={async (e) => {
+                    const ok = await setUserRole(u.device, e.target.value as 'usuario' | 'curador')
+                    toast(ok ? 'Papel atualizado' : 'Não deu pra mudar o papel'); qc.invalidateQueries({ queryKey: ['admin-users'] })
+                  }}>
+                  <option value="usuario">usuário</option><option value="curador">curador</option>
+                </select>
+              ) : <span className="text-[11px] text-faint">usuário</span>}
+          </div>
+        ))}
+      </div>
+      <p className="mx-5 mt-2 text-[11px] text-faint">Papel só pra quem entrou com Google. Pra adicionar outro admin, inclua o e-mail em llm-gateway/data/admins.json no PC.</p>
     </section>
   )
 }

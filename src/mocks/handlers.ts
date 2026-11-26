@@ -594,7 +594,11 @@ export const handlers = [
     const g = remote.getAdminKey() ? await remote.globalStats() : null
     return HttpResponse.json(g ? { ...g, leads: g.leads.map((l) => ({ ...l, placeName: l.placeName ?? placeById.get(l.placeId)?.name ?? l.placeId })) } : null)
   }),
-  http.get('/api/sync', async () => HttpResponse.json({ online: await remote.isOnline(), admin: !!remote.getAdminKey() })),
+  http.get('/api/sync', async () => {
+    const online = await remote.isOnline()
+    const role = online ? await remote.myRole() : remote.getAdminKey() ? 'admin' : 'usuario'
+    return HttpResponse.json({ online, role, admin: role === 'admin', curator: role !== 'usuario' })
+  }),
 
   http.get('/api/testes', async () => {
     const [events, feedback, leads, mine] = await Promise.all([
