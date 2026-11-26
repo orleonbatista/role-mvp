@@ -75,7 +75,7 @@ function TurmaCard({ t, i }: { t: Turma; i: number }) {
         <Link to={`/novo?turma=${t.id}`} onClick={() => track('turma_novo_role', { members: t.members.length })} className="flex-1">
           <Button variant="soft" className="w-full" icon={<Sparkles size={15} />}>Novo rolê com essa turma</Button>
         </Link>
-        <button onClick={() => { if (confirm('Sair dessa turma?')) leave.mutate() }} className="px-2 text-[12px] text-faint hover:text-mute">sair</button>
+        <button onClick={() => { if (confirm('Sair dessa turma?')) leave.mutate() }} className="min-h-11 px-2 text-[12px] text-faint hover:text-mute">sair</button>
       </div>
     </motion.div>
   )

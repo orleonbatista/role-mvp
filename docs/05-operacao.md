@@ -122,6 +122,19 @@ use `/testes` → "URL do gateway".
 - **Uso:** os dados ficam só em memória e servem pra ordenar e justificar ("Área externa (confirmado no Google)", "Aberto sexta (horário do Google)", "Nota 4,8 no Google").
 - **Votação:** 5 opções.
 
+## Gateway sobe sozinho (Windows)
+- **Tarefa:** "role-gateway" roda `llm-gateway\start-role.ps1` no login. Ela espera a rede, sobe o gateway e o túnel e grava o endereço em `data\tunnel-url.txt`. Log em `data\start.log`.
+- **llm.json:** se existir `data\github-token.txt` (token fine-grained com Contents: write só no repo role-mvp), o script publica o `llm.json` sozinho. Sem o token, alguém atualiza à mão.
+- **Rodar à mão:** `Start-ScheduledTask role-gateway` ou `powershell -ExecutionPolicy Bypass -File llm-gateway\start-role.ps1`.
+
+## Avisos no celular (Web Push)
+- **Sem dependências:** `llm-gateway/push.mjs` implementa a cifragem aes128gcm (RFC 8291) e o VAPID (RFC 8292) com `node:crypto`. As chaves VAPID ficam em `data/vapid.json`.
+- **Quando avisa:**
+  - o autor do pedido, quando alguém vota ou sugere (no máximo 1 aviso a cada 2 min por pedido);
+  - quem votou, quando o rolê fecha.
+- **No app:** o card "Ativar avisos" aparece no resultado (autor) e depois do voto (votante). Os avisos chegam pelo `public/sw.js`. No iPhone só funcionam com o app instalado na tela de início.
+- **Limpeza:** inscrições que o navegador devolve como inválidas (404/410) são apagadas.
+
 ## LLM na nuvem (gateway)
 - **Fila de provedores:** Gemini (`gemini-3.5-flash-lite`, ~2 s) → Groq (`openai/gpt-oss-20b`) → OpenRouter (`openai/gpt-oss-20b:free`) → GPU do PC (Ollama `qwen2.5:7b`). Todos usam a API compatível com OpenAI (`llm-gateway/providers.mjs`).
 - **Falhas:** quem falhar (limite do plano grátis, timeout, JSON inválido) fica 1–2 min fora e a chamada segue pro próximo.

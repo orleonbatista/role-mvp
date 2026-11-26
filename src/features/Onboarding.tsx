@@ -45,7 +45,9 @@ export function Onboarding() {
   const toast = useToast()
 
   const go = (n: number) => { setDir(n > step ? 1 : -1); setStep(n) }
-  const canNext = [true, name.trim().length > 1, niches.length > 0, vibes.length > 0 && consent][step]
+  // 2 passos: (1) nome + região, (2) estilos + vibes (opcionais) + aceite
+  const LAST = 2
+  const canNext = [true, name.trim().length > 1, niches.length > 0 && consent][step]
 
   async function finish() {
     const first = name.trim().split(' ')[0]
@@ -72,7 +74,7 @@ export function Onboarding() {
     <Page className="flex flex-col">
       {step > 0 && (
         <div className="flex gap-1.5 px-6 pt-14">
-          {[1, 2, 3].map((i) => (
+          {[1, 2].map((i) => (
             <div key={i} className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
               <motion.div className="h-full bg-accent" initial={false} animate={{ width: step >= i ? '100%' : '0%' }} transition={{ duration: 0.6, ease }} />
             </div>
@@ -142,23 +144,20 @@ export function Onboarding() {
                     )
                   })}
                 </div>
-              </>
-            )}
-            {step === 3 && (
-              <>
-                <h1 className="font-serif text-[44px] leading-[0.95] tracking-tight">E a <em className="text-accent">vibe</em><br />que te pega?</h1>
-                <p className="mt-3 text-sm text-mute">A gente cruza isso com o que a comunidade avalia.</p>
-                <div className="mt-8 flex flex-wrap gap-2.5">
-                  {VIBES.map((v) => <Chip key={v.id} active={vibes.includes(v.id)} onClick={() => setVibes((a) => toggle(a, v.id))} className="h-11 px-5 text-sm">{v.label}</Chip>)}
+
+                <h2 className="mt-8 text-sm text-mute">E a vibe? <span className="text-faint">(opcional)</span></h2>
+                
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {VIBES.map((v) => <Chip key={v.id} active={vibes.includes(v.id)} onClick={() => setVibes((a) => toggle(a, v.id))} className="h-10 px-4 text-sm">{v.label}</Chip>)}
                 </div>
-                <label className="mt-10 flex items-start gap-3 rounded-2xl border border-line bg-white/[0.02] p-4 text-[13px] leading-relaxed text-ink/85">
+                <label className="mt-8 flex items-start gap-3 rounded-2xl border border-line bg-white/[0.02] p-4 text-[13px] leading-relaxed text-ink/85">
                   <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[#c6ff3d]" />
                   <span>
                     Concordo em salvar meu nome, gosto e região (~1 km) pra montar recomendações e as votações com a minha turma.{' '}
                     <Link to="/privacidade" className="text-accent underline-offset-4 hover:underline">Aviso de privacidade</Link> · dá pra apagar tudo no Perfil.
                   </span>
                 </label>
-              </>
+                            </>
             )}
           </motion.section>
         </AnimatePresence>
@@ -169,11 +168,11 @@ export function Onboarding() {
         <Button
           size="lg"
           disabled={!canNext || save.isPending || loadingRegion}
-          onClick={() => (step < 3 ? go(step + 1) : finish())}
-          icon={step === 3 ? <Sparkles size={16} /> : undefined}
+          onClick={() => (step < LAST ? go(step + 1) : finish())}
+          icon={step === LAST ? <Sparkles size={16} /> : undefined}
         >
-          {loadingRegion ? <><LoaderCircle size={16} className="animate-spin" />Buscando lugares perto de você…</> : step === 0 ? 'Começar' : step === 3 ? 'Montar meu feed' : 'Continuar'}
-          {step < 3 && <ArrowRight size={16} />}
+          {loadingRegion ? <><LoaderCircle size={16} className="animate-spin" />Buscando lugares perto de você…</> : step === 0 ? 'Começar' : step === LAST ? 'Montar meu feed' : 'Continuar'}
+          {step < LAST && <ArrowRight size={16} />}
         </Button>
       </div>
     </Page>

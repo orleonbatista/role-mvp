@@ -84,6 +84,14 @@ export function useVote(requestId: string) {
   })
 }
 
+export function useDeleteRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => post(`/requests/${id}/delete`, {}),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['feed'] }); qc.invalidateQueries({ queryKey: ['diary'] }) },
+  })
+}
+
 export function useDecide(requestId: string) {
   const qc = useQueryClient()
   return useMutation({

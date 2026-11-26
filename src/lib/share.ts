@@ -38,7 +38,11 @@ const idOf = (r: unknown) => (typeof r === 'string' ? (placeById.has(r) ? r : un
 
 export async function shareUrl(d: RequestDetail) {
   const idx = d.options.map((o) => refOf(o.id)).filter((i) => i !== -1)
-  const gs = snapsFor(d.options.map((o) => o.id))
+  const ids = d.options.map((o) => o.id)
+  // resumo salvo na criação (com motivo da IA e o que o Google confirmou) + o que estiver na memória
+  const saved = (d.request.optSnaps ?? []).filter((s) => Array.isArray(s) && ids.includes(s[0]))
+  const fresh = snapsFor(ids).filter((s) => !saved.some((x) => (x as unknown[])[0] === s[0]))
+  const gs = [...saved, ...fresh]
   // 6º item (opcional): resumo dos lugares do Google, que o outro aparelho não tem no catálogo
   const compact = [d.request.id, d.request.text, idx, d.author.name.split(' ')[0], d.author.hue, ...(gs.length ? [gs] : [])]
   const json = new TextEncoder().encode(JSON.stringify(compact))

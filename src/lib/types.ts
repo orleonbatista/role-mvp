@@ -41,8 +41,12 @@ export interface Place {
   promoter?: string
   ticketUrl?: string
   eventDate?: string
+  /** referência da 1ª foto no Google (só em memória; a imagem é buscada na hora, com crédito do autor) */
+  photo?: { name: string; by?: string }
   /** confirmado ao vivo no Google pra este pedido (só em memória, nunca salvo) */
   live?: { rating?: number; count?: number; outdoor?: boolean; beer?: boolean; groups?: boolean; music?: boolean; cocktails?: boolean; hours?: boolean }
+  /** resumo pra quem vota (veio no link): motivo da IA e atributos confirmados no Google pelo autor */
+  shared?: { r?: number; c?: number; o?: boolean; b?: boolean; m?: boolean; g?: boolean; n?: string; la?: number; lo?: number }
   /** origem externa: Google (só place_id) ou OpenStreetMap (catálogo legado); sem isso = catálogo próprio/evento */
   source?: 'google' | 'osm'
   /** 'base' = lugar real ainda sem curadoria (a IA usa como reserva, não aparece no feed) */
@@ -112,6 +116,8 @@ export interface RoleRequest {
   eventId?: string
   /** resumo dos lugares do Google das opções (some da memória ao recarregar); apagado após 30 dias */
   optSnaps?: unknown[]
+  /** busca no Google limitada neste aparelho hoje: 'sem_google' (nenhuma busca) ou 'sem_confirmacao' (sem nota/horário/atributos) */
+  degraded?: 'sem_google' | 'sem_confirmacao'
   /** a IA escolheu e ordenou as opções (a ordem de optionIds é a dela) */
   aiPicked?: boolean
   /** turma (grupo de quem votou junto) — reaproveitada em "novo rolê com essa turma" */

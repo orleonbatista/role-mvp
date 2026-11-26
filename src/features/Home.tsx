@@ -9,6 +9,7 @@ import { distanceKm, fmtKm, kmTo, openStatus } from '../lib/hours'
 import { placeIcon } from '../ui/placeIcon'
 import { places } from '../mocks/seeds/places'
 import { TurmasStrip } from './Turmas'
+import { PlacePhoto } from '../ui/PlacePhoto'
 
 function greeting() {
   const h = new Date().getHours()
@@ -87,6 +88,7 @@ export function Home() {
               <Link to={`/lugar/${r.place.id}`} className="group block w-[220px] shrink-0">
                 <div className="relative">
                   <Cover hue={r.place.hue} icon={placeIcon(r.place)} iconSize={72} layoutId={`cover-${r.place.id}`} className="h-[260px] w-full transition-transform duration-500 group-active:scale-[0.98]" />
+                  <PlacePhoto place={r.place} enabled={i < 3} />
                   <div className="absolute left-3 top-3 flex gap-1.5">
                     <Tag tone="accent">{r.match}% seu gosto</Tag>
                     {r.place.curation === 'base' && <span className="inline-flex h-6 items-center rounded-full bg-black/45 px-2.5 text-[11px] text-white/85 backdrop-blur-md">sem curadoria</span>}

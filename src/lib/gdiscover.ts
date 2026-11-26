@@ -22,6 +22,9 @@ const dayKey = () => `role.gdisc.${new Date().toISOString().slice(0, 10)}`
 const used = () => { try { return Number(localStorage.getItem(dayKey()) ?? 0) } catch { return 0 } }
 const spend = () => { try { localStorage.setItem(dayKey(), String(used() + 1)) } catch { /* */ } }
 
+/** limites do dia batidos neste aparelho (a tela avisa em vez de falhar em silêncio) */
+export const limits = { basic: false, rich: false }
+
 const done = new Map<string, Promise<Place[]>>() // memória da sessão: mesma busca não repete
 const km = (a: { lat: number; lng: number }, b: Place) => (b.lat == null || b.lng == null ? 99 : Math.hypot((a.lat - b.lat) * 111, (a.lng - b.lng) * 102))
 
@@ -29,7 +32,7 @@ export async function discover(query: string, center: { lat: number; lng: number
   if (!KEY) return []
   const ck = `${query}|${center.lat.toFixed(2)},${center.lng.toFixed(2)}|${radius}`
   if (!done.has(ck)) {
-    if (used() >= DEVICE_DAILY) return []
+    if (used() >= DEVICE_DAILY) { limits.basic = true; return [] }
     done.set(ck, (async () => {
       try {
         spend()
@@ -113,6 +116,7 @@ export async function discoverForRequest(c: Criteria, home?: Home, text = '') {
   const ck = `rich|${q}|${center.lat.toFixed(2)},${center.lng.toFixed(2)}|${radiusKm}`
   if (done.has(ck)) return (await done.get(ck)!).length
   if (richUsed() >= RICH_DAILY) {
+    limits.rich = true
     // sem cota rica no aparelho: cai pra busca simples (sem confirmação)
     const lists = await Promise.all((c.niches.length ? c.niches.slice(0, 2) : (['drinks'] as Niche[])).map((x) => discover(QUERY[x] ?? 'bar', center, radiusKm * 1000)))
     return lists.flat().length

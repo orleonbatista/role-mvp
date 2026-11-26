@@ -93,7 +93,7 @@ function mergeSnaps(a: unknown[], b?: unknown[]) {
 export async function pushRequest(r: RoleRequest, author: { name: string; hue: number }) {
   const ok = await call<{ ok: boolean; groupId?: string }>('POST', '/api/requests', {
     id: r.id, text: r.text, criteria: r.criteria, optionIds: r.optionIds ?? [], times: r.times ?? [], author, createdAt: r.createdAt, eventId: r.eventId,
-    places: mergeSnaps(snapsFor(r.optionIds ?? []), r.optSnaps), groupId: r.groupId,
+    places: mergeSnaps(r.optSnaps ?? [], snapsFor(r.optionIds ?? [])), groupId: r.groupId,
   })
   if (ok) pushed.add(r.id)
   if (ok?.groupId && ok.groupId !== r.groupId) await db.requests.update(r.id, { groupId: ok.groupId })
@@ -265,3 +265,9 @@ export const leaveGroup = (id: string) => call('POST', `/api/groups/${id}/leave`
 
 /* ---------- aprendizado da IA: exemplos rotulados (pedido → critérios confirmados) ---------- */
 export const pushExample = (e: { text: string; ai: unknown; final: unknown; corrected: boolean; unmet: string[]; engine: string }) => call('POST', '/api/examples', e)
+
+export const deleteRequestRemote = (id: string) => call('POST', `/api/requests/${encodeURIComponent(id)}/delete`, {})
+
+/* ---------- avisos (Web Push) ---------- */
+export const pushKey = () => call<{ key: string }>('GET', '/api/push/key', undefined, { timeout: 4000 })
+export const pushSubscribe = (sub: PushSubscriptionJSON) => call<{ ok: boolean }>('POST', '/api/push/subscribe', sub)

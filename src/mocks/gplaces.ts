@@ -35,4 +35,4 @@ export async function loadGooglePlaces() {
 /** resumos dos lugares do Google entre estes ids (para mandar junto no link / backend) */
 /** resumos dos lugares da comunidade entre estes ids (o outro aparelho pode não tê-los) */
 /** resumo dos lugares externos (Google) das opções: curados e também os sem curadoria (marcados 'b') */
-export const snapsFor = (ids: string[]) => ids.map((id) => placeById.get(id)).filter((p) => p && p.source).map((p) => snapOf(p!))
+export const snapsFor = (ids: string[], notes?: Map<string, string>) => ids.map((id) => placeById.get(id)).filter((p) => p && p.source).map((p) => snapOf(p!, notes?.get(p!.id)))

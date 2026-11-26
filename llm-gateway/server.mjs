@@ -4,9 +4,10 @@
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { DESTAQUES, askBody, moderateBody, moderationRules, ollamaBody, pickBody } from '../src/mocks/llmPrompt.ts'
-import { adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
+import { dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
 import { geoFromCep, geoReverse } from './geo.mjs'
 import { createLLM } from './providers.mjs'
+import { createPush } from './push.mjs'
 
 const PORT = Number(process.env.PORT ?? 8787)
 const OLLAMA = process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434'
@@ -20,6 +21,18 @@ const PER_MIN = 20
 const PER_DAY = 400
 
 const llm = createLLM({ dataDir, ollamaModel: MODEL })
+const push = createPush(dataDir)
+// avisos: no máximo 1 por pedido e tipo a cada 2 min por aparelho (votos em sequência viram 1 aviso)
+const lastPush = new Map()
+hooks.notify = (e) => {
+  const now = Date.now()
+  for (const s of pushSubsOf(e.to)) {
+    const k = `${e.key}|${s.device}`
+    if (!e.key.startsWith('d-') && now - (lastPush.get(k) ?? 0) < 120_000) continue
+    lastPush.set(k, now)
+    void push.send(s, { title: e.title, body: e.body, url: `/role-mvp/${e.url}`, tag: e.key }).then((st) => { if (st === 'gone') dropPushSub(s.endpoint) })
+  }
+}
 const hits = new Map() // ip -> timestamps (ms)
 const stats = { ok: 0, fail: 0, limited: 0, since: new Date().toISOString() }
 
@@ -91,6 +104,7 @@ const server = http.createServer(async (req, res) => {
       for await (const chunk of req) { raw += chunk; if (raw.length > 16_000) return send(res, 413, { error: 'too_large' }, origin) }
       try { body = JSON.parse(raw || '{}') } catch { return send(res, 400, { error: 'bad_json' }, origin) }
     }
+    if (req.method === 'GET' && path === '/api/push/key') return send(res, 200, { key: push.publicKey }, origin)
     // região de quem se cadastra: CEP ou GPS (arredondado a ~1 km) → nome da região
     let gm
     if (req.method === 'GET' && (gm = path.match(/^\/api\/geo\/cep\/(\d{8})$/))) {

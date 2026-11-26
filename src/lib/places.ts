@@ -15,7 +15,7 @@ const ENDPOINT = 'https://places.googleapis.com/v1/places:searchText'
 export const FIELDS = [
   'places.id', 'places.displayName', 'places.formattedAddress', 'places.shortFormattedAddress', 'places.location',
   'places.primaryType', 'places.primaryTypeDisplayName', 'places.types', 'places.priceRange',
-  'places.googleMapsUri', 'places.addressComponents', 'places.businessStatus',
+  'places.googleMapsUri', 'places.addressComponents', 'places.businessStatus', 'places.photos',
 ].join(',')
 const SP = { latitude: -23.5614, longitude: -46.6559 }
 const DEVICE_DAILY = 20
@@ -44,6 +44,7 @@ interface GPlace {
   googleMapsUri?: string
   addressComponents?: { longText: string; shortText: string; types: string[] }[]
   businessStatus?: string
+  photos?: { name: string; authorAttributions?: { displayName?: string }[] }[]
 }
 
 const KIND_BY_TYPE: [RegExp, PlaceKind][] = [
@@ -94,6 +95,7 @@ export function toPlace(g: GPlace, query = ''): Place {
     address: g.shortFormattedAddress ?? g.formattedAddress ?? '', hours: 'Ver horário no Google Maps', tags: [], privateSpace: false,
     periods: [{ days: [0, 1, 2, 3, 4, 5, 6], open: 0, close: 24 }],
     source: 'google', mapsUrl: mapsUrlOf(g.id), lat: g.location?.latitude, lng: g.location?.longitude,
+    ...(g.photos?.[0] ? { photo: { name: g.photos[0].name, by: g.photos[0].authorAttributions?.[0]?.displayName } } : {}),
   }
 }
 
@@ -133,12 +135,19 @@ export async function searchGoogle(query: string): Promise<PlacesResult> {
 /* ---------- lugar do catálogo comunitário circulando entre aparelhos ----------
    Do Google só o place_id (permitido guardar). Nome, bairro, estilo, vibe, ocasião e faixa de preço são os que
    a pessoa confirmou ao sugerir: conteúdo da comunidade. Nota/horário: link pro Google Maps. */
-export type PlaceSnap = [id: string, name: string, kind: PlaceKind, hood: string, niches: Niche[], price: number, vibes: Vibe[], occasions: Occasion[], base?: 'b']
+/** la/lo: coordenada (os termos do Google permitem guardar por 30 dias — o resumo inteiro sai em 30 dias) */
+export interface SnapInfo { r?: number; c?: number; o?: boolean; b?: boolean; m?: boolean; g?: boolean; n?: string; la?: number; lo?: number }
+export type PlaceSnap = [id: string, name: string, kind: PlaceKind, hood: string, niches: Niche[], price: number, vibes: Vibe[], occasions: Occasion[], base?: 'b' | '', info?: SnapInfo]
 /** 9º item 'b' = lugar sem curadoria (descoberta ao vivo no Google): do outro lado não vira curado nem é salvo no aparelho */
-export const snapOf = (p: Place): PlaceSnap => (p.curation === 'base' ? [p.id, p.name, p.kind, p.hood, p.niches, p.price, p.vibes, p.occasions, 'b'] : [p.id, p.name, p.kind, p.hood, p.niches, p.price, p.vibes, p.occasions]) as PlaceSnap
+export const snapOf = (p: Place, note?: string): PlaceSnap => {
+  const L = p.live
+  const info: SnapInfo | undefined = L || note || p.lat != null ? { r: L?.rating, c: L?.count, o: L?.outdoor, b: L?.beer, m: L?.music, g: L?.groups, n: note, la: p.lat, lo: p.lng } : undefined
+  const head = [p.id, p.name, p.kind, p.hood, p.niches, p.price, p.vibes, p.occasions]
+  return (info ? [...head, p.curation === 'base' ? 'b' : '', info] : p.curation === 'base' ? [...head, 'b'] : head) as PlaceSnap
+}
 export function fromSnap(s: unknown): Place | null {
   if (!Array.isArray(s) || typeof s[0] !== 'string' || !/^(g-[A-Za-z0-9_-]{5,120}|o-[nwr]\d{1,14})$/.test(s[0])) return null
-  const [id, name, kind, hood, niches, price, vibes, occasions, b] = s as PlaceSnap
+  const [id, name, kind, hood, niches, price, vibes, occasions, b, info] = s as PlaceSnap
   const base = b === 'b'
   const k: PlaceKind = ['bar', 'restaurante', 'balada', 'evento'].includes(kind) ? kind : 'bar'
   const periods: OpenPeriod[] = [{ days: [0, 1, 2, 3, 4, 5, 6], open: 0, close: 24 }]
@@ -150,5 +159,6 @@ export function fromSnap(s: unknown): Place | null {
     hue: hueOf(id), tagline: base ? (k === 'restaurante' ? 'Restaurante' : k === 'balada' ? 'Balada' : 'Bar') : 'Sugerido pela comunidade', description: '', highlights: [], address: String(hood).slice(0, 40), hours: 'Ver horário no Google Maps',
     tags: [], privateSpace: false, periods, source: id.startsWith('o-') ? 'osm' : 'google', mapsUrl: mapsUrlOf(id, String(name), String(hood)),
     ...(base ? { curation: 'base' as const } : {}),
+    ...(info && typeof info === 'object' ? { shared: info, ...(Number.isFinite(info.la) && Number.isFinite(info.lo) ? { lat: info.la, lng: info.lo } : {}) } : {}),
   }
 }

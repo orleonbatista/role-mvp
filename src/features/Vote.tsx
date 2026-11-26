@@ -7,6 +7,8 @@ import { Link } from 'react-router'
 import { Avatar, AnimatedNumber, Button, Cover, EmptyState, Overlay, Page, Skeleton, cx } from '../ui/primitives'
 import { ease, spring } from '../ui/motion'
 import { placeIcon } from '../ui/placeIcon'
+import { OptionsMap } from './OptionsMap'
+import { PushCard } from './PushCard'
 import { importRequest, useDecide, useProfile, useRequest, useSync, useVote } from '../lib/api'
 import { priceLabel } from '../lib/labels'
 import { currentVoteLink, readPayload } from '../lib/share'
@@ -150,6 +152,8 @@ export function VotePage() {
               className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-mute" />
           </motion.label>
 
+          <OptionsMap places={data.options} home={me?.home} />
+          {data.tally.some((t) => t.voters.includes(voter.trim())) && !data.request.decidedPlaceId && <PushCard context="votante" text="Quer saber quando o rolê fechar? A gente avisa no celular." />}
           <section className="mt-5 grid gap-3 px-5">
             {data.options.map((p, i) => {
               const t = data.tally.find((x) => x.placeId === p.id)
@@ -178,6 +182,17 @@ export function VotePage() {
                         <AnimatePresence>{isLeader && <motion.span initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0 }} transition={spring}><Crown size={14} className="text-accent" /></motion.span>}</AnimatePresence>
                       </p>
                       <p className="text-xs text-mute">{p.hood} · {priceLabel(p.price)}{p.curation === 'base' ? ' · sem curadoria' : isCommunity(p) ? ' · comunidade' : ''}</p>
+                      {(() => {
+                        const i = p.shared ?? (p.live ? { r: p.live.rating, c: p.live.count, o: p.live.outdoor, b: p.live.beer, m: p.live.music, g: p.live.groups } : undefined)
+                        if (!i) return null
+                        const bits = [i.r ? `Google ${i.r.toFixed(1).replace('.', ',')}${i.c ? ` (${i.c >= 1000 ? `${(i.c / 1000).toFixed(1).replace('.', ',')} mil` : i.c})` : ''}` : '', i.o ? 'área externa' : '', i.m ? 'música ao vivo' : '', i.g ? 'bom pra grupo' : ''].filter(Boolean)
+                        return (
+                          <>
+                            {bits.length > 0 && <p className="mt-0.5 text-[11px] text-ink/70">{bits.join(' · ')}</p>}
+                            {'n' in i && i.n && <p className="mt-0.5 line-clamp-2 text-[11px] italic text-accent/90">{i.n}</p>}
+                          </>
+                        )
+                      })()}
                       <div className="mt-1.5 flex -space-x-1.5">
                         <AnimatePresence>
                           {t?.voters.map((v) => (

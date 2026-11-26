@@ -16,7 +16,7 @@ import * as remote from './remote'
 import { track } from '../lib/track'
 import { moderationRules } from './llmPrompt'
 import { adoptSnaps, rememberPlace, snapsFor } from './gplaces'
-import { centerOf, discoverForRequest, discoverForTaste } from '../lib/gdiscover'
+import { centerOf, discoverForRequest, discoverForTaste, limits } from '../lib/gdiscover'
 import { snapOf } from '../lib/places'
 
 const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`
@@ -436,7 +436,9 @@ export const handlers = [
     track(servedByCurated ? 'request_curated' : 'request_uncurated', { best: top[0]?.match, niches: criteria.niches, hood: criteria.hood })
     req.optionIds = [...top.map((r) => r.place.id), ...answers.map((a) => a.placeId)]
       .filter((x, i, arr) => arr.indexOf(x) === i).slice(0, 5)
-    req.optSnaps = snapsFor(req.optionIds)
+    req.optSnaps = snapsFor(req.optionIds, aiNotes.get(req.id))
+    if (limits.basic) req.degraded = 'sem_google'
+    else if (limits.rich) req.degraded = 'sem_confirmacao'
     await db.requests.add(req)
     await db.answers.bulkAdd(answers)
     void authorInfo().then((a) => remote.pushRequest(req, a))
@@ -499,6 +501,18 @@ export const handlers = [
     const detail = await buildDetail(id)
     await latency()
     return detail ? HttpResponse.json(detail) : notFound()
+  }),
+
+  http.post('/api/requests/:id/delete', async ({ params }) => {
+    const id = params.id as string
+    const r = await db.requests.get(id)
+    if (r?.authorId === 'me') void remote.deleteRequestRemote(id)
+    await db.transaction('rw', db.requests, db.answers, db.votes, async () => {
+      await db.requests.delete(id)
+      await db.answers.where('requestId').equals(id).delete()
+      await db.votes.where('requestId').equals(id).delete()
+    })
+    return HttpResponse.json({ ok: true })
   }),
 
   http.post('/api/requests/:id/votes', async ({ params, request }) => {

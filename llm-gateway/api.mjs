@@ -71,6 +71,9 @@ db.exec(`
     id TEXT PRIMARY KEY, device TEXT NOT NULL, text TEXT NOT NULL, tokens TEXT NOT NULL, ai TEXT NOT NULL, final TEXT NOT NULL,
     corrected INTEGER NOT NULL, unmet TEXT NOT NULL, engine TEXT, at INTEGER NOT NULL
   );
+  -- avisos no celular (Web Push): inscrição por aparelho
+  CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, device TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, at INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS ix_push_device ON push_subs(device);
   -- lugar do OSM → place_id do Google (o place_id é o único dado do Google que os termos deixam guardar)
   CREATE TABLE IF NOT EXISTS gmatch (osm_id TEXT PRIMARY KEY, place_id TEXT, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_votes_req ON votes(request_id);
@@ -108,7 +111,14 @@ const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map((x) => str(x,
 function snap(v) {
   if (!Array.isArray(v) || !/^(g-[A-Za-z0-9_-]{5,120}|o-[nwr]\d{1,14})$/.test(String(v[0]))) return null
   const out = [String(v[0]), str(v[1], 80), ['bar', 'restaurante', 'balada', 'evento'].includes(v[2]) ? v[2] : 'bar', str(v[3], 40), list(v[4], 3), int(v[5]), list(v[6], 2), list(v[7], 3)]
-  return v[8] === 'b' ? [...out, 'b'] : out // 'b' = sem curadoria (Google ao vivo)
+  const i = v[9] && typeof v[9] === 'object' ? v[9] : null
+  const info = i ? Object.fromEntries([
+    ...['r', 'c', 'la', 'lo'].map((k) => [k, Number.isFinite(Number(i[k])) && i[k] !== null ? Number(i[k]) : undefined]),
+    ...['o', 'b', 'm', 'g'].map((k) => [k, typeof i[k] === 'boolean' ? i[k] : undefined]),
+    ['n', typeof i.n === 'string' ? i.n.slice(0, 160) : undefined],
+  ].filter(([, x]) => x !== undefined)) : null
+  // 9º = 'b' (sem curadoria, Google ao vivo); 10º = resumo pra quem vota (nota/atributos/motivo da IA)
+  return info ? [...out, v[8] === 'b' ? 'b' : '', info] : v[8] === 'b' ? [...out, 'b'] : out
 }
 
 function isAdmin(req) {
@@ -355,6 +365,13 @@ export function similarExamples(text, k = 3) {
     .map(({ r }) => [r.text, parse(r.final)]).filter(([, f]) => validEx(f))
 }
 
+/* ---------- avisos (o server.mjs pluga o envio em hooks.notify) ---------- */
+export const hooks = { notify: null }
+export const pushSubsOf = (devices) => devices.length ? db.prepare(`SELECT endpoint, p256dh, auth, device FROM push_subs WHERE device IN (${devices.map(() => '?').join(',')})`).all(...devices).map((r) => ({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth }, device: r.device })) : []
+export const dropPushSub = (endpoint) => db.prepare('DELETE FROM push_subs WHERE endpoint = ?').run(endpoint)
+const placeNameIn = (r, placeId) => (parse(r.data)?.places ?? []).find((p) => p[0] === placeId)?.[1]
+function notify(e) { try { hooks.notify?.(e) } catch { /* aviso nunca derruba a API */ } }
+
 function handlePeople(method, path, body, device, now) {
   let m
   if (method === 'GET' && path === '/api/me') {
@@ -440,6 +457,13 @@ export function handleApi(method, path, req, body) {
   }
 
   // eventos aprovados = publicados pra todo mundo (substitui o eventos.json manual)
+  if (write && path === '/api/push/subscribe') {
+    const ep = String(body.endpoint ?? '')
+    if (!/^https:\/\/[^\s]{10,500}$/.test(ep) || !/^[A-Za-z0-9_-]{40,120}$/.test(String(body.keys?.p256dh)) || !/^[A-Za-z0-9_-]{10,40}$/.test(String(body.keys?.auth))) return bad('push')
+    db.prepare('INSERT OR REPLACE INTO push_subs (endpoint, device, p256dh, auth, at) VALUES (?, ?, ?, ?, ?)').run(ep, device, body.keys.p256dh, body.keys.auth, now)
+    return ok({ ok: true })
+  }
+  if (write && path === '/api/push/unsubscribe') { dropPushSub(String(body.endpoint ?? '')); return ok({ ok: true }) }
   if (write && path === '/api/examples') {
     const text = str(body.text, 300).trim()
     if (text.length < 4 || !validEx(body.final) || !validEx(body.ai)) return bad('example')
@@ -497,6 +521,10 @@ export function handleApi(method, path, req, body) {
     if (!value || (kind === 'place' && !RE.place.test(value))) return bad('vote')
     q.vote.run(m[1], device, kind, value, str(body.voter, 40) || 'Alguém', now)
     joinGroupOf(m[1], device, body.voter, body.hue)
+    {
+      const r = q.getReq.get(m[1])
+      if (r && r.author_device !== device) notify({ to: [r.author_device], key: `v-${m[1]}`, title: 'Voto novo no seu rolê', body: `${str(body.voter, 40) || 'Alguém'} votou${kind === 'place' ? ` em ${placeNameIn(r, value) ?? 'uma opção'}` : ` no horário ${value}`}`, url: `pedido/${m[1]}` })
+    }
     return ok({ ok: true })
   }
 
@@ -519,13 +547,28 @@ export function handleApi(method, path, req, body) {
       db.prepare('UPDATE requests SET data = ? WHERE id = ?').run(JSON.stringify(data), m[1])
     }
     joinGroupOf(m[1], device, by, body.hue)
+    if (r.author_device !== device) notify({ to: [r.author_device], key: `s-${m[1]}`, title: 'Sugestão nova no seu rolê', body: `${by} sugeriu ${ps?.[1] ?? 'um lugar'}`, url: `pedido/${m[1]}` })
     return ok({ ok: true, duplicate: !ins.changes })
   }
 
+  if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/delete$/)) && write) {
+    const r = q.getReq.get(m[1])
+    if (!r) return ok({ ok: true })
+    if (r.author_device !== device) return bad('not_author', 403)
+    db.prepare('DELETE FROM votes WHERE request_id = ?').run(m[1])
+    db.prepare('DELETE FROM suggestions WHERE request_id = ?').run(m[1])
+    db.prepare('DELETE FROM requests WHERE id = ?').run(m[1])
+    return ok({ ok: true })
+  }
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/decide$/)) && write) {
     const placeId = str(body.placeId, 60)
     if (!RE.place.test(placeId)) return bad('place')
     const upd = q.decide.run(placeId, body.time ? str(body.time, 20) : null, now, m[1], device)
+    if (upd.changes) {
+      const r = q.getReq.get(m[1])
+      const voters = db.prepare('SELECT DISTINCT device FROM votes WHERE request_id = ? AND device != ?').all(m[1], device).map((x) => x.device)
+      notify({ to: voters, key: `d-${m[1]}`, title: 'Fechou o rolê!', body: `${placeNameIn(r, placeId) ?? 'O lugar foi escolhido'}${body.time ? ` · ${str(body.time, 20)}` : ''}`, url: `r/${m[1]}` })
+    }
     return upd.changes ? ok({ ok: true }) : bad('not_author', 403)
   }
 

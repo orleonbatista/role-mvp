@@ -7,7 +7,7 @@ import { ease, pop } from '../ui/motion'
 import { OCCASIONS, VIBES, nicheLabel, occasionLabel, vibeLabel } from '../lib/labels'
 import { track } from '../lib/track'
 import { isVague, parseRequest } from '../mocks/ranker'
-import { parseText, useCreateRequest } from '../lib/api'
+import { parseText, useCreateRequest, useDeleteRequest } from '../lib/api'
 import { turmaName, useTurmas } from './Turmas'
 import type { Criteria, Occasion, Vibe } from '../lib/types'
 
@@ -26,7 +26,9 @@ export function NewRequest() {
   const nav = useNavigate()
   const [params] = useSearchParams()
   const create = useCreateRequest()
-  const [text, setText] = useState('')
+  const del = useDeleteRequest()
+  const replaces = params.get('substitui')
+  const [text, setText] = useState(params.get('t') ?? '')
   const [parsed, setParsed] = useState<Criteria | null>(null)
   const [occasion, setOccasion] = useState<Occasion | undefined>((params.get('o') as Occasion) || undefined)
   const [group, setGroup] = useState<number | undefined>()
@@ -72,6 +74,8 @@ export function NewRequest() {
     const vague = isVague({ ...now, occasion: occasion ?? now.occasion, vibes: [...now.vibes, ...vibes] })
     if (vague && !force && !clarify) { setClarify(true); track('clarify_shown', { text }); return }
     const { id } = await create.mutateAsync({ text, groupId: turmaId, overrides: { occasion, groupSize: group, vibes: vibes.length ? [...new Set([...(parsed?.vibes ?? []), ...vibes])] : undefined } })
+    // editar = novo pedido no lugar do antigo (a votação recomeça com as opções novas)
+    if (replaces && /^r-[a-z0-9-]{1,24}$/.test(replaces)) await del.mutateAsync(replaces).catch(() => {})
     track('request_created', { vague, clarified: clarify, groupSize: group ?? now.groupSize, occasion: occasion ?? now.occasion, niches: now.niches, unmet })
     nav(`/pedido/${id}`, { replace: true })
   }
@@ -98,8 +102,8 @@ export function NewRequest() {
   )
 
   return (
-    <Page footer={footer}>
-      <TopBar title="Novo pedido" />
+    <Page footer={footer} chrome={create.isPending ? <SearchSteps /> : undefined}>
+      <TopBar title={replaces ? 'Editar pedido' : 'Novo pedido'} />
       <div className="px-5 pt-2">
         {turma && (
           <p className="mb-3 flex items-center gap-2 rounded-full bg-accent/10 px-4 py-2 text-[13px] text-accent">
@@ -199,5 +203,33 @@ function Stepper({ children, onClick }: { children: React.ReactNode; onClick: ()
     <motion.button whileTap={{ scale: 0.88 }} onClick={onClick} className="grid size-11 place-items-center rounded-full bg-white/[0.07] hover:bg-white/[0.1]">
       {children}
     </motion.button>
+  )
+}
+
+/** o que acontece enquanto o pedido é montado (6–9 s): a pessoa vê o trabalho em vez de uma tela parada */
+const STEPS = ['Entendendo o pedido', 'Buscando lugares abertos no Google', 'Conferindo nota, horário e área externa', 'A IA escolhendo as melhores opções']
+function SearchSteps() {
+  const [i, setI] = useState(0)
+  useEffect(() => {
+    const ts = [1600, 3400, 5000].map((ms, k) => setTimeout(() => setI(k + 1), ms))
+    return () => ts.forEach(clearTimeout)
+  }, [])
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-30 grid place-items-center bg-bg/80 px-8 backdrop-blur-md" role="status" aria-live="polite">
+      <div className="w-full max-w-[320px] rounded-[28px] border border-line bg-surface p-5">
+        <p className="font-serif text-[28px] leading-none">Montando o rolê<span className="text-accent">…</span></p>
+        <ul className="mt-5 grid gap-3">
+          {STEPS.map((s, k) => (
+            <li key={s} className={cx('flex items-center gap-3 text-[14px] transition-colors', k <= i ? 'text-ink' : 'text-faint')}>
+              <span className={cx('grid size-5 shrink-0 place-items-center rounded-full border', k < i ? 'border-accent bg-accent text-accent-ink' : k === i ? 'border-accent' : 'border-line')}>
+                {k < i ? <svg viewBox="0 0 12 12" className="size-3" aria-hidden><path d="M2.5 6.2 5 8.5l4.5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                  : k === i ? <motion.span className="size-2 rounded-full bg-accent" animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 1 }} /> : null}
+              </span>
+              {s}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </motion.div>
   )
 }

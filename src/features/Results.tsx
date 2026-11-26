@@ -2,6 +2,9 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { AlertTriangle, Check, Copy, ExternalLink, Heart, MapPinPlus, Send, Share2, Sparkles, Star } from 'lucide-react'
+import { OptionsMap } from './OptionsMap'
+import { PushCard } from './PushCard'
+import { PlacePhoto } from '../ui/PlacePhoto'
 import { AnimatedNumber, Avatar, Button, Cover, EmptyState, Page, Skeleton, StreamText, Tag, TopBar, Typing, cx } from '../ui/primitives'
 import { placeIcon } from '../ui/placeIcon'
 import { track } from '../lib/track'
@@ -13,7 +16,7 @@ import { openStatus } from '../lib/hours'
 import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
 import { ease, spring } from '../ui/motion'
-import { useHelpful, useRequest } from '../lib/api'
+import { useDeleteRequest, useHelpful, useProfile, useRequest } from '../lib/api'
 import { KIND_LABEL, nicheLabel, occasionLabel, priceLabel } from '../lib/labels'
 import type { RequestDetail } from '../lib/types'
 import { isCommunity } from '../mocks/seeds/places'
@@ -22,6 +25,8 @@ export function Results() {
   const { id = '' } = useParams()
   const nav = useNavigate()
   const { data, isLoading, isError } = useRequest(id)
+  const { data: me } = useProfile()
+  const del = useDeleteRequest()
   const [introDone, setIntroDone] = useState(false)
   // lacuna de curadoria: recomendação veio da base (OSM) ou o melhor curado encaixa mal → IA convida a comunidade
   const recs = data?.recommendations ?? []
@@ -90,6 +95,13 @@ export function Results() {
                   {curatedGood ? 'Completei com lugares reais da cidade que ninguém daqui curou ainda (marcados).' : 'A comunidade ainda não curou nada que encaixe bem nisso. Mostrei lugares reais da cidade, sem curadoria: confira antes de ir.'}
                 </p>
               )}
+              {data.request.degraded && (
+                <p className="mt-2 rounded-[12px] bg-amber-300/10 px-3 py-2 text-[12px] text-amber-200/90">
+                  {data.request.degraded === 'sem_google'
+                    ? 'Este celular chegou ao limite de buscas no Google de hoje: usei só o que já estava carregado. Amanhã volta ao normal.'
+                    : 'Limite de confirmações do dia neste celular: nota, horário e área externa não foram conferidos no Google. Abra a ficha de cada lugar pra ver ao vivo.'}
+                </p>
+              )}
               {data.request.criteria.source && (
                 <p className="mt-2 text-[11px] text-faint">
                   {data.request.criteria.source.engine === 'llm'
@@ -112,6 +124,9 @@ export function Results() {
             </AnimatePresence>
           </section>
 
+          <OptionsMap places={recs.map((r) => r.place)} home={me?.home} />
+          {data.request.authorId === 'me' && <PushCard context="autor" text="Quer saber quando a galera votar ou sugerir? A gente avisa no celular." />}
+
           {introDone && gap && (
             <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.6, ease }}
               className="mx-5 mt-5 rounded-[24px] border border-dashed border-accent/40 bg-accent/[0.04] p-4">
@@ -131,6 +146,16 @@ export function Results() {
           <div className="mt-8 px-5 text-center">
             <Link to={`/avaliar/${id}`} className="text-sm text-mute underline decoration-white/20 underline-offset-4 hover:text-ink">Já foi? Conta como foi</Link>
           </div>
+          {data.request.authorId === 'me' && (
+            <div className="mt-6 flex justify-center gap-6 px-5 text-[13px]">
+              <Link to={`/novo?t=${encodeURIComponent(data.request.text)}&substitui=${id}${data.request.groupId ? `&turma=${data.request.groupId}` : ''}`}
+                onClick={() => track('request_edit', { id })} className="inline-flex min-h-11 items-center text-mute hover:text-ink">Editar pedido</Link>
+              <button onClick={async () => {
+                if (!confirm('Apagar este pedido e a votação? Quem tem o link não vai mais conseguir votar.')) return
+                await del.mutateAsync(id); track('request_deleted', { id }); nav('/', { replace: true })
+              }} className="inline-flex min-h-11 items-center text-[#ff8a8a]">Apagar pedido</button>
+            </div>
+          )}
         </>
       )}
 
@@ -150,6 +175,7 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
     <Link to={`/lugar/${p.id}${detail.request.criteria.groupSize >= 6 || detail.request.criteria.occasion === 'aniversario' ? '?grupo=1' : ''}`} className="group block overflow-hidden rounded-[28px] border border-line bg-surface">
       <div className="relative">
         <Cover hue={p.hue} icon={placeIcon(p)} iconSize={64} layoutId={`cover-${p.id}`} className="h-44 w-full" rounded="rounded-none" />
+        <PlacePhoto place={p} enabled={rank <= 3} rounded="rounded-none" w={640} credit="bottom" />
         <span className="absolute left-4 top-4 font-serif text-5xl italic leading-none text-white/90 drop-shadow">{rank}</span>
         {p.curation === 'base' && <span className="absolute bottom-3 left-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] text-ink/90 backdrop-blur-md">sem curadoria · Google Maps</span>}
         {isCommunity(p) && <span className="absolute bottom-3 left-3 rounded-full bg-accent/90 px-2.5 py-1 text-[11px] font-medium text-accent-ink">curado pela comunidade</span>}
