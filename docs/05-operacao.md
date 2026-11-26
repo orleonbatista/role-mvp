@@ -122,6 +122,14 @@ use `/testes` → "URL do gateway".
 - **Uso:** os dados ficam só em memória e servem pra ordenar e justificar ("Área externa (confirmado no Google)", "Aberto sexta (horário do Google)", "Nota 4,8 no Google").
 - **Votação:** 5 opções.
 
+## LLM na nuvem (gateway)
+- **Fila de provedores:** Gemini (`gemini-3.5-flash-lite`, ~2 s) → Groq (`openai/gpt-oss-20b`) → OpenRouter (`openai/gpt-oss-20b:free`) → GPU do PC (Ollama `qwen2.5:7b`). Todos usam a API compatível com OpenAI (`llm-gateway/providers.mjs`).
+- **Falhas:** quem falhar (limite do plano grátis, timeout, JSON inválido) fica 1–2 min fora e a chamada segue pro próximo.
+- **Chaves:** ficam em `llm-gateway/data/llm-keys.json` (pasta fora do git), relido a cada 30 s, então não precisa reiniciar o gateway. Também dá pra mudar `order` e `models` ali.
+- **Gemini:** a chave do AI Studio é "role-gateway", no projeto padrão do Gemini. O plano grátis pode usar os prompts pra treino; isso está no aviso de privacidade. Ao sair do plano grátis (com faturamento ativo), os dados deixam de ser usados.
+- **`/health`:** mostra cada provedor (configurado, em castigo, acertos e falhas).
+- **Sem o PC:** com o gateway na nuvem, basta não pôr `ollama` na ordem.
+
 ## Curadoria da IA sobre os resultados
 - **O que faz:** depois da busca, o ranking separa 8 candidatos. O app manda pro gateway (`POST /pick`) só os fatos verificados de cada um: distância, nota e nº de avaliações do Google, nota da comunidade, área externa, cerveja, drinks, música ao vivo, bom pra grupo, aberto no horário pedido e preço estimado. Vai junto o texto do pedido.
 - **O que a IA devolve:** os 5 melhores e, pra cada um, 1 ou 2 "destaques" de uma lista fechada (mais perto, melhor nota, área externa, música ao vivo, bom pra grupo, aberto no horário…). A escolha da IA soma um bônus ao encaixe do ranking (1º +1,5 … 5º +0,3). Ela ajusta a ordem, mas não tira um lugar muito bom que esqueceu; no teste, escolhendo sozinha, o modelo 7B deixava de fora o lugar de nota 5,0. O app confere cada destaque contra os fatos (inclusive superlativos como "melhor nota" entre os escolhidos) e só então monta a frase de "Por que a IA escolheu". Texto livre do modelo 7B inventava ("tem música ao vivo") e errava comparações.
