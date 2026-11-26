@@ -124,7 +124,7 @@ use `/testes` → "URL do gateway".
 
 ## Curadoria da IA sobre os resultados
 - **O que faz:** depois da busca, o ranking separa 8 candidatos. O app manda pro gateway (`POST /pick`) só os fatos verificados de cada um: distância, nota e nº de avaliações do Google, nota da comunidade, área externa, cerveja, drinks, música ao vivo, bom pra grupo, aberto no horário pedido e preço estimado. Vai junto o texto do pedido.
-- **O que a IA devolve:** os 5 melhores e, pra cada um, 1 ou 2 "destaques" de uma lista fechada (mais perto, melhor nota, área externa, música ao vivo, bom pra grupo, aberto no horário…). O app confere cada destaque contra os fatos (inclusive superlativos como "melhor nota" entre os escolhidos) e só então monta a frase de "Por que a IA escolheu". Texto livre do modelo 7B inventava ("tem música ao vivo") e errava comparações.
+- **O que a IA devolve:** os 5 melhores e, pra cada um, 1 ou 2 "destaques" de uma lista fechada (mais perto, melhor nota, área externa, música ao vivo, bom pra grupo, aberto no horário…). A escolha da IA soma um bônus ao encaixe do ranking (1º +1,5 … 5º +0,3). Ela ajusta a ordem, mas não tira um lugar muito bom que esqueceu; no teste, escolhendo sozinha, o modelo 7B deixava de fora o lugar de nota 5,0. O app confere cada destaque contra os fatos (inclusive superlativos como "melhor nota" entre os escolhidos) e só então monta a frase de "Por que a IA escolheu". Texto livre do modelo 7B inventava ("tem música ao vivo") e errava comparações.
 - **Sem LLM:** fica a ordem do ranking. O motivo fica só em memória, porque usa dados do Google.
 
 ## Aprendizado da IA

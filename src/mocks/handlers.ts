@@ -153,19 +153,24 @@ function noteFrom(ds: string[], f: PickFact, chosen: PickFact[]): string | null 
 
 async function curateWithLLM(req: RoleRequest, cands: Ranked[], profile: Profile | null | undefined): Promise<Ranked[] | null> {
   if (cands.length < 3) return null
-  const out = await pickWithLLM(req.text, cands.map((r, i) => factsOf(r, i, req.criteria, profile)))
-  if (!out?.escolhas.length) return null
   const facts = cands.map((r, i) => factsOf(r, i, req.criteria, profile))
+  const out = await pickWithLLM(req.text, facts)
+  if (!out?.escolhas.length) return null
+  // a IA ajusta a ordem, não substitui o ranking: bônus pela posição na escolha dela (1º +1,5 … 5º +0,3),
+  // somado ao encaixe do ranking (0–10). Um lugar muito bom que ela esqueceu continua competindo.
+  const bonus = new Map<number, number>()
+  out.escolhas.forEach((e, pos) => { if (cands[e.i] && !bonus.has(e.i)) bonus.set(e.i, 1.5 - pos * 0.3) })
+  const dests = new Map(out.escolhas.map((e) => [e.i, e.destaques]))
+  const order = cands.map((r, i) => ({ r, i, s: r.match / 10 + (bonus.get(i) ?? 0) })).sort((a, b) => b.s - a.s)
   const notes = new Map<string, string>()
-  const chosen = out.escolhas.filter((e) => cands[e.i]).map((e) => {
-    const note = noteFrom(e.destaques, facts[e.i], facts.filter((_, j) => out.escolhas.some((x) => x.i === j)))
-    if (note) notes.set(cands[e.i].place.id, note)
-    return { ...cands[e.i], aiNote: note ?? undefined }
+  const result = order.map(({ r, i }) => {
+    // superlativos comparados com TODOS os candidatos (não só os escolhidos)
+    const note = noteFrom(dests.get(i) ?? [], facts[i], facts)
+    if (note) notes.set(r.place.id, note)
+    return { ...r, aiNote: note ?? undefined }
   })
-  if (chosen.length < 3) return null
   aiNotes.set(req.id, notes)
-  // completa com o ranking se a IA escolheu menos de 5
-  return [...chosen, ...cands.filter((r) => !notes.has(r.place.id))]
+  return result
 }
 
 async function authorInfo() {

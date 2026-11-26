@@ -199,7 +199,7 @@ export function pickBody(model: string, pedido: string, cands: PickFact[]) {
     stream: false,
     format: PICK_SCHEMA,
     keep_alive: '30m',
-    options: { temperature: 0.1, num_predict: 360 },
+    options: { temperature: 0, num_predict: 360 },
     messages: [
       { role: 'system', content: PICK_SYSTEM },
       { role: 'user', content: `Pedido: "${pedido}"\nCandidatos:\n${cands.map((c) => JSON.stringify(c)).join('\n')}` },
