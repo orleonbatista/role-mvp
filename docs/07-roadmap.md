@@ -33,6 +33,8 @@ Cada fase só avança quando os critérios da anterior forem cumpridos.
 | Convite da IA quando falta curadoria + modo curador fundador (`/indicar`, `/fundador`) | ✅ |
 | Região por GPS/CEP + base regional OSM no banco do PC; Google ao vivo na ficha | ✅ |
 | Usuários, avaliações da comunidade e turmas no banco; login com Google; aviso de privacidade e "apagar meus dados" | ✅ |
+| Busca só Google, IA na nuvem (Gemini), escolha da IA com motivo, avisos no celular, mapa, fotos, editar/apagar | ✅ |
+| Hospedar gateway + banco fora do PC (Cloudflare Workers + D1 ou Fly.io) e prévia do WhatsApp por votação | ⏭ precisa de conta |
 | **Recrutar 5 a 10 curadores fundadores e curar 50 lugares em 2 ou 3 bairros** | ⏭ agora |
 | Rodada de teste com 3 a 5 grupos reais | ⏭ depois da curadoria inicial |
 

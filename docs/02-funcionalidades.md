@@ -27,6 +27,18 @@ Inventário do MVP (nov/2026). Entre parênteses, a rota da tela.
 - **Apagar meus dados** (Perfil): remove perfil, avaliações, turmas, feedback e métricas do servidor e do celular.
   Nos votos antigos, o nome vira "Alguém".
 
+## Pedido e votação (26/11)
+- **Etapas visíveis enquanto o pedido é montado:** entendendo, buscando no Google, conferindo e a IA escolhendo.
+- **Resultado:**
+  - até 5 opções, cada uma com "Por que a IA escolheu";
+  - foto do Google nos 3 primeiros cards (limite de 15 fotos/dia por celular);
+  - mapa com as opções numeradas e a sua região;
+  - "Editar pedido" (refaz com o texto preenchido e substitui o antigo) e "Apagar pedido".
+- **Votação:** cada opção mostra nota do Google, área externa, música, grupo e o motivo da IA, além do mapa.
+- **Avisos no celular:** o autor recebe quando alguém vota ou sugere; quem votou recebe quando o rolê fecha. No iPhone, só com o app na tela de início.
+- **Limite do dia:** quando o celular atinge o limite de buscas, o resultado avisa em vez de falhar em silêncio.
+- **Cadastro em 2 passos:** (1) nome + região; (2) estilos, vibes opcionais e o aceite.
+
 ## Curadoria
 - **Indicar um lugar** (`/indicar`, pública): busca no catálogo (curados + base real do OSM) e no Google;
   escolhe e escreve como é. A IA marca estilo, vibe e ocasião ("Entendi: …"), a pessoa ajusta e o lugar
