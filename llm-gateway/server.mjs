@@ -3,7 +3,7 @@
 //  - Dados: /api/* (api.mjs, SQLite) com pedidos, votos, sugestões, curadoria e métricas compartilhados entre aparelhos.
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
-import { askBody, moderateBody, moderationRules, ollamaBody } from '../src/mocks/llmPrompt.ts'
+import { askBody, moderateBody, moderationRules, ollamaBody, pickBody } from '../src/mocks/llmPrompt.ts'
 import { adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
 import { geoFromCep, geoReverse } from './geo.mjs'
 
@@ -172,7 +172,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 503, { ok: false, error: 'ollama_offline' }, origin)
     }
   }
-  if (req.method !== 'POST' || (req.url !== '/extract' && req.url !== '/ask')) return send(res, 404, { error: 'not_found' }, origin)
+  if (req.method !== 'POST' || (req.url !== '/extract' && req.url !== '/ask' && req.url !== '/pick')) return send(res, 404, { error: 'not_found' }, origin)
   if (!origin) return send(res, 403, { error: 'origin' }, null)
 
   const ip = String(req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? '?')
@@ -182,6 +182,43 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) { raw += chunk; if (raw.length > 12_000) return send(res, 413, { error: 'too_large' }, origin) }
   let body
   try { body = JSON.parse(raw) } catch { return send(res, 400, { error: 'bad_json' }, origin) }
+
+  if (req.url === '/pick') {
+    // curadoria da IA sobre os candidatos da busca: escolhe e justifica com os fatos recebidos
+    const pedido = String(body.pedido ?? '').trim().slice(0, MAX_TEXT)
+    const cands = Array.isArray(body.cands) ? body.cands.slice(0, 10) : []
+    if (!pedido || cands.length < 2) return send(res, 400, { error: 'bad_pick' }, origin)
+    const clean = cands.map((c, i) => ({
+      i, nome: String(c?.nome ?? '').slice(0, 60), tipo: String(c?.tipo ?? '').slice(0, 40),
+      ...Object.fromEntries(['distancia_km', 'nota_google', 'avaliacoes_google', 'nota_comunidade', 'preco_estimado'].map((k) => [k, Number.isFinite(Number(c?.[k])) && c?.[k] !== null ? Number(c[k]) : null])),
+      ...Object.fromEntries(['area_externa', 'cerveja', 'drinks', 'musica_ao_vivo', 'bom_pra_grupo', 'aberto_no_horario_pedido'].map((k) => [k, typeof c?.[k] === 'boolean' ? c[k] : null])),
+    }))
+    const job = queue.then(async () => {
+      const t0 = Date.now()
+      const r = await fetch(`${OLLAMA}/api/chat`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pickBody(MODEL, pedido, clean)), signal: AbortSignal.timeout(20_000),
+      })
+      if (!r.ok) throw new Error(`ollama ${r.status}`)
+      const j = JSON.parse((await r.json()).message?.content ?? '{}')
+      const seen = new Set()
+      const escolhas = (Array.isArray(j.escolhas) ? j.escolhas : [])
+        .filter((e) => Number.isInteger(e?.i) && e.i >= 0 && e.i < clean.length && !seen.has(e.i) && seen.add(e.i))
+        .slice(0, 5).map((e) => ({ i: e.i, motivo: String(e.motivo ?? '').trim().slice(0, 140) }))
+      return { escolhas, model: MODEL, ms: Date.now() - t0 }
+    })
+    queue = job.catch(() => {})
+    try {
+      const out = await job
+      stats.ok++
+      console.log(`[${new Date().toLocaleTimeString('pt-BR')}] pick ${out.ms}ms  ${ip}  ${out.escolhas.length}/${clean.length}  "${pedido.slice(0, 50)}"`)
+      return send(res, 200, out, origin)
+    } catch (e) {
+      stats.fail++
+      console.warn('falha pick:', e.message)
+      return send(res, 502, { error: 'llm_failed' }, origin)
+    }
+  }
 
   if (req.url === '/ask') {
     // pergunta sobre as opções de uma votação: só fatos de lugares (máx. 6), pergunta curta, resposta curta

@@ -1,21 +1,22 @@
 import { delay, http, HttpResponse } from 'msw'
 import { db } from '../db/db'
 import type {
-  Answer, AnswerDTO, Criteria, DiaryEntry, EventSubmission, Feedback, FeedItem, Lead, Person, Place, PlaceDetail, Profile, RequestDetail, Review,
+  Answer, AnswerDTO, Criteria, Ranked, DiaryEntry, EventSubmission, Feedback, FeedItem, Lead, Person, Place, PlaceDetail, Profile, RequestDetail, Review,
   RoleRequest, Verdict, Vote, VoteTally,
 } from '../lib/types'
 import { confidenceOf, introFor, parseRequest, rank, timeOptions, toExample, unmetFor } from './ranker'
-import { refineWithLLM } from './llm'
+import { pickWithLLM, refineWithLLM } from './llm'
+import type { PickFact } from './llmPrompt'
 import { people } from './seeds/people'
 import { isCurated, placeById, places } from './seeds/places'
 import { KIND_LABEL, nicheLabel, occasionLabel } from '../lib/labels'
-import { DAY_SHORT, kmTo } from '../lib/hours'
+import { DAY_SHORT, isOpenAt, kmBetween, kmTo } from '../lib/hours'
 import { approveLocally, fitOf, isPast, sanitizeDraft } from './extraEvents'
 import * as remote from './remote'
 import { track } from '../lib/track'
 import { moderationRules } from './llmPrompt'
 import { rememberPlace } from './gplaces'
-import { discoverForRequest } from '../lib/gdiscover'
+import { centerOf, discoverForRequest, discoverForTaste } from '../lib/gdiscover'
 import { snapOf } from '../lib/places'
 
 const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`
@@ -100,6 +101,38 @@ function rankLayered(c: Criteria, profile: Profile | null | undefined, exclude =
   return [...good, ...[...cur.filter((r) => r.match < CURATED_OK), ...base].sort((a, b) => b.score - a.score)].slice(0, n)
 }
 
+/* ---------- curadoria da IA sobre os candidatos ---------- */
+const aiNotes = new Map<string, Map<string, string>>() // pedido → lugar → motivo (só em memória: usa dados do Google)
+function factsOf(r: Ranked, i: number, c: Criteria, profile: Profile | null | undefined): PickFact {
+  const p = r.place, L = p.live
+  const known = !p.source || L?.hours
+  let open: boolean | null = null
+  if (c.when && known) {
+    const d = c.when.day, h = c.when.hour
+    open = d === undefined ? [0, 1, 2, 3, 4, 5, 6].some((x) => isOpenAt(p.periods, x, h ?? 21))
+      : h === undefined ? [13, 19, 21, 23].some((x) => isOpenAt(p.periods, d, x)) : isOpenAt(p.periods, d, h)
+  }
+  return {
+    i, nome: p.name, tipo: p.tagline || p.kind, distancia_km: (profile?.home ? kmBetween(profile.home, p) : undefined) ?? null,
+    nota_google: L?.rating ?? null, avaliacoes_google: L?.count ?? null,
+    nota_comunidade: !p.source && p.ratingCount > 0 ? p.rating : isCurated(p) && p.ratingCount > 0 ? p.rating : null,
+    area_externa: L?.outdoor ?? (p.niches.includes('ao-ar-livre') && !p.source ? true : null),
+    cerveja: L?.beer ?? null, drinks: L?.cocktails ?? null, musica_ao_vivo: L?.music ?? null, bom_pra_grupo: L?.groups ?? null,
+    aberto_no_horario_pedido: open, preco_estimado: p.price,
+  }
+}
+async function curateWithLLM(req: RoleRequest, cands: Ranked[], profile: Profile | null | undefined): Promise<Ranked[] | null> {
+  if (cands.length < 3) return null
+  const out = await pickWithLLM(req.text, cands.map((r, i) => factsOf(r, i, req.criteria, profile)))
+  if (!out?.escolhas.length) return null
+  const notes = new Map<string, string>()
+  const chosen = out.escolhas.filter((e) => cands[e.i]).map((e) => { notes.set(cands[e.i].place.id, e.motivo); return { ...cands[e.i], aiNote: e.motivo } })
+  if (chosen.length < 3) return null
+  aiNotes.set(req.id, notes)
+  // completa com o ranking se a IA escolheu menos de 5
+  return [...chosen, ...cands.filter((r) => !notes.has(r.place.id))]
+}
+
 async function authorInfo() {
   const p = await getProfile()
   return { name: p?.name ?? 'Alguém', hue: p?.hue ?? 200 }
@@ -118,7 +151,11 @@ async function buildDetail(id: string): Promise<RequestDetail | null> {
   const opts = (request.optionIds ?? []).filter((x) => !fromAnswers.has(x) && x !== pinned?.id).map((x) => placeById.get(x)).filter((p): p is Place => !!p)
   const ranked = pinned
     ? [rank([pinned], request.criteria)[0], ...(opts.length ? rank(opts, request.criteria, who) : rankLayered(request.criteria, who, new Set([pinned.id]), 2))]
-    : opts.length ? rank(opts, request.criteria, who).sort((a, b) => b.score - a.score) : rankLayered(request.criteria, who, new Set(), 5)
+    : opts.length
+      ? (request.aiPicked
+        ? opts.map((p) => ({ ...rank([p], request.criteria, who)[0], aiNote: aiNotes.get(request.id)?.get(p.id) }))
+        : rank(opts, request.criteria, who).sort((a, b) => b.score - a.score))
+      : rankLayered(request.criteria, who, new Set(), 5)
   const now = Date.now()
   const visible = all.filter((a) => a.visibleAt <= now).sort((a, b) => b.helpful - a.helpful || a.createdAt - b.createdAt)
   const helpfulIds = new Set((await db.helpful.toArray()).map((h) => h.id))
@@ -168,7 +205,8 @@ export const handlers = [
   http.get('/api/for-you', async () => {
     const profile = await getProfile()
     const c: Criteria = { groupSize: 2, niches: [], vibes: [], tags: [], unmet: [] }
-    await latency()
+    // abre a Home já com lugares abertos perto, do gosto: espera a descoberta no Google (mesma busca da abertura, sem repetir)
+    if (profile?.onboarded) await Promise.race([discoverForTaste(centerOf(profile), profile.niches).catch(() => 0), delay(8000)])
     // curados primeiro (gosto + perto); se ainda não há curadoria suficiente, completa com lugares reais
     // num raio de 5 km que batem com o gosto (estilo), marcados "sem curadoria" no card
     const near = (p: Place) => kmTo(profile, p)
@@ -347,8 +385,11 @@ export const handlers = [
       times: timeOptions(criteria), groupId: /^t-[a-z0-9]{10}$/.test(body.groupId ?? '') ? body.groupId : undefined,
     }
     const answers = profile?.demoMode ? simulateAnswers(req, profile) : []
-    // snapshot das opções de voto: top 3 da IA + indicações dos curadores
-    const top = rankLayered(criteria, profile, new Set(), 5)
+    // candidatos pelo ranking (8) → a IA lê os fatos junto com o pedido, escolhe e justifica os 5 melhores
+    let top = rankLayered(criteria, profile, new Set(), 8)
+    const picked = await curateWithLLM(req, top, profile)
+    if (picked) { top = picked; req.aiPicked = true }
+    top = top.slice(0, 5)
     // métrica-chave da curadoria: pedido atendido com lugar curado (encaixe bom) ou caiu na base
     const servedByCurated = top.some((r) => isCurated(r.place) && r.match >= CURATED_OK)
     track(servedByCurated ? 'request_curated' : 'request_uncurated', { best: top[0]?.match, niches: criteria.niches, hood: criteria.hood })

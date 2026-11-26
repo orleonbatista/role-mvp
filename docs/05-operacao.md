@@ -122,6 +122,11 @@ use `/testes` → "URL do gateway".
 - **Uso:** os dados ficam só em memória e servem pra ordenar e justificar ("Área externa (confirmado no Google)", "Aberto sexta (horário do Google)", "Nota 4,8 no Google").
 - **Votação:** 5 opções.
 
+## Curadoria da IA sobre os resultados
+- **O que faz:** depois da busca, o ranking separa 8 candidatos. O app manda pro gateway (`POST /pick`) só os fatos verificados de cada um: distância, nota e nº de avaliações do Google, nota da comunidade, área externa, cerveja, drinks, música ao vivo, bom pra grupo, aberto no horário pedido e preço estimado. Vai junto o texto do pedido.
+- **O que a IA devolve:** os até 5 melhores, com uma frase de motivo cada, que aparece como "Por que a IA escolheu". Ela descarta quem contraria requisito explícito e não pode inventar nada fora da lista.
+- **Sem LLM:** fica a ordem do ranking. O motivo fica só em memória, porque usa dados do Google.
+
 ## Aprendizado da IA
 - **O que guarda:** cada pedido salva no banco (`examples`) o que a IA entendeu e o que ficou depois dos chips corrigidos, no formato da LLM, com o trecho exato do texto.
 - **Como usa:** o gateway busca até 3 pedidos parecidos (palavras em comum), priorizando os corrigidos por gente, e coloca como exemplos no prompt. A IA melhora sem precisar treinar.

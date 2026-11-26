@@ -145,3 +145,57 @@ export function moderationRules(name: string, comment: string): string | null {
   if (comment.length > 20 && comment === comment.toUpperCase() && /[A-Z]{12,}/.test(comment)) return 'texto todo em maiúsculas'
   return null
 }
+
+/* ---------- escolha das melhores opções (curadoria da IA sobre os resultados da busca) ---------- */
+/** candidato: só fatos verificados (Google ao vivo ou comunidade); null = não se sabe */
+export interface PickFact {
+  i: number
+  nome: string
+  tipo: string
+  distancia_km: number | null
+  nota_google: number | null
+  avaliacoes_google: number | null
+  nota_comunidade: number | null
+  area_externa: boolean | null
+  cerveja: boolean | null
+  drinks: boolean | null
+  musica_ao_vivo: boolean | null
+  bom_pra_grupo: boolean | null
+  aberto_no_horario_pedido: boolean | null
+  preco_estimado: number
+}
+
+export const PICK_SYSTEM = `Você é o curador do app rolê. Recebe o pedido de uma pessoa e uma lista de lugares candidatos,
+cada um só com FATOS verificados (null = não se sabe). Escolha os até 5 que melhor atendem AO PEDIDO, nesta ordem de prioridade:
+1) o que o pedido exige explicitamente (ex.: área externa, música ao vivo, cerveja, aberto no horário, distância);
+2) o clima e a ocasião que o pedido sugere (date, grupo grande, sozinho, barato, animado);
+3) qualidade: nota alta com muitas avaliações vale mais que nota alta com poucas.
+Descarte quem contraria um requisito explícito (ex.: area_externa=false quando o pedido quer ao ar livre; aberto_no_horario_pedido=false).
+Para cada escolhido escreva "motivo": UMA frase curta (até 14 palavras), em português do Brasil, ligando o lugar ao pedido,
+citando só fatos da lista. Nunca invente (cardápio, preço exato, ambiente, música) nem repita o nome do lugar.
+Responda JSON {"escolhas": [{"i": número do candidato, "motivo": "..."}]}.`
+
+export const PICK_SCHEMA = {
+  type: 'object',
+  properties: {
+    escolhas: {
+      type: 'array', maxItems: 5,
+      items: { type: 'object', properties: { i: { type: 'integer' }, motivo: { type: 'string' } }, required: ['i', 'motivo'] },
+    },
+  },
+  required: ['escolhas'],
+}
+
+export function pickBody(model: string, pedido: string, cands: PickFact[]) {
+  return {
+    model,
+    stream: false,
+    format: PICK_SCHEMA,
+    keep_alive: '30m',
+    options: { temperature: 0.1, num_predict: 360 },
+    messages: [
+      { role: 'system', content: PICK_SYSTEM },
+      { role: 'user', content: `Pedido: "${pedido}"\nCandidatos:\n${cands.map((c) => JSON.stringify(c)).join('\n')}` },
+    ],
+  }
+}

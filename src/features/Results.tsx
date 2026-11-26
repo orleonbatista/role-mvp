@@ -175,6 +175,11 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
               <p className="mt-1.5 text-xs text-mute">{KIND_LABEL[p.kind]} · {p.hood} · {priceLabel(p.price)} · até {p.capacity} pessoas</p>
               <p className={cx('mt-1 text-[11px]', openStatus(p).open ? 'text-accent' : 'text-faint')}>{p.kind === 'evento' ? p.when : openStatus(p).label}</p>
             </>}
+        {r.aiNote && (
+          <p className="mt-3 flex items-start gap-2 rounded-[14px] bg-accent/[0.07] px-3 py-2 text-[13px] leading-snug text-ink/90">
+            <Sparkles size={13} className="mt-0.5 shrink-0 text-accent" /><span><b className="font-medium text-accent">Por que a IA escolheu:</b> {r.aiNote}</span>
+          </p>
+        )}
         <ul className="mt-3.5 grid gap-2">
           {r.reasons.map((s, i) => (
             <motion.li key={s} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.08, duration: 0.5, ease }} className="flex items-start gap-2 text-[13px] text-ink/85">

@@ -110,6 +110,8 @@ export interface RoleRequest {
   times?: string[]
   /** pedido criado a partir de um convite de evento: o evento fica fixo como 1ª opção */
   eventId?: string
+  /** a IA escolheu e ordenou as opções (a ordem de optionIds é a dela) */
+  aiPicked?: boolean
   /** turma (grupo de quem votou junto) — reaproveitada em "novo rolê com essa turma" */
   groupId?: string
   /** autor quando o pedido veio de outro aparelho via link */
@@ -160,6 +162,8 @@ export interface Ranked {
   reasons: string[]
   /** alertas honestos ("fecha às 23h", "não tem opção vegana") */
   warnings: string[]
+  /** por que a IA escolheu este lugar pra este pedido (curadoria da LLM sobre os fatos) */
+  aiNote?: string
 }
 
 export interface TrackEvent { id: string; name: string; at: number; path: string; props?: Record<string, unknown> }

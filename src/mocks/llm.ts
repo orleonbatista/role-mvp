@@ -1,5 +1,5 @@
 import type { Criteria, Occasion, Tag } from '../lib/types'
-import { ALL, NICHES, OCCS, TAGS, VIBES, askBody, ollamaBody, type PlaceFact } from './llmPrompt'
+import { pickBody, type PickFact, ALL, NICHES, OCCS, TAGS, VIBES, askBody, ollamaBody, type PlaceFact } from './llmPrompt'
 
 /**
  * IA híbrida OPCIONAL: um LLM extrai critérios estruturados do texto; o ranking continua
@@ -183,6 +183,33 @@ export async function askPollLLM(question: string, pedido: string, facts: PlaceF
   } catch (e) {
     if (!DEV_URL) downUntil = Date.now() + 60_000
     console.warn('[rolê] pergunta sem LLM, usando regras:', e)
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** curadoria da IA sobre os candidatos: devolve a ordem escolhida e um motivo por lugar (ou null sem LLM) */
+export async function pickWithLLM(pedido: string, cands: PickFact[]): Promise<{ escolhas: { i: number; motivo: string }[]; ms: number } | null> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 14000)
+  const t0 = performance.now()
+  try {
+    if (DEV_URL) {
+      const res = await fetch(`${DEV_URL}/api/chat`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pickBody(DEV_MODEL!, pedido, cands)) })
+      if (!res.ok) throw new Error(`ollama ${res.status}`)
+      const j = JSON.parse((await res.json()).message?.content ?? '{}')
+      return { escolhas: Array.isArray(j.escolhas) ? j.escolhas : [], ms: Math.round(performance.now() - t0) }
+    }
+    if (Date.now() < downUntil) return null
+    const c = await gatewayConfig()
+    if (!c?.enabled || !c.url) return null
+    const res = await fetch(`${c.url}/pick`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedido, cands }) })
+    if (!res.ok) throw new Error(`gateway ${res.status}`)
+    const j = await res.json()
+    return { escolhas: j.escolhas ?? [], ms: Math.round(performance.now() - t0) }
+  } catch (e) {
+    console.warn('[rolê] escolha sem LLM, usando o ranking:', e)
     return null
   } finally {
     clearTimeout(timer)

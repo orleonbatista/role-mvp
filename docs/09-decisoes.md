@@ -65,3 +65,6 @@ Formato curto: **decisão**, **por quê**, **trade-off**.
     (1.000 grátis/mês), com limite por aparelho.
 26. **IA aprende por exemplos, não por treino.** Os pedidos confirmados viram exemplos no prompt (busca por
     similaridade). Melhora já, sem GPU extra. Ajuste fino só com volume.
+27. **A IA escolhe sobre fatos, não sobre texto livre.** A LLM recebe só campos verificados (null = não se sabe) e
+    escreve o motivo citando esses campos. Assim a escolha considera o pedido inteiro (requisitos, clima, ocasião),
+    sem inventar ambiente ou cardápio. *Trade-off:* +3–6 s por pedido na GPU do PC.

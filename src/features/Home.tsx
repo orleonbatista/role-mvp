@@ -63,6 +63,7 @@ export function Home() {
 
       <section className="mt-9">
         <SectionTitle aside={<span className="text-xs text-faint">seu gosto · até 5 km</span>}>Pra você</SectionTitle>
+        {forYou.isLoading && <p className="mb-3 px-5 text-[12px] text-faint">Buscando lugares abertos perto de você que combinam com seu gosto…</p>}
         {forYou.data?.length === 0 && (
           <Link to="/fundador" className="mx-5 block rounded-[24px] border border-dashed border-accent/40 bg-accent/[0.05] p-5">
             <p className="font-serif text-[26px] leading-none">O rolê está começando<span className="text-accent">.</span></p>
@@ -75,7 +76,7 @@ export function Home() {
           <p className="mb-3 px-5 text-[12px] text-faint">Lugares reais perto de você que combinam com seu gosto. Os marcados “sem curadoria” ninguém da comunidade avaliou ainda — <Link to="/fundador" className="text-accent">conhece algum? indique</Link>.</p>
         )}
         <div className="no-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1">
-          {forYou.isLoading && [0, 1].map((i) => <Skeleton key={i} className="h-[260px] w-[220px] shrink-0 rounded-[28px]" />)}
+          {forYou.isLoading && [0, 1, 2].map((i) => <Skeleton key={i} className="h-[260px] w-[220px] shrink-0 rounded-[28px]" />)}
           {forYou.data?.map((r, i) => (
             <motion.div
               key={r.place.id}
