@@ -103,7 +103,7 @@ export function Onboarding() {
             {step === 0 && <Welcome onGoogle={onGoogle} />}
             {step === 1 && (
               <>
-                <h1 className="font-serif text-[44px] leading-[0.95] tracking-tight">Como a galera<br /><em className="text-accent">te chama?</em></h1>
+                <h1 className="font-serif text-[44px] leading-[0.95] tracking-tight">De onde você<br /><em className="text-accent">sai pro rolê?</em></h1>
 <Region home={home} setHome={setHome} hood={hood} setHood={(h) => { setHood(h); setHoodPicked(true) }} />
                 <input
                   enterKeyHint="done"
