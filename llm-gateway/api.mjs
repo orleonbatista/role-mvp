@@ -190,6 +190,19 @@ function peopleStats() {
   }
 }
 
+/** chamadas ao Google por SKU (eventos google_call dos aparelhos), no mês e hoje (UTC, como o Google cobra) */
+function apiStats(events) {
+  const d = new Date(), m0 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1), t0 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  const month = {}, today = {}
+  for (const e of events) {
+    if (e.name !== 'google_call' || e.at < m0) continue
+    const sku = parse(e.props)?.sku ?? '?'
+    month[sku] = (month[sku] ?? 0) + 1
+    if (e.at >= t0) today[sku] = (today[sku] ?? 0) + 1
+  }
+  return { month, today }
+}
+
 function stats() {
   const events = db.prepare('SELECT device, name, src, path, props, at FROM events ORDER BY at').all()
   const counts = {}
@@ -201,7 +214,7 @@ function stats() {
   }
   const devices = new Set(events.map((e) => e.device)).size
   return {
-    counts, total: events.length, devices, bySrc, people: peopleStats(),
+    counts, total: events.length, devices, bySrc, people: peopleStats(), apis: apiStats(events),
     firstAt: events[0]?.at, lastAt: events[events.length - 1]?.at,
     recent: events.slice(-30).reverse().map((e) => ({ ...e, props: parse(e.props) ?? {} })),
     feedback: db.prepare('SELECT data, at FROM feedback ORDER BY at DESC LIMIT 100').all().map((f) => ({ ...parse(f.data), at: f.at })),

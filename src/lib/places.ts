@@ -1,3 +1,4 @@
+import { track } from './track'
 import type { Niche, Occasion, OpenPeriod, Place, PlaceKind, Vibe } from './types'
 import { HOODS } from './labels'
 import { parseRequest } from '../mocks/ranker'
@@ -121,6 +122,7 @@ export async function searchGoogle(query: string): Promise<PlacesResult> {
       signal: AbortSignal.timeout(8000),
     })
     spend()
+    track('google_call', { sku: 'text_pro' })
     if (r.status === 429) return { ok: false, reason: 'limite_dia' }
     if (!r.ok) return { ok: false, reason: 'erro' }
     const j = (await r.json()) as { places?: GPlace[] }

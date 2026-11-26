@@ -1,3 +1,4 @@
+import { apiBase } from '../mocks/remote'
 import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { Cpu, Database, Download, MessageSquareHeart, Store } from 'lucide-react'
@@ -182,6 +183,7 @@ export function TestesPage() {
           : <>Dados deste aparelho{data.firstAt ? ` desde ${new Date(data.firstAt).toLocaleDateString('pt-BR')}` : ''} · {data.total} eventos.{!canGlobal && ' Com o backend no ar e a chave da curadoria, aqui aparecem todos os aparelhos.'}</>}
       </p>
 
+      {canGlobal && global?.apis && <ApisCard apis={global.apis} />}
       <BackendCard />
       <LLMCard />
       <DemoCard />
@@ -310,5 +312,55 @@ export function TestesPage() {
         </div>
       </section>
     </Page>
+  )
+}
+
+/* uso das APIs no mês (soma de todos os aparelhos) contra a franquia grátis do Google, e a fila de IA */
+const SKUS: [string, string, number][] = [
+  ['text_pro', 'Busca (Text Search Pro)', 5000], ['text_ent_atm', 'Busca com confirmação (Enterprise+Atmosphere)', 1000],
+  ['details_ent', 'Ficha ao vivo (Details Enterprise)', 1000], ['details_ent_atm', 'Ficha de grupo (Details Ent.+Atmosphere)', 1000],
+  ['photo', 'Fotos', 1000], ['static_map', 'Mapa das opções (Static Maps)', 10000],
+]
+function ApisCard({ apis }: { apis: { month: Record<string, number>; today: Record<string, number> } }) {
+  const [llm, setLlm] = useState<{ provider: string; configured: boolean; model: string; coolingDown: boolean; ok: number; fail: number }[] | null>(null)
+  useEffect(() => {
+    apiBase().then((b) => { if (b) fetch(`${b}/health`).then((r) => r.json()).then((j) => setLlm(j.providers ?? null)).catch(() => {}) })
+  }, [])
+  const day = new Date().getUTCDate(), days = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 0)).getUTCDate()
+  return (
+    <section className="mt-7">
+      <SectionTitle aside={<span className="text-xs text-faint">mês atual · todos os aparelhos</span>}>APIs e limites</SectionTitle>
+      <div className="mx-5 grid gap-3 rounded-[20px] border border-line p-4">
+        {SKUS.map(([k, label, cap]) => {
+          const n = apis.month[k] ?? 0
+          const proj = Math.round((n / Math.max(1, day)) * days) // ritmo atual projetado pro mês
+          const pct = Math.min(100, (n / cap) * 100)
+          return (
+            <div key={k}>
+              <div className="flex items-baseline justify-between gap-2 text-[13px]">
+                <span className="text-ink/85">{label}</span>
+                <span className={proj > cap ? 'text-amber-300' : 'text-mute'}>{n} / {cap.toLocaleString('pt-BR')}{apis.today[k] ? ` · hoje ${apis.today[k]}` : ''}</span>
+              </div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className={`h-full ${pct > 80 ? 'bg-amber-300' : 'bg-accent'}`} style={{ width: `${pct}%` }} /></div>
+              {proj > cap && <p className="mt-1 text-[11px] text-amber-300">No ritmo atual passa da franquia grátis (~{proj} no mês).</p>}
+            </div>
+          )
+        })}
+        <p className="text-[11px] text-faint">Conta pelo que os aparelhos registram (pode faltar quem abriu sem o servidor no ar). O número oficial e as cotas diárias ficam no Google Cloud → APIs e serviços → Métricas/Cotas.</p>
+        <div className="border-t border-line pt-3">
+          <p className="mb-2 text-[13px] text-ink/85">IA — fila de provedores (desde o último reinício do gateway)</p>
+          {!llm && <p className="text-[12px] text-faint">carregando…</p>}
+          {llm?.map((p) => (
+            <p key={p.provider} className="flex items-center gap-2 text-[12px]">
+              <span className={`size-2 rounded-full ${!p.configured ? 'bg-white/20' : p.coolingDown ? 'bg-amber-300' : 'bg-accent'}`} />
+              <span className="w-24 text-ink/85">{p.provider}</span>
+              <span className="flex-1 truncate text-mute">{p.configured ? p.model : 'sem chave'}</span>
+              <span className="text-mute">{p.ok} ok · {p.fail} falha</span>
+            </p>
+          ))}
+          <p className="mt-2 text-[11px] text-faint">Limites grátis: Gemini por minuto/dia no AI Studio (aistudio.google.com → Uso); Groq e OpenRouter nos painéis deles.</p>
+        </div>
+      </div>
+    </section>
   )
 }

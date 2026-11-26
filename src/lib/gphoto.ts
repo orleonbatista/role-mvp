@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { Place } from './types'
+import { track } from './track'
 
 /* Foto do Google nos cards: a referência vem grátis na busca; baixar a imagem conta na franquia de fotos
    (1.000/mês). Guarda por aparelho: 15 fotos/dia; só memória (o endereço final da foto é temporário). */
@@ -12,6 +13,7 @@ async function photoUrl(name: string, w: number): Promise<string | null> {
   if (!KEY || used() >= DAILY) return null
   try {
     localStorage.setItem(k(), String(used() + 1))
+    track('google_call', { sku: 'photo' })
     const r = await fetch(`https://places.googleapis.com/v1/${name}/media?maxWidthPx=${w}&skipHttpRedirect=true&key=${KEY}`, { signal: AbortSignal.timeout(8000) })
     return r.ok ? ((await r.json()) as { photoUri?: string }).photoUri ?? null : null
   } catch { return null }

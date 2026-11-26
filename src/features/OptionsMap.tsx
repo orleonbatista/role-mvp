@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import type { Home, Place } from '../lib/types'
+import { track } from '../lib/track'
 
 /* Mapa estático (Maps Static API: 10 mil grátis/mês) com as opções numeradas e a região de quem pediu.
    Uma imagem só, sem script do Google Maps; tocar abre a 1ª opção no Maps. */
@@ -10,7 +12,9 @@ const STYLE = [
 
 export function OptionsMap({ places, home }: { places: Place[]; home?: Pick<Home, 'lat' | 'lng'> }) {
   const pts = places.filter((p) => p.lat != null && p.lng != null).slice(0, 6)
-  if (!KEY || pts.length < 2) return null
+  const show = !!KEY && pts.length >= 2
+  useEffect(() => { if (show) track('google_call', { sku: 'static_map' }) }, [show])
+  if (!show) return null
   const marks = pts.map((p) => `markers=${encodeURIComponent(`color:0xc6ff3d|label:${places.indexOf(p) + 1}|${p.lat!.toFixed(5)},${p.lng!.toFixed(5)}`)}`).join('&')
   const me = home ? `&markers=${encodeURIComponent(`size:small|color:0x7c5cff|${home.lat},${home.lng}`)}` : ''
   const src = `https://maps.googleapis.com/maps/api/staticmap?size=600x260&scale=2&language=pt-BR&${STYLE}&${marks}${me}&key=${KEY}`

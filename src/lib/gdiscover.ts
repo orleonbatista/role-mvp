@@ -2,6 +2,7 @@ import type { Criteria, Home, Niche, Place } from './types'
 import { FIELDS, toPlace } from './places'
 import { hoodCoord } from './hours'
 import { registerPlace } from '../mocks/seeds/places'
+import { track } from './track'
 
 /* Descoberta só pelo Google (Text Search, campos Pro: 5.000 grátis/mês; cota diária no Google Cloud).
    Só entram lugares em funcionamento (businessStatus OPERATIONAL). Nada é salvo: os resultados ficam em memória
@@ -36,6 +37,7 @@ export async function discover(query: string, center: { lat: number; lng: number
     done.set(ck, (async () => {
       try {
         spend()
+        track('google_call', { sku: 'text_pro' })
         const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': KEY, 'X-Goog-FieldMask': FIELDS },
@@ -124,6 +126,7 @@ export async function discoverForRequest(c: Criteria, home?: Home, text = '') {
   done.set(ck, (async () => {
     try {
       try { localStorage.setItem(richKey(), String(richUsed() + 1)) } catch { /* */ }
+      track('google_call', { sku: 'text_ent_atm' })
       const dLa = radiusKm / 111, dLo = radiusKm / 102
       const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
         method: 'POST',

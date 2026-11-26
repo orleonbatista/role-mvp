@@ -1,4 +1,5 @@
 import type { Place } from './types'
+import { track } from './track'
 
 /* Google ao vivo na ficha do lugar (docs/10-plano-google.md).
    Nada do que vem daqui é salvo — fica só em memória enquanto o app está aberto. O único dado guardado é o
@@ -73,6 +74,7 @@ export async function liveInfo(p: Place, opts: { group?: boolean } = {}): Promis
     const pid = await resolvePlaceId(p)
     if (!pid) return { ok: false, reason: 'nao_achou' }
     spend()
+    track('google_call', { sku: opts.group ? 'details_ent_atm' : 'details_ent' })
     const r = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(pid)}?languageCode=pt-BR`, {
       headers: { 'X-Goog-Api-Key': KEY, 'X-Goog-FieldMask': [...BASIC, ...(opts.group ? GROUP : [])].join(',') },
       signal: AbortSignal.timeout(8000),
@@ -89,6 +91,7 @@ export async function liveInfo(p: Place, opts: { group?: boolean } = {}): Promis
     let photoUrl: string | undefined
     if (ph) {
       try {
+        track('google_call', { sku: 'photo' })
         const pr = await fetch(`https://places.googleapis.com/v1/${ph.name}/media?maxWidthPx=800&skipHttpRedirect=true&key=${KEY}`, { signal: AbortSignal.timeout(8000) })
         if (pr.ok) photoUrl = ((await pr.json()) as { photoUri?: string }).photoUri
       } catch { /* sem foto */ }
