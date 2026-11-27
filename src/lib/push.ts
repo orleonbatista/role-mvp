@@ -35,3 +35,14 @@ export async function enablePush(context: string): Promise<PushState> {
   const ok = await pushSubscribe(sub.toJSON())
   return ok ? 'on' : 'off'
 }
+
+/** se o navegador já tem inscrição, reenvia ao servidor (que pode tê-la perdido: dados apagados, aparelho trocado,
+ *  envio que falhou). Antes o app achava que estava "ligado" e o servidor não tinha pra quem mandar. */
+export async function resyncPush() {
+  try {
+    if (!('serviceWorker' in navigator) || Notification.permission !== 'granted') return
+    const reg = await navigator.serviceWorker.getRegistration(import.meta.env.BASE_URL)
+    const sub = await reg?.pushManager.getSubscription()
+    if (sub) await pushSubscribe(sub.toJSON())
+  } catch { /* sem suporte */ }
+}

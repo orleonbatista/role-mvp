@@ -56,6 +56,7 @@ async function boot() {
     const r = await import('./mocks/remote')
     if (!(await r.apiBase(synced ? false : true))) return
     await r.ensureSession()
+    void import('./lib/push').then((m) => m.resyncPush())
     const local = Number(localStorage.getItem('role.profileEpoch') ?? 0)
     if (r.serverEpoch > local) {
       localStorage.setItem('role.profileEpoch', String(r.serverEpoch))
