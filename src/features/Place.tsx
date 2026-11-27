@@ -1,3 +1,4 @@
+import { SaveToList } from './Social'
 import { PlacePhoto } from '../ui/PlacePhoto'
 import { motion, useScroll, useTransform } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -186,6 +187,7 @@ export function PlacePage() {
             )}
           </div>
 
+          <div className="mt-6"><SaveToList place={place} /></div>
           {place.kind !== 'evento' && <VenueSection place={place} />}
 
           <h2 className="mb-3 mt-9 text-[13px] uppercase tracking-[0.14em] text-mute">Quem foi</h2>
@@ -200,8 +202,8 @@ export function PlacePage() {
             {cr?.items.filter((r) => !r.mine).map((r, i) => (
               <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06, duration: 0.5, ease }} className="rounded-[20px] bg-surface p-4">
                 <div className="flex items-center gap-2">
-                  <Avatar name={r.name} hue={r.hue ?? 200} size={24} />
-                  <span className="text-[13px]">{r.name}</span>
+                  <Link to={`/u/${r.pid}`} className="flex items-center gap-2"><Avatar name={r.name} hue={r.hue ?? 200} size={24} />
+                  <span className="text-[13px]">{r.name}</span></Link>
                   <span className="ml-auto text-xs text-mute">{VERDICT_LABEL[r.verdict]} · {timeAgo(r.at)}</span>
                   {r.note && <ReportButton kind="review" id={r.id} />}
                 </div>

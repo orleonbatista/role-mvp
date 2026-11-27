@@ -1,3 +1,4 @@
+import type { Place as PlaceT } from '../lib/types'
 import type { EventDraft, EventSubmission, Feedback, Lead, Profile, Review, RoleRequest, TrackEvent } from '../lib/types'
 import { db } from '../db/db'
 import { gatewayConfig } from './llm'
@@ -349,10 +350,10 @@ export const googleLogin = (credential: string) => call<GoogleLogin>('POST', '/a
 export const deleteMe = () => call<{ ok: boolean }>('POST', '/api/me/delete', {}, { timeout: 8000 })
 export const pushPlaceReview = (r: Review & { name: string; hue: number; placeName: string; place?: unknown }) =>
   call<{ ok: boolean; status: string }>('POST', '/api/reviews', { id: r.id, placeId: r.placeId, requestId: r.requestId, verdict: r.verdict, note: r.note, name: r.name, hue: r.hue, placeName: r.placeName, place: r.place, at: r.createdAt }, { timeout: 12000 })
-export interface CommunityReviews { score: number | null; count: number; items: { id: string; name: string; hue: number; verdict: NonNullable<Review['verdict']>; note: string; at: number; mine: boolean; pending: boolean }[] }
+export interface CommunityReviews { score: number | null; count: number; items: { id: string; name: string; hue: number; verdict: NonNullable<Review['verdict']>; note: string; at: number; mine: boolean; pending: boolean; pid: string }[] }
 export const placeReviews = (id: string) => call<CommunityReviews>('GET', `/api/places/${encodeURIComponent(id)}/reviews`, undefined, { timeout: 4000 })
 export const ratings = () => call<Record<string, [number, number]>>('GET', '/api/ratings', undefined, { timeout: 4000 })
-export interface Turma { id: string; name: string | null; mine: boolean; updatedAt: number; members: { name: string; hue: number; me: boolean }[]; requests: { id: string; text: string; createdAt: number; decided: boolean }[] }
+export interface Turma { id: string; name: string | null; mine: boolean; updatedAt: number; members: { name: string; hue: number; me: boolean; pid?: string }[]; requests: { id: string; text: string; createdAt: number; decided: boolean }[] }
 export const myGroups = () => call<Turma[]>('GET', '/api/groups', undefined, { timeout: 4000 })
 export const renameGroup = (id: string, name: string) => call('POST', `/api/groups/${id}/name`, { name })
 export const leaveGroup = (id: string) => call('POST', `/api/groups/${id}/leave`, {})
@@ -367,7 +368,7 @@ export const pushKey = () => call<{ key: string }>('GET', '/api/push/key', undef
 export const pushSubscribe = (sub: PushSubscriptionJSON) => call<{ ok: boolean }>('POST', '/api/push/subscribe', sub)
 
 /* ---------- denúncias ---------- */
-export type ReportKind = 'review' | 'message' | 'suggestion' | 'photo' | 'placephoto'
+export type ReportKind = 'review' | 'message' | 'suggestion' | 'photo' | 'placephoto' | 'chat'
 export const report = (kind: ReportKind, id: string, reason: string) => call('POST', '/api/reports', { kind, id, reason }).then(Boolean)
 export interface OpenReport { kind: ReportKind; id: string; count: number; reasons: string[]; at: number; who: string; text: string }
 export const openReports = () => call<OpenReport[]>('GET', '/api/admin/reports', undefined, { admin: true, timeout: 5000 })
@@ -407,3 +408,25 @@ export async function placePhotos(pid: string): Promise<OwnPhoto[]> {
 export const uploadPlacePhoto = (pid: string, dataUrl: string) => call<{ ok: boolean; id: string }>('POST', `/api/places/${encodeURIComponent(pid)}/photos`, { data: dataUrl }, { timeout: 30_000 })
 export const allPlacePhotos = (pid: string) => call<{ id: string; source: string; score: number | null; reason: string | null; status: string }[]>('GET', `/api/places/${encodeURIComponent(pid)}/photos/all`)
 export const deletePlacePhoto = (id: string) => call('POST', `/api/place-photos/${id}/delete`, {}).then(Boolean)
+
+/* ---------- rede social ---------- */
+export interface Rep { points: number; level: string; reviews: number; photos: number; closed: number }
+export interface PersonCard { pid: string; name: string; hue: number; reputation: Rep }
+export interface PersonPage { pid: string; name: string; hue: number; hood: string | null; niches: string[]; me: boolean; relation: 'nenhuma' | 'enviado' | 'recebido' | 'amigos'; reputation: Rep
+  reviews: { placeId: string; verdict: string; note: string; name: string | null; at: number }[]; lists: { id: string; title: string; places: unknown[]; updatedAt: number }[]; friendsCount: number }
+export type FeedItem = { kind: 'review'; who: PersonCard; placeId: string; placeName: string | null; verdict: string; note: string; at: number }
+  | { kind: 'list'; who: PersonCard; listId: string; title: string; count: number; at: number }
+  | { kind: 'decided'; who: PersonCard; placeId: string; placeName: string | null; at: number }
+export const person = (pid: string) => call<PersonPage>('GET', `/api/people/${pid}`, undefined, { timeout: 5000 })
+export const personAction = (pid: string, a: 'add' | 'accept' | 'remove' | 'block' | 'unblock') => call<{ ok: boolean }>('POST', `/api/people/${pid}/${a}`, {}).then(Boolean)
+export const social = () => call<{ friends: PersonCard[]; incoming: PersonCard[]; sent: PersonCard[]; feed: FeedItem[] }>('GET', '/api/social', undefined, { timeout: 5000 })
+export const ranking = (hood?: string) => call<(PersonCard & { hood: string | null; me: boolean })[]>('GET', `/api/ranking${hood ? `?hood=${encodeURIComponent(hood)}` : ''}`, undefined, { timeout: 5000 })
+export interface UserList { id: string; title: string; places: unknown[]; public: boolean; updatedAt: number }
+export const myLists = () => call<UserList[]>('GET', '/api/lists/mine', undefined, { timeout: 5000 })
+export const listOf = (id: string) => call<UserList & { mine: boolean; owner: { pid: string; name: string; hue: number } }>('GET', `/api/lists/${id}`, undefined, { timeout: 5000 })
+export const createList = (title: string, pub = true) => call<{ ok: boolean; id: string }>('POST', '/api/lists', { title, public: pub })
+export const listAction = (id: string, a: 'add' | 'remove' | 'delete', place?: PlaceT) =>
+  call('POST', `/api/lists/${id}/${a}`, place ? { placeId: place.id, place: place.source ? snapOf(place) : undefined } : {}).then(Boolean)
+export interface ChatMsg { id: string; name: string; text: string; at: number; mine: boolean; pid: string }
+export const groupChat = (gid: string, since = 0) => call<ChatMsg[]>('GET', `/api/groups/${gid}/chat?since=${since}`, undefined, { timeout: 5000 })
+export const sendChat = (gid: string, text: string) => call('POST', `/api/groups/${gid}/chat`, { text }).then(Boolean)

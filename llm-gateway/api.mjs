@@ -456,7 +456,7 @@ export function insertReview(body, device, verdict) {
 function groupView(g, device) {
   return {
     id: g.id, name: g.name, mine: g.owner_device === device, updatedAt: g.updated_at,
-    members: qp.members.all(g.id).map((m) => ({ name: m.name, hue: m.hue, me: m.device === device })),
+    members: qp.members.all(g.id).map((m) => ({ name: m.name, hue: m.hue, me: m.device === device, pid: pseudo(m.device) })),
     requests: qp.groupRequests.all(g.id).map((r) => ({ id: r.id, text: parse(r.data)?.text ?? '', createdAt: r.created_at, decided: !!r.decided_place })),
   }
 }

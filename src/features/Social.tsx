@@ -1,0 +1,242 @@
+import { useState } from 'react'
+import { Link, useParams } from 'react-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Award, Ban, Bookmark, Check, ListPlus, Trophy, UserPlus } from 'lucide-react'
+import { Avatar, Page, SectionTitle, Tag, TopBar, cx } from '../ui/primitives'
+import { Sheet } from '../ui/Sheet'
+import { useToast } from '../ui/Toast'
+import { confirmSheet } from '../ui/Confirm'
+import { createList, listAction, listOf, myLists, person, personAction, ranking, social, type FeedItem, type PersonCard, type Rep } from '../mocks/remote'
+import { fromSnap } from '../lib/places'
+import { VERDICT_LABEL, nicheLabel, timeAgo } from '../lib/labels'
+import { useProfile, useSync } from '../lib/api'
+import { track } from '../lib/track'
+import type { Place } from '../lib/types'
+
+/* Rede social do rolê: amigos (pedido → aceite), feed com o que os amigos avaliaram/fecharam/listaram,
+   perfil público, listas de curadoria e ranking de curadores. Tudo no servidor; sem conexão, a tela avisa. */
+
+const levelTone = (r: Rep) => (r.level.startsWith('curador') ? 'accent' : 'default') as 'accent' | 'default'
+const PersonRow = ({ p, right }: { p: PersonCard; right?: React.ReactNode }) => (
+  <div className="flex items-center gap-3 px-4 py-3">
+    <Link to={`/u/${p.pid}`} className="flex min-w-0 flex-1 items-center gap-3">
+      <Avatar name={p.name} hue={p.hue} size={36} />
+      <span className="min-w-0"><span className="block truncate text-[15px]">{p.name}</span><span className="text-[11px] text-mute">{p.reputation.level} · {p.reputation.points} pts</span></span>
+    </Link>
+    {right}
+  </div>
+)
+
+export function SocialPage() {
+  const [tab, setTab] = useState<'feed' | 'amigos' | 'ranking'>('feed')
+  const qc = useQueryClient()
+  const online = useSync().data?.online
+  const s = useQuery({ queryKey: ['social'], queryFn: social, refetchInterval: 20_000 })
+  const me = useProfile().data
+  const [hoodOnly, setHoodOnly] = useState(false)
+  const rk = useQuery({ queryKey: ['ranking', hoodOnly ? me?.hood : ''], queryFn: () => ranking(hoodOnly ? me?.hood : undefined), enabled: tab === 'ranking' })
+  const accept = async (pid: string) => { await personAction(pid, 'accept'); track('friend_accept', {}); qc.invalidateQueries({ queryKey: ['social'] }) }
+  return (
+    <Page tabbed>
+      <TopBar title="Amigos" back={false} />
+      {online === false && <p className="mx-5 mb-3 text-[13px] text-amber-300/90">Sem conexão com o servidor agora: amigos e feed voltam quando ele estiver no ar.</p>}
+      {!!s.data?.incoming.length && (
+        <section className="mx-5 mb-4 overflow-hidden rounded-[20px] border border-accent/40">
+          <p className="px-4 pt-3 text-[12px] text-accent">Pedidos de amizade</p>
+          {s.data.incoming.map((p) => (
+            <PersonRow key={p.pid} p={p} right={<button onClick={() => accept(p.pid)} className="h-9 rounded-full bg-accent px-4 text-[12px] font-medium text-accent-ink">Aceitar</button>} />
+          ))}
+        </section>
+      )}
+      <div className="mx-5 mb-4 flex gap-1 rounded-full bg-white/[0.05] p-1" role="tablist">
+        {(['feed', 'amigos', 'ranking'] as const).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cx('h-9 flex-1 rounded-full text-[13px] capitalize', tab === t ? 'bg-surface text-ink' : 'text-mute')}>{t}</button>
+        ))}
+      </div>
+
+      {tab === 'feed' && (
+        <section className="grid gap-2 px-5 pb-28">
+          {s.data && !s.data.feed.length && (
+            <p className="rounded-[20px] border border-dashed border-line p-5 text-center text-[13px] text-faint">
+              {s.data.friends.length ? 'Seus amigos ainda não avaliaram nem fecharam rolês.' : 'Adicione amigos pelo ranking ou pelos perfis de quem vota com você pra ver as curadorias deles aqui.'}
+            </p>
+          )}
+          {s.data?.feed.map((f, i) => <FeedCard key={i} f={f} />)}
+        </section>
+      )}
+
+      {tab === 'amigos' && (
+        <section className="mx-5 mb-28 divide-y divide-line overflow-hidden rounded-[20px] border border-line">
+          {s.data && !s.data.friends.length && !s.data.sent.length && <p className="p-4 text-[13px] text-faint">Nenhum amigo ainda.</p>}
+          {s.data?.friends.map((p) => <PersonRow key={p.pid} p={p} right={<Check size={16} className="text-accent" />} />)}
+          {s.data?.sent.map((p) => <PersonRow key={p.pid} p={p} right={<span className="text-[11px] text-faint">pedido enviado</span>} />)}
+        </section>
+      )}
+
+      {tab === 'ranking' && (
+        <section className="px-5 pb-28">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="flex items-center gap-1.5 text-[13px] text-mute"><Trophy size={14} className="text-accent" />Curadores {hoodOnly && me?.hood ? `de ${me.hood}` : 'do rolê'}</p>
+            {me?.hood && <button onClick={() => setHoodOnly((x) => !x)} className="text-[12px] text-accent">{hoodOnly ? 'ver todos' : `só ${me.hood}`}</button>}
+          </div>
+          <div className="divide-y divide-line overflow-hidden rounded-[20px] border border-line">
+            {rk.data?.length === 0 && <p className="p-4 text-[13px] text-faint">Ninguém pontuou ainda. Avalie um rolê que você foi e entre no ranking.</p>}
+            {rk.data?.map((p, i) => (
+              <PersonRow key={p.pid} p={p} right={<span className={cx('w-8 text-right font-serif text-[22px]', i < 3 ? 'text-accent' : 'text-mute')}>{i + 1}</span>} />
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-faint">Pontos: avaliação aprovada 10 (+5 se foi de um rolê combinado no app), foto aprovada 3, rolê fechado 4.</p>
+        </section>
+      )}
+    </Page>
+  )
+}
+
+function FeedCard({ f }: { f: FeedItem }) {
+  return (
+    <div className="rounded-[20px] bg-surface p-4">
+      <Link to={`/u/${f.who.pid}`} className="flex items-center gap-2"><Avatar name={f.who.name} hue={f.who.hue} size={24} /><span className="text-[13px]">{f.who.name}</span><span className="ml-auto text-[11px] text-faint">{timeAgo(f.at)}</span></Link>
+      {f.kind === 'review' && <p className="mt-2 text-[14px]">{VERDICT_LABEL[f.verdict as keyof typeof VERDICT_LABEL] ?? f.verdict} <Link to={`/lugar/${f.placeId}`} className="text-accent">{f.placeName ?? 'um lugar'}</Link>{f.note ? `: ${f.note}` : ''}</p>}
+      {f.kind === 'decided' && <p className="mt-2 text-[14px]">Fechou rolê no <Link to={`/lugar/${f.placeId}`} className="text-accent">{f.placeName ?? 'lugar'}</Link></p>}
+      {f.kind === 'list' && <p className="mt-2 text-[14px]">Atualizou a lista <Link to={`/lista/${f.listId}`} className="text-accent">{f.title}</Link> · {f.count} lugares</p>}
+    </div>
+  )
+}
+
+/** perfil público: reputação, avaliações, listas e a amizade */
+export function PersonPage() {
+  const { pid = '' } = useParams()
+  const qc = useQueryClient()
+  const toast = useToast()
+  const q = useQuery({ queryKey: ['person', pid], queryFn: () => person(pid) })
+  const p = q.data
+  const act = async (a: 'add' | 'accept' | 'remove' | 'block') => {
+    if (a === 'block' && !(await confirmSheet({ title: `Bloquear ${p?.name}?`, text: 'Vocês deixam de se ver no rolê e a amizade é desfeita. Dá pra desbloquear depois.', ok: 'Bloquear', danger: true }))) return
+    if (a === 'remove' && !(await confirmSheet({ title: 'Desfazer amizade?', ok: 'Desfazer' }))) return
+    const ok = await personAction(pid, a)
+    track('friend_' + a, {})
+    toast(ok ? ({ add: 'Pedido de amizade enviado', accept: 'Agora vocês são amigos', remove: 'Amizade desfeita', block: 'Pessoa bloqueada' } as const)[a] : 'Entre no app com cadastro pra fazer amizades')
+    qc.invalidateQueries({ queryKey: ['person', pid] }); qc.invalidateQueries({ queryKey: ['social'] })
+  }
+  if (q.isFetched && !p) return <Page><TopBar /><p className="px-5 text-[14px] text-mute">Perfil não encontrado.</p></Page>
+  return (
+    <Page>
+      <TopBar />
+      {p && (
+        <div className="px-5 pb-16">
+          <div className="flex items-center gap-4">
+            <Avatar name={p.name} hue={p.hue} size={68} />
+            <div className="min-w-0">
+              <h1 className="font-serif text-[36px] leading-none">{p.name}</h1>
+              <p className="mt-1 text-[13px] text-mute">{p.hood ?? ''}{p.friendsCount ? ` · ${p.friendsCount} amigos` : ''}</p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            <Tag tone={levelTone(p.reputation)}><Award size={11} className="mr-1" />{p.reputation.level} · {p.reputation.points} pts</Tag>
+            {p.niches.slice(0, 3).map((n) => <Tag key={n}>{nicheLabel(n as never)}</Tag>)}
+          </div>
+          {!p.me && (
+            <div className="mt-5 flex gap-2">
+              {p.relation === 'nenhuma' && <button onClick={() => act('add')} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-accent text-[14px] font-medium text-accent-ink"><UserPlus size={16} />Adicionar amigo</button>}
+              {p.relation === 'enviado' && <span className="flex h-11 flex-1 items-center justify-center rounded-full border border-line text-[13px] text-mute">Pedido enviado</span>}
+              {p.relation === 'recebido' && <button onClick={() => act('accept')} className="flex h-11 flex-1 items-center justify-center rounded-full bg-accent text-[14px] font-medium text-accent-ink">Aceitar amizade</button>}
+              {p.relation === 'amigos' && <button onClick={() => act('remove')} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full border border-line text-[13px]"><Check size={15} className="text-accent" />Amigos</button>}
+              <button onClick={() => act('block')} aria-label="Bloquear" className="grid size-11 place-items-center rounded-full border border-line text-mute"><Ban size={16} /></button>
+            </div>
+          )}
+
+          {!!p.lists.length && (
+            <section className="mt-8">
+              <SectionTitle>Listas</SectionTitle>
+              <div className="grid gap-2">
+                {p.lists.map((l) => <Link key={l.id} to={`/lista/${l.id}`} className="flex items-center gap-3 rounded-[18px] border border-line px-4 py-3"><Bookmark size={15} className="text-accent" /><span className="flex-1 text-[14px]">{l.title}</span><span className="text-[12px] text-faint">{l.places.length}</span></Link>)}
+              </div>
+            </section>
+          )}
+          <section className="mt-8">
+            <SectionTitle>Avaliações</SectionTitle>
+            <div className="grid gap-2">
+              {!p.reviews.length && <p className="text-[13px] text-faint">Nenhuma avaliação ainda.</p>}
+              {p.reviews.map((r, i) => (
+                <div key={i} className="rounded-[18px] bg-surface p-4 text-[14px]">
+                  <span className="text-accent">{VERDICT_LABEL[r.verdict as keyof typeof VERDICT_LABEL] ?? r.verdict}</span> · <Link to={`/lugar/${r.placeId}`} className="underline-offset-4 hover:underline">{r.name ?? 'lugar'}</Link>
+                  {r.note && <p className="mt-1 text-ink/80">{r.note}</p>}
+                  <p className="mt-1 text-[11px] text-faint">{timeAgo(r.at)}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+    </Page>
+  )
+}
+
+/** lista de curadoria (pública, ou só pra amigos) */
+export function ListPage() {
+  const { id = '' } = useParams()
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['list', id], queryFn: () => listOf(id) })
+  const l = q.data
+  const places = (l?.places ?? []).map((x) => (Array.isArray(x) ? fromSnap(x) : null)).filter((x): x is Place => !!x)
+  if (q.isFetched && !l) return <Page><TopBar /><p className="px-5 text-[14px] text-mute">Lista não encontrada.</p></Page>
+  return (
+    <Page>
+      <TopBar title={l?.title ?? 'Lista'} />
+      {l && (
+        <div className="px-5 pb-16">
+          <Link to={`/u/${l.owner.pid}`} className="flex items-center gap-2 text-[13px] text-mute"><Avatar name={l.owner.name} hue={l.owner.hue} size={22} />Curadoria de {l.owner.name}</Link>
+          <div className="mt-4 grid gap-2">
+            {!places.length && <p className="text-[13px] text-faint">Lista vazia. Salve lugares pela ficha de cada um.</p>}
+            {places.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 rounded-[18px] border border-line px-4 py-3">
+                <Link to={`/lugar/${p.id}`} className="min-w-0 flex-1"><span className="block truncate text-[15px]">{p.name}</span><span className="text-[12px] text-mute">{p.tagline} · {p.hood}</span></Link>
+                {l.mine && <button className="text-[12px] text-faint" onClick={async () => { await listAction(id, 'remove', p); qc.invalidateQueries({ queryKey: ['list', id] }) }}>tirar</button>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Page>
+  )
+}
+
+/** salvar o lugar numa lista minha (ou criar uma) — usado na ficha do lugar */
+export function SaveToList({ place }: { place: Place }) {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const toast = useToast()
+  const qc = useQueryClient()
+  const lists = useQuery({ queryKey: ['my-lists'], queryFn: myLists, enabled: open })
+  const has = (l: { places: unknown[] }) => l.places.some((x) => (Array.isArray(x) ? x[0] : x) === place.id)
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="flex items-center gap-2 text-[13px] text-mute underline-offset-4 hover:underline"><ListPlus size={15} />Salvar em lista</button>
+      <Sheet open={open} onClose={() => setOpen(false)}>
+        <p className="font-serif text-[28px] leading-tight">Salvar {place.name}</p>
+        <div className="mt-4 grid gap-2">
+          {lists.data === null && <p className="text-[13px] text-faint">Sem conexão agora.</p>}
+          {lists.data?.map((l) => (
+            <button key={l.id} onClick={async () => {
+              const on = has(l)
+              await listAction(l.id, on ? 'remove' : 'add', place); track('list_' + (on ? 'remove' : 'add'), {})
+              qc.invalidateQueries({ queryKey: ['my-lists'] }); toast(on ? `Tirado de ${l.title}` : `Salvo em ${l.title}`)
+            }} className="flex h-12 items-center gap-3 rounded-full border border-line px-5 text-left text-[14px]">
+              <Bookmark size={15} className={has(l) ? 'fill-accent text-accent' : 'text-mute'} /><span className="flex-1">{l.title}</span><span className="text-[11px] text-faint">{l.places.length}</span>
+            </button>
+          ))}
+        </div>
+        <form className="mt-4 flex gap-2" onSubmit={async (e) => {
+          e.preventDefault()
+          if (!title.trim()) return
+          const r = await createList(title.trim())
+          if (!r) { toast('Precisa de cadastro e conexão pra criar listas'); return }
+          await listAction(r.id, 'add', place); setTitle(''); qc.invalidateQueries({ queryKey: ['my-lists'] }); toast('Lista criada')
+        }}>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nova lista (ex.: botecos pra levar gringo)" className="h-12 min-w-0 flex-1 rounded-full border border-line bg-white/[0.03] px-4 text-[14px] outline-none focus:border-accent" />
+          <button type="submit" className="h-12 rounded-full bg-accent px-4 text-[13px] font-medium text-accent-ink">Criar</button>
+        </form>
+      </Sheet>
+    </>
+  )
+}

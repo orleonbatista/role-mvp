@@ -56,10 +56,13 @@ const IndicarPage = lazy(() => retryImport(() => import('../features/Indicar').t
 const FundadorPage = lazy(() => retryImport(() => import('../features/Fundador').then((m) => ({ default: m.FundadorPage }))))
 const PrivacidadePage = lazy(() => retryImport(() => import('../features/Privacidade').then((m) => ({ default: m.PrivacidadePage }))))
 const TurmasPage = lazy(() => retryImport(() => import('../features/Turmas').then((m) => ({ default: m.TurmasPage }))))
+const SocialPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.SocialPage }))))
+const PersonPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.PersonPage }))))
+const ListPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.ListPage }))))
 const QuickSearch = lazy(() => retryImport(() => import('../features/QuickSearch').then((m) => ({ default: m.QuickSearch }))))
 const TestesPage = lazy(() => retryImport(() => import('../features/Testes').then((m) => ({ default: m.TestesPage }))))
 
-const TAB_ROUTES = ['/', '/perfil']
+const TAB_ROUTES = ['/', '/amigos', '/perfil']
 
 function Fallback() {
   return (
@@ -72,7 +75,7 @@ function Fallback() {
 export function App() {
   const location = useLocation()
   const { data: profile, isLoading } = useProfile()
-  const isPublic = ['/r/', '/s/', '/e/', '/p/', '/lugar/', '/avaliar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
+  const isPublic = ['/u/', '/lista/', '/r/', '/s/', '/e/', '/p/', '/lugar/', '/avaliar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
   const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !isPublic
   const showFeedback = !['/onboarding', '/r/', '/s/', '/i/', '/e/', '/c/', '/p/', '/divulgar', '/testes'].some((p) => location.pathname.startsWith(p))
 
@@ -97,7 +100,7 @@ export function App() {
                     ['/onboarding', <Onboarding />], ['/novo', <NewRequest />], ['/pedido/:id', <Results />], ['/r/:id', <VotePage />],
                     ['/lugar/:id', <PlacePage />], ['/avaliar/:id', <ReviewPage />], ['/perfil', <ProfilePage />], ['/testes', <TestesPage />],
                     ['/s/:id', <SuggestPage />], ['/i/:id', <ImportSuggestion />],
-                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />], ['/buscar', <QuickSearch />],
+                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />], ['/buscar', <QuickSearch />], ['/amigos', <SocialPage />], ['/u/:pid', <PersonPage />], ['/lista/:id', <ListPage />],
                   ].map(([path, el]) => (
                     <Route key={path as string} path={path as string} element={<RouteError><Suspense fallback={<Fallback />}>{el}</Suspense></RouteError>} />
                   ))}

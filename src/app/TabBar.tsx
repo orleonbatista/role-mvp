@@ -1,11 +1,12 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { Compass, Plus, User } from 'lucide-react'
+import { Compass, Plus, User, Users } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router'
 import { cx } from '../ui/primitives'
 import { spring } from '../ui/motion'
 
 const tabs = [
   { to: '/', label: 'Início', icon: Compass },
+  { to: '/amigos', label: 'Amigos', icon: Users },
   { to: '/perfil', label: 'Você', icon: User },
 ]
 
@@ -23,7 +24,7 @@ export function TabBar({ visible }: { visible: boolean }) {
           className="absolute inset-x-0 bottom-0 z-30 flex justify-center pb-[max(16px,env(safe-area-inset-bottom))]"
         >
           <div className="flex items-center gap-1 rounded-full border border-white/10 bg-surface-2/70 p-1.5 shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
-            {tabs.slice(0, 1).map((t) => <Tab key={t.to} {...t} active={pathname === t.to} onClick={() => nav(t.to)} />)}
+            {tabs.slice(0, 2).map((t) => <Tab key={t.to} {...t} active={pathname === t.to} onClick={() => nav(t.to)} />)}
             <motion.button
               whileTap={{ scale: 0.9, rotate: 90 }}
               transition={spring}
@@ -33,7 +34,7 @@ export function TabBar({ visible }: { visible: boolean }) {
             >
               <Plus size={22} strokeWidth={2.5} />
             </motion.button>
-            {tabs.slice(1).map((t) => <Tab key={t.to} {...t} active={pathname === t.to} onClick={() => nav(t.to)} />)}
+            {tabs.slice(2).map((t) => <Tab key={t.to} {...t} active={pathname === t.to} onClick={() => nav(t.to)} />)}
           </div>
         </motion.nav>
       )}

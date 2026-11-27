@@ -8,7 +8,10 @@ import { Avatar, Button, EmptyState, Page, Skeleton, TopBar } from '../ui/primit
 import { ease } from '../ui/motion'
 import { timeAgo } from '../lib/labels'
 import { track } from '../lib/track'
-import { leaveGroup, myGroups, renameGroup, type Turma } from '../mocks/remote'
+import { groupChat, leaveGroup, myGroups, renameGroup, sendChat, type Turma } from '../mocks/remote'
+import { Sheet } from '../ui/Sheet'
+import { ReportButton } from './Report'
+import { MessagesSquare, Send } from 'lucide-react'
 
 export const turmaName = (t: Turma) => {
   if (t.name) return t.name
@@ -60,9 +63,9 @@ function TurmaCard({ t, i }: { t: Turma; i: number }) {
       )}
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         {t.members.map((m, j) => (
-          <span key={j} className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.05] py-1 pl-1 pr-2.5 text-xs">
+          <Link key={j} to={m.me || !m.pid ? '/perfil' : `/u/${m.pid}`} className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.05] py-1 pl-1 pr-2.5 text-xs">
             <Avatar name={m.name} hue={m.hue ?? 200} size={20} />{m.me ? 'Você' : m.name}
-          </span>
+          </Link>
         ))}
       </div>
       {t.requests.length > 0 && (
@@ -77,6 +80,7 @@ function TurmaCard({ t, i }: { t: Turma; i: number }) {
           ))}
         </ul>
       )}
+      <TurmaChat gid={t.id} />
       <div className="mt-4 flex items-center gap-2">
         <Link to={`/novo?turma=${t.id}`} onClick={() => track('turma_novo_role', { members: t.members.length })} className="flex-1">
           <Button variant="soft" className="w-full" icon={<Sparkles size={15} />}>Novo rolê com essa turma</Button>
@@ -102,5 +106,41 @@ export function TurmasStrip() {
       ))}
       <Link to="/turmas" className="flex shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] text-mute"><Users size={14} />todas</Link>
     </div>
+  )
+}
+
+/** chat contínuo da turma (atualiza a cada 4 s com o chat aberto; quem não está no app recebe aviso no celular) */
+function TurmaChat({ gid }: { gid: string }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['chat', gid], queryFn: () => groupChat(gid), enabled: open, refetchInterval: open ? 4000 : false })
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-full border border-line text-[13px]"><MessagesSquare size={15} />Chat da turma</button>
+      <Sheet open={open} onClose={() => setOpen(false)}>
+        <p className="font-serif text-[26px] leading-tight">Chat da turma</p>
+        <div className="mt-3 grid max-h-[50vh] gap-1.5 overflow-y-auto">
+          {q.data?.length === 0 && <p className="text-[13px] text-faint">Nenhuma mensagem ainda.</p>}
+          {q.data === null && <p className="text-[13px] text-faint">Sem conexão agora.</p>}
+          {q.data?.map((m) => (
+            <div key={m.id} className={m.mine ? 'flex justify-end' : 'flex items-center gap-1'}>
+              <p className={m.mine ? 'max-w-[85%] rounded-2xl bg-accent/15 px-3 py-2 text-[13px]' : 'max-w-[85%] rounded-2xl bg-white/[0.05] px-3 py-2 text-[13px]'}>
+                {!m.mine && <Link to={`/u/${m.pid}`} className="mr-1 font-medium text-accent">{m.name}</Link>}{m.text}
+              </p>
+              {!m.mine && <ReportButton kind="chat" id={m.id} />}
+            </div>
+          ))}
+        </div>
+        <form className="mt-3 flex gap-2" onSubmit={async (e) => {
+          e.preventDefault()
+          if (!text.trim()) return
+          if (await sendChat(gid, text.trim())) { setText(''); qc.invalidateQueries({ queryKey: ['chat', gid] }) }
+        }}>
+          <input value={text} onChange={(e) => setText(e.target.value.slice(0, 500))} placeholder="Mensagem" aria-label="Mensagem pra turma" className="h-11 min-w-0 flex-1 rounded-full border border-line bg-white/[0.03] px-4 text-[14px] outline-none focus:border-accent" />
+          <button type="submit" aria-label="Enviar" className="grid size-11 place-items-center rounded-full bg-accent text-accent-ink"><Send size={16} /></button>
+        </form>
+      </Sheet>
+    </>
   )
 }
