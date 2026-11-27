@@ -87,4 +87,11 @@ Formato curto: **decisão**, **por quê**, **trade-off**.
     turma costuma estar no mesmo Wi-Fi. Por IP fica um teto 6× mais folgado contra abuso.
 37. **Toda chamada espera a sessão.** Tentar ler antes da sessão nascer economizava uma ida e volta, mas criou corrida
     que descartava o token válido (pega pelo E2E). A economia veio de outro lugar: endereço guardado e cópia local na hora.
+38. **Busca rápida em conversa sem texto livre do modelo.** A IA só transforma a mensagem em critérios (JSON) e escolhe
+    entre lugares conhecidos; a fala da conversa é montada pelo app. Assim não há como uma injeção fazer a IA "dizer"
+    outra coisa, e o filtro de entrada barra a tentativa antes de gastar token.
+39. **Foto de perfil no servidor, pública por apelido.** Como avatar de qualquer rede: quem vê o perfil vê a foto.
+    Apagar a conta apaga o arquivo.
+40. **Fotos do lugar: uma largura só (720 px).** Miniatura e carrossel usam o mesmo endereço guardado; antes cada um
+    pedia um tamanho, gastava cota em dobro e um aparecia sem o outro.
 
