@@ -257,3 +257,22 @@ export function SplitBill({ d }: { d: RequestDetail }) {
     </>
   )
 }
+
+/** quem está na votação, com reputação e link pro perfil (onde dá pra adicionar como amigo) */
+export function Participants({ d }: { d: RequestDetail }) {
+  const ps = d.extra?.participants ?? []
+  if (!d.extra?.online || ps.length < 2) return null
+  return (
+    <section className="mx-5 mt-5">
+      <p className="mb-2 text-[13px] uppercase tracking-[0.14em] text-mute">Quem está na votação</p>
+      <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5">
+        {ps.map((p) => (
+          <a key={p.pid} href={p.me ? `${import.meta.env.BASE_URL}perfil` : `${import.meta.env.BASE_URL}u/${p.pid}`} className="flex shrink-0 items-center gap-2 rounded-full border border-line py-1.5 pl-1.5 pr-3">
+            <span className="grid size-7 place-items-center rounded-full text-[12px] font-medium text-black" style={{ background: `hsl(${p.hue} 80% 70%)` }}>{p.name[0]}</span>
+            <span className="text-[12px]"><span className="block leading-tight">{p.me ? 'Você' : p.name.split(' ')[0]}{p.author ? ' · criou' : ''}</span><span className="block text-[10px] text-mute">{p.level} · {p.points} pts</span></span>
+          </a>
+        ))}
+      </div>
+    </section>
+  )
+}

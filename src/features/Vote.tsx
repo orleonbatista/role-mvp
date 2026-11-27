@@ -20,7 +20,7 @@ import { isCommunity } from '../mocks/seeds/places'
 import { AskBox } from './AskBox'
 import { InvitesList } from './Invites'
 import { venuesActive } from '../mocks/remote'
-import { DeadlineBadge, DecidedExtras, Messages, PhotoAlbum, RsvpBlock, SplitBill } from './GroupPanel'
+import { DeadlineBadge, DecidedExtras, Messages, Participants, PhotoAlbum, RsvpBlock, SplitBill } from './GroupPanel'
 import type { StoryCard } from '../lib/storyCard'
 
 const FRIENDS = ['Bia', 'Caio', 'Duda', 'Léo', 'Mari']
@@ -313,6 +313,7 @@ export function VotePage() {
             </div>
           )}
 
+          <Participants d={data} />
           <Messages d={data} voter={voter} />
           <AskBox
             pedido={data.request.text}

@@ -39,7 +39,14 @@ export interface EventoCard {
   /** @handle de quem divulga */
   by?: string
 }
-export type StoryCard = PedidoCard | FechadoCard | SugiraCard | EventoCard
+export interface AvaliacaoCard {
+  kind: 'avaliacao'
+  place: Place
+  verdict: string
+  note?: string
+  author: string
+}
+export type StoryCard = PedidoCard | FechadoCard | SugiraCard | EventoCard | AvaliacaoCard
 
 async function fontsReady() {
   try {
@@ -236,6 +243,33 @@ function drawFechado(ctx: CanvasRenderingContext2D, c: FechadoCard) {
   footer(ctx, `${c.author} no rolê.`)
 }
 
+function drawAvaliacao(ctx: CanvasRenderingContext2D, c: AvaliacaoCard) {
+  background(ctx, [c.place.hue, 82, (c.place.hue + 200) % 360])
+  brand(ctx)
+  ctx.textAlign = 'center'
+  label(ctx, `${c.author} foi e conta`, W / 2, 420)
+  ctx.font = `italic 400 170px ${SERIF}`
+  ctx.fillStyle = ACCENT
+  ctx.fillText(c.verdict, W / 2, 640)
+  ctx.font = `400 120px ${SERIF}`
+  ctx.fillStyle = INK
+  const lines = wrap(ctx, c.place.name, W - 160, 2)
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, 840 + i * 124))
+  let y = 840 + (lines.length - 1) * 124 + 80
+  ctx.font = `500 40px ${SANS}`
+  ctx.fillStyle = MUTE
+  ctx.fillText(c.place.hood, W / 2, y)
+  if (c.note) {
+    y += 110
+    ctx.font = `italic 400 58px ${SERIF}`
+    ctx.fillStyle = INK
+    wrap(ctx, `“${c.note}”`, W - 200, 4).forEach((l, i) => ctx.fillText(l, W / 2, y + i * 72))
+  }
+  ctx.textAlign = 'left'
+  stickerSlot(ctx, 1600, 'Descobre o seu rolê ↓')
+  footer(ctx, 'curadoria de quem foi, no rolê.')
+}
+
 function drawSugira(ctx: CanvasRenderingContext2D, c: SugiraCard) {
   background(ctx, [82, 330, 200])
   brand(ctx)
@@ -327,6 +361,7 @@ export async function renderStory(card: StoryCard): Promise<Blob> {
   if (card.kind === 'pedido') drawPedido(ctx, card)
   else if (card.kind === 'sugira') drawSugira(ctx, card)
   else if (card.kind === 'evento') drawEvento(ctx, card)
+  else if (card.kind === 'avaliacao') drawAvaliacao(ctx, card)
   else drawFechado(ctx, card)
   return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('canvas vazio'))), 'image/png'))
 }

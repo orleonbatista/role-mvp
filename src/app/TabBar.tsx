@@ -1,12 +1,17 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { Compass, Plus, User, Users } from 'lucide-react'
+import { Compass, Plus, User, Users, UsersRound } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router'
 import { cx } from '../ui/primitives'
 import { spring } from '../ui/motion'
 
-const tabs = [
+/* Barra inferior: 4 destinos com rótulo + o "+" no meio (novo pedido). Barra de largura total, presa ao rodapé
+   (respeita a área segura do iPhone), em vez da cápsula flutuante que ficou apertada com a aba Amigos. */
+const left = [
   { to: '/', label: 'Início', icon: Compass },
   { to: '/amigos', label: 'Amigos', icon: Users },
+]
+const right = [
+  { to: '/turmas', label: 'Turmas', icon: UsersRound },
   { to: '/perfil', label: 'Você', icon: User },
 ]
 
@@ -17,24 +22,27 @@ export function TabBar({ visible }: { visible: boolean }) {
     <AnimatePresence>
       {visible && (
         <motion.nav
-          initial={{ y: 120, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 120, opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-          className="absolute inset-x-0 bottom-0 z-30 flex justify-center pb-[max(16px,env(safe-area-inset-bottom))]"
+          aria-label="Navegação principal"
+          initial={{ y: 100 }}
+          animate={{ y: 0 }}
+          exit={{ y: 100 }}
+          transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+          className="absolute inset-x-0 bottom-0 z-30 border-t border-white/10 bg-bg/85 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-2xl"
         >
-          <div className="flex items-center gap-1 rounded-full border border-white/10 bg-surface-2/70 p-1.5 shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
-            {tabs.slice(0, 2).map((t) => <Tab key={t.to} {...t} active={pathname === t.to} onClick={() => nav(t.to)} />)}
-            <motion.button
-              whileTap={{ scale: 0.9, rotate: 90 }}
-              transition={spring}
-              onClick={() => nav('/novo')}
-              className="mx-1 grid size-12 place-items-center rounded-full bg-accent text-accent-ink shadow-[0_6px_24px_-6px_rgba(198,255,61,0.7)]"
-              aria-label="Novo pedido"
-            >
-              <Plus size={22} strokeWidth={2.5} />
-            </motion.button>
-            {tabs.slice(2).map((t) => <Tab key={t.to} {...t} active={pathname === t.to} onClick={() => nav(t.to)} />)}
+          <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2 pt-1.5">
+            {left.map((t) => <Tab key={t.to} {...t} active={pathname === t.to} onClick={() => nav(t.to)} />)}
+            <div className="flex justify-center">
+              <motion.button
+                whileTap={{ scale: 0.9, rotate: 90 }}
+                transition={spring}
+                onClick={() => nav('/novo')}
+                className="-mt-5 grid size-14 place-items-center rounded-full bg-accent text-accent-ink shadow-[0_8px_28px_-6px_rgba(198,255,61,0.7)] ring-4 ring-bg"
+                aria-label="Novo pedido"
+              >
+                <Plus size={24} strokeWidth={2.5} />
+              </motion.button>
+            </div>
+            {right.map((t) => <Tab key={t.to} {...t} active={pathname === t.to} onClick={() => nav(t.to)} />)}
           </div>
         </motion.nav>
       )}
@@ -44,10 +52,10 @@ export function TabBar({ visible }: { visible: boolean }) {
 
 function Tab({ label, icon: Icon, active, onClick }: { label: string; icon: typeof Compass; active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className={cx('relative flex h-12 items-center gap-2 rounded-full px-5 text-sm transition-colors', active ? 'text-ink' : 'text-mute')}>
-      {active && <motion.span layoutId="tab-pill" transition={spring} className="absolute inset-0 rounded-full bg-white/[0.09]" />}
-      <Icon size={18} className="relative" />
-      <span className="relative">{label}</span>
+    <button onClick={onClick} aria-current={active ? 'page' : undefined} className={cx('relative flex h-14 flex-col items-center justify-center gap-1 text-[11px] transition-colors', active ? 'text-accent' : 'text-mute')}>
+      {active && <motion.span layoutId="tab-dot" transition={spring} className="absolute top-0 h-0.5 w-8 rounded-full bg-accent" />}
+      <Icon size={20} />
+      <span>{label}</span>
     </button>
   )
 }

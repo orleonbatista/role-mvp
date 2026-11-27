@@ -23,7 +23,15 @@
     <title>rolê.</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot" role="status" aria-label="Carregando o rolê"><span class="boot-logo">rolê<i>.</i></span><span class="boot-bar"></span></div></div>
+    <style>
+      /* tela de abertura enquanto o app carrega (antes era fundo preto vazio, parecia travado) */
+      html,body{background:#0a0a0b;margin:0}
+      .boot{position:fixed;inset:0;display:grid;place-content:center;justify-items:center;gap:18px;color:#f4f4f2;font:italic 400 44px Georgia,serif}
+      .boot i{color:#c6ff3d;font-style:normal}
+      .boot-bar{width:72px;height:3px;border-radius:3px;background:linear-gradient(90deg,transparent,#c6ff3d,transparent);background-size:200% 100%;animation:boot 1.1s linear infinite}
+      @keyframes boot{from{background-position:200% 0}to{background-position:-200% 0}}
+    </style>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

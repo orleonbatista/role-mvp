@@ -37,6 +37,12 @@ const refOf = (id: string): number | string => {
 const idOf = (r: unknown) => (typeof r === 'string' ? (placeById.has(r) ? r : undefined) : (r as number) < seedCount() ? places[r as number]?.id : undefined)
 
 export async function shareUrl(d: RequestDetail) {
+  // com o servidor no ar e o pedido já publicado lá, o link vai curto (só o id): quem abre busca o resto no servidor.
+  // Sem servidor, o pedido inteiro vai comprimido no próprio link (comprido, mas funciona offline)
+  const r = await import('../mocks/remote')
+  if (r.wasPushed(d.request.id) && (await r.isOnline())) {
+    return SHARE_BASE ? `${SHARE_BASE}/og/r/${encodeURIComponent(d.request.id)}` : `${location.origin}${import.meta.env.BASE_URL}v/?id=${encodeURIComponent(d.request.id)}`
+  }
   const idx = d.options.map((o) => refOf(o.id)).filter((i) => i !== -1)
   const ids = d.options.map((o) => o.id)
   // resumo salvo na criação (com motivo da IA e o que o Google confirmou) + o que estiver na memória

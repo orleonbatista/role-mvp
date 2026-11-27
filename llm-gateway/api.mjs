@@ -117,6 +117,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS ix_gmsg ON group_messages(group_id, at);
   CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, kind TEXT NOT NULL, target_id TEXT NOT NULL, device TEXT NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'aberta', UNIQUE (kind, target_id, device));
 `)
+if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'review_notified'").get()) db.exec('ALTER TABLE requests ADD COLUMN review_notified INTEGER')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'closes_at'").get()) { db.exec('ALTER TABLE requests ADD COLUMN closes_at INTEGER'); db.exec('ALTER TABLE requests ADD COLUMN close_notified INTEGER') }
 if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'role'").get()) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'usuario'")
 if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'google_sub'").get()) {
@@ -205,6 +206,7 @@ export function resolveSession(req, path) {
   if (db.prepare('SELECT 1 FROM sessions WHERE device = ? LIMIT 1').get(claimed)) return { error: 'session' }
   return null
 }
+export function isAdminReq(req) { return isAdmin(req) }
 function isAdmin(req) { return keyOk(req) || roleOf(devOf(req)) === 'admin' }
 function isCurator(req) { return isAdmin(req) || roleOf(devOf(req)) === 'curador' }
 
@@ -258,6 +260,14 @@ function requestState(id, viewer) {
     rsvps: hide(db.prepare('SELECT device, status, voter, at FROM rsvps WHERE request_id = ? ORDER BY at').all(id)),
     messages: db.prepare("SELECT id, device, voter, text, at FROM messages WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'message' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at DESC LIMIT 30").all(id).reverse().map((x) => ({ ...x, device: pseudo(x.device) })),
     closesAt: r.closes_at ?? null,
+    // quem está na votação (só quem tem perfil), com reputação: base pra adicionar como amigo
+    participants: participantsOf(id).filter((d) => !viewer || !isBlocked(viewer, d)).map((d) => {
+      const u = qp.getUser.get(d)
+      if (!u) return null
+      const p = parse(u.data) ?? {}
+      const rep = reputationOf(d)
+      return { pid: pseudo(d), name: p.name ?? 'Alguém', hue: p.hue ?? 200, level: rep.level, points: rep.points, me: d === viewer, author: d === r.author_device }
+    }).filter(Boolean),
     photos: db.prepare("SELECT id, device, voter, at FROM photos WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'photo' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at").all(id).map((x) => ({ ...x, device: pseudo(x.device) })),
     suggestions: q.sugs.all(id).map((x) => ({ ...x, device: pseudo(x.device), place: x.place ? parse(x.place) : undefined })),
   }
@@ -586,8 +596,36 @@ function participantsOf(requestId) {
   return [...set]
 }
 /** prazos vencidos: avisa o autor uma vez pra fechar o rolê (chamado pelo server a cada poucos minutos) */
+const DAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+/** "Sex 20h" | "Sáb 28/11 21h30" → quando o rolê acontece (mesma regra do app), no fuso de SP */
+function slotAt(label, ref) {
+  const hm = String(label ?? '').match(/(\d{1,2})h(\d{2})?/)
+  if (!hm) return null
+  const sp = (t) => new Date(new Date(t).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+  const base = sp(ref)
+  const dm = String(label).match(/(\d{1,2})\/(\d{1,2})/)
+  let d
+  if (dm) d = new Date(base.getFullYear(), Number(dm[2]) - 1, Number(dm[1]), Number(hm[1]), Number(hm[2] ?? 0))
+  else {
+    d = new Date(base.getFullYear(), base.getMonth(), base.getDate(), Number(hm[1]), Number(hm[2] ?? 0))
+    const wd = DAYS.findIndex((x) => String(label).toLowerCase().startsWith(x))
+    if (wd >= 0) { d.setDate(d.getDate() + ((wd - base.getDay() + 7) % 7)); if (d < base - 3 * 3600_000) d.setDate(d.getDate() + 7) }
+  }
+  return d.getTime() + (ref - base.getTime()) // volta pro relógio real
+}
+
 export function checkDeadlines() {
   const now = Date.now()
+  // convite pra curadoria depois do rolê: 3 h depois do horário fechado (ou 24 h depois de fechar, sem horário), uma vez
+  for (const r of db.prepare('SELECT id, data, decided_place, decided_time, decided_at FROM requests WHERE decided_place IS NOT NULL AND review_notified IS NULL AND decided_at > ?').all(now - 14 * 86_400_000)) {
+    const at = slotAt(r.decided_time, r.decided_at) ?? r.decided_at + 21 * 3600_000
+    if (now < at + 3 * 3600_000) continue
+    db.prepare('UPDATE requests SET review_notified = ? WHERE id = ?').run(now, r.id)
+    const d = parse(r.data) ?? {}
+    const name = (d.places ?? []).find((x) => Array.isArray(x) && x[0] === r.decided_place)?.[1] ?? 'o rolê'
+    const to = participantsOf(r.id).filter((dv) => !db.prepare('SELECT 1 FROM reviews WHERE device = ? AND request_id = ?').get(dv, r.id))
+    notify({ to, key: `rev-${r.id}`, title: `Como foi no ${name}?`, body: 'Avalie em 10 segundos: vira curadoria e soma pontos no seu perfil', url: `avaliar/${r.id}` })
+  }
   for (const r of db.prepare('SELECT id, author_device, data FROM requests WHERE closes_at IS NOT NULL AND closes_at <= ? AND decided_place IS NULL AND close_notified IS NULL').all(now)) {
     db.prepare('UPDATE requests SET close_notified = ? WHERE id = ?').run(now, r.id)
     notify({ to: [r.author_device], key: `close-${r.id}`, title: 'A votação do seu rolê encerrou', body: `Feche o rolê: "${(parse(r.data)?.text ?? '').slice(0, 80)}"`, url: `pedido/${r.id}` })
@@ -980,6 +1018,20 @@ export function handleApi(method, path, req, body) {
     return upd.changes ? ok({ ok: true }) : bad('not_found', 404)
   }
   /* ---------- rede social ---------- */
+  // busca de pessoas por nome (só quem tem cadastro; sem e-mail; bloqueados não aparecem)
+  if (method === 'GET' && path === '/api/people') {
+    const q = normTxt(new URL(req.url, 'http://x').searchParams.get('q') ?? '').trim()
+    if (q.length < 2) return ok([])
+    const out = []
+    for (const u of db.prepare('SELECT device, data, hood FROM users WHERE consent_at > 0').all()) {
+      const p = parse(u.data) ?? {}
+      if (u.device === device || !normTxt(p.name ?? '').includes(q) || (device && isBlocked(device, u.device))) continue
+      const rep = reputationOf(u.device)
+      out.push({ pid: pseudo(u.device), name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u.hood, reputation: rep, relation: device ? relation(device, u.device) : 'nenhuma' })
+      if (out.length >= 20) break
+    }
+    return ok(out)
+  }
   if ((m = path.match(/^\/api\/people\/(u-[a-f0-9]{16})$/)) && method === 'GET') {
     const dev = deviceOfPseudo(m[1])
     if (!dev || isBlocked(dev, device)) return bad('not_found', 404)

@@ -1,3 +1,7 @@
+import { useProfile } from '../lib/api'
+import { VERDICT_LABEL } from '../lib/labels'
+import { StorySheet } from './StorySheet'
+import type { StoryCard } from '../lib/storyCard'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
@@ -27,6 +31,8 @@ export function ReviewPage() {
   const [verdict, setVerdict] = useState<Verdict>()
   const [note, setNote] = useState('')
   const [credited, setCredited] = useState<Person | null | undefined>(undefined)
+  const [story, setStory] = useState<StoryCard | null>(null)
+  const me = useProfile().data
 
   useEffect(() => {
     if (data && !placeId) setPlaceId(data.request.decidedPlaceId ?? data.options[0]?.id)
@@ -38,7 +44,13 @@ export function ReviewPage() {
     track('review_saved', { went, verdict, credited: !!res.credited })
     try { localStorage.setItem(`role.reviewed.${id}`, '1') } catch { /* */ }
     setCredited(res.credited)
-    if (!res.credited) { toast('Avaliação salva no seu diário'); nav('/perfil') }
+    if (!res.credited) {
+      toast('Avaliação salva no seu diário')
+      // foi e avaliou: oferece postar a avaliação no Story (fecha → vai pro perfil)
+      const p = data?.options.find((o) => o.id === placeId)
+      if (went && verdict && p) setStory({ kind: 'avaliacao', place: p, verdict: VERDICT_LABEL[verdict], note: note.trim() || undefined, author: me?.name.split(' ')[0] ?? 'Alguém' })
+      else nav('/perfil')
+    }
   }
 
   const ready = went === false || (went && placeId && verdict)
@@ -128,6 +140,7 @@ export function ReviewPage() {
         )}
       </AnimatePresence>
       </Overlay>
+      <StorySheet open={!!story} onClose={() => { setStory(null); nav('/perfil') }} card={story} link={`${location.origin}${import.meta.env.BASE_URL}?src=ig`} context="avaliacao" />
     </Page>
   )
 }

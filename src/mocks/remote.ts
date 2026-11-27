@@ -131,11 +131,12 @@ interface RemoteState {
   rsvps?: { device: string; status: Rsvp; voter: string; at: number }[]
   messages?: { id: string; device: string; voter: string; text: string; at: number }[]
   closesAt?: number | null
+  participants?: { pid: string; name: string; hue: number; level: string; points: number; me: boolean; author: boolean }[]
   photos?: { id: string; device: string; voter: string; at: number }[]
 }
 export type Rsvp = 'vou' | 'talvez' | 'nao'
 /** o que só existe no servidor (presença, recados, prazo): guardado em memória por pedido, vem junto do detalhe */
-export interface GroupExtra { photos: { id: string; voter: string; at: number; mine: boolean }[]; rsvps: { status: Rsvp; voter: string; mine: boolean }[]; messages: { id: string; voter: string; text: string; at: number; mine: boolean }[]; closesAt: number | null; online: boolean }
+export interface GroupExtra { participants: NonNullable<RemoteState['participants']>; photos: { id: string; voter: string; at: number; mine: boolean }[]; rsvps: { status: Rsvp; voter: string; mine: boolean }[]; messages: { id: string; voter: string; text: string; at: number; mine: boolean }[]; closesAt: number | null; online: boolean }
 const extras = new Map<string, GroupExtra>()
 export const extraOf = (id: string): GroupExtra | undefined => extras.get(id)
 
@@ -201,7 +202,7 @@ export async function syncRequest(id: string): Promise<boolean> {
   extras.set(id, {
     rsvps: (s.rsvps ?? []).map((x) => ({ status: x.status, voter: x.voter, mine: x.device === me })),
     messages: (s.messages ?? []).map((x) => ({ id: x.id, voter: x.voter, text: x.text, at: x.at, mine: x.device === me })),
-    closesAt: s.closesAt ?? null, online: true,
+    closesAt: s.closesAt ?? null, online: true, participants: s.participants ?? [],
     photos: (s.photos ?? []).map((x) => ({ id: x.id, voter: x.voter, at: x.at, mine: x.device === me })),
   })
   // sugestões que chegaram por qualquer aparelho viram respostas "sugestão pelo link"
@@ -419,6 +420,7 @@ export type FeedItem = { kind: 'review'; who: PersonCard; placeId: string; place
   | { kind: 'decided'; who: PersonCard; placeId: string; placeName: string | null; at: number }
 export const person = (pid: string) => call<PersonPage>('GET', `/api/people/${pid}`, undefined, { timeout: 5000 })
 export const personAction = (pid: string, a: 'add' | 'accept' | 'remove' | 'block' | 'unblock') => call<{ ok: boolean }>('POST', `/api/people/${pid}/${a}`, {}).then(Boolean)
+export const searchPeople = (q: string) => call<(PersonCard & { hood: string | null; relation: string })[]>('GET', `/api/people?q=${encodeURIComponent(q)}`, undefined, { timeout: 5000 })
 export const social = () => call<{ friends: PersonCard[]; incoming: PersonCard[]; sent: PersonCard[]; feed: FeedItem[] }>('GET', '/api/social', undefined, { timeout: 5000 })
 export const ranking = (hood?: string) => call<(PersonCard & { hood: string | null; me: boolean })[]>('GET', `/api/ranking${hood ? `?hood=${encodeURIComponent(hood)}` : ''}`, undefined, { timeout: 5000 })
 export interface UserList { id: string; title: string; places: unknown[]; public: boolean; updatedAt: number }
@@ -430,3 +432,4 @@ export const listAction = (id: string, a: 'add' | 'remove' | 'delete', place?: P
 export interface ChatMsg { id: string; name: string; text: string; at: number; mine: boolean; pid: string }
 export const groupChat = (gid: string, since = 0) => call<ChatMsg[]>('GET', `/api/groups/${gid}/chat?since=${since}`, undefined, { timeout: 5000 })
 export const sendChat = (gid: string, text: string) => call('POST', `/api/groups/${gid}/chat`, { text }).then(Boolean)
+export const pushTest = () => call<{ subs: number; results: string[] }>('POST', '/api/admin/push-test', {}, { admin: true, timeout: 15000 })

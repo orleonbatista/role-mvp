@@ -26,7 +26,7 @@ export function TurmasPage() {
   const q = useTurmas()
   const groups = (q.data ?? []).filter((t) => t.members.length >= 2 || t.requests.length > 0)
   return (
-    <Page>
+    <Page tabbed>
       <TopBar title="Suas turmas" />
       <div className="grid gap-3 px-5 pb-16">
         <p className="text-[14px] text-mute">Quem vota com você num rolê entra na turma. Na próxima, é só chamar a mesma galera.</p>

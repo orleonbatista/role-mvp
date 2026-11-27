@@ -5,7 +5,7 @@ import { createReadStream } from 'node:fs'
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { DESTAQUES, askBody, moderateBody, moderationRules, ollamaBody, pickBody } from '../src/mocks/llmPrompt.ts'
-import { deviceForLogin, resolveSession, checkDeadlines, ogPage, photoFile, placePhotoFile, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
+import { deviceForLogin, isAdminReq, resolveSession, checkDeadlines, ogPage, photoFile, placePhotoFile, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
 import { geoFromCep, geoReverse } from './geo.mjs'
 import { createLLM } from './providers.mjs'
 import { createPush } from './push.mjs'
@@ -38,7 +38,10 @@ hooks.notify = (e) => {
     const k = `${e.key}|${s.device}`
     if (!e.key.startsWith('d-') && now - (lastPush.get(k) ?? 0) < 120_000) continue
     lastPush.set(k, now)
-    void push.send(s, { title: e.title, body: e.body, url: `/role-mvp/${e.url}`, tag: e.key }).then((st) => { if (st === 'gone') dropPushSub(s.endpoint) })
+    void push.send(s, { title: e.title, body: e.body, url: `/role-mvp/${e.url}`, tag: e.key }).then((st) => {
+      console.log(`[${new Date().toLocaleTimeString('pt-BR')}] push ${e.key} → ${st}`)
+      if (st === 'gone') dropPushSub(s.endpoint)
+    })
   }
 }
 const hits = new Map() // ip -> timestamps (ms)
@@ -127,6 +130,13 @@ const server = http.createServer(async (req, res) => {
     if (apiLimited(ip, write)) return send(res, 429, { error: 'rate_limited' }, origin)
     const sessErr = resolveSession(req, path)
     if (sessErr) return send(res, 401, sessErr, origin)
+    // teste de avisos (admin): manda um aviso pros aparelhos do próprio admin e devolve o resultado de cada envio
+    if (req.method === 'POST' && path === '/api/admin/push-test') {
+      if (!isAdminReq(req)) return send(res, 401, { error: 'admin' }, origin)
+      const subs = pushSubsOf([String(req.headers['x-device'] ?? '')])
+      const results = await Promise.all(subs.map((s) => push.send(s, { title: 'Teste de aviso do rolê', body: 'Se você está vendo isto, os avisos funcionam.', url: '/role-mvp/testes', tag: 'teste' }).catch((e) => `erro: ${e.message}`)))
+      return send(res, 200, { subs: subs.length, results }, origin)
+    }
     let body = {}
     if (write) {
       let raw = ''

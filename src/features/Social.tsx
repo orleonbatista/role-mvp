@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Award, Ban, Bookmark, Check, ListPlus, Trophy, UserPlus } from 'lucide-react'
-import { Avatar, Page, SectionTitle, Tag, TopBar, cx } from '../ui/primitives'
+import { Avatar, Page, SectionTitle, Skeleton, Tag, TopBar, cx } from '../ui/primitives'
 import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
 import { confirmSheet } from '../ui/Confirm'
-import { createList, listAction, listOf, myLists, person, personAction, ranking, social, type FeedItem, type PersonCard, type Rep } from '../mocks/remote'
+import { searchPeople, createList, listAction, listOf, myLists, person, personAction, ranking, social, type FeedItem, type PersonCard, type Rep } from '../mocks/remote'
 import { fromSnap } from '../lib/places'
 import { VERDICT_LABEL, nicheLabel, timeAgo } from '../lib/labels'
 import { useProfile, useSync } from '../lib/api'
@@ -56,6 +56,7 @@ export function SocialPage() {
 
       {tab === 'feed' && (
         <section className="grid gap-2 px-5 pb-28">
+          {s.isLoading && [0, 1, 2].map((i) => <Skeleton key={i} className="h-24" />)}
           {s.data && !s.data.feed.length && (
             <p className="rounded-[20px] border border-dashed border-line p-5 text-center text-[13px] text-faint">
               {s.data.friends.length ? 'Seus amigos ainda não avaliaram nem fecharam rolês.' : 'Adicione amigos pelo ranking ou pelos perfis de quem vota com você pra ver as curadorias deles aqui.'}
@@ -65,6 +66,7 @@ export function SocialPage() {
         </section>
       )}
 
+      {tab === 'amigos' && <FindPeople />}
       {tab === 'amigos' && (
         <section className="mx-5 mb-28 divide-y divide-line overflow-hidden rounded-[20px] border border-line">
           {s.data && !s.data.friends.length && !s.data.sent.length && <p className="p-4 text-[13px] text-faint">Nenhum amigo ainda.</p>}
@@ -119,6 +121,7 @@ export function PersonPage() {
     qc.invalidateQueries({ queryKey: ['person', pid] }); qc.invalidateQueries({ queryKey: ['social'] })
   }
   if (q.isFetched && !p) return <Page><TopBar /><p className="px-5 text-[14px] text-mute">Perfil não encontrado.</p></Page>
+  if (!p) return <Page><TopBar /><div className="grid gap-3 px-5"><Skeleton className="h-20" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div></Page>
   return (
     <Page>
       <TopBar />
@@ -180,6 +183,7 @@ export function ListPage() {
   const l = q.data
   const places = (l?.places ?? []).map((x) => (Array.isArray(x) ? fromSnap(x) : null)).filter((x): x is Place => !!x)
   if (q.isFetched && !l) return <Page><TopBar /><p className="px-5 text-[14px] text-mute">Lista não encontrada.</p></Page>
+  if (!l) return <Page><TopBar /><div className="grid gap-3 px-5"><Skeleton className="h-12" /><Skeleton className="h-16" /><Skeleton className="h-16" /></div></Page>
   return (
     <Page>
       <TopBar title={l?.title ?? 'Lista'} />
@@ -238,5 +242,29 @@ export function SaveToList({ place }: { place: Place }) {
         </form>
       </Sheet>
     </>
+  )
+}
+
+/** buscar pessoas pelo nome e adicionar */
+function FindPeople() {
+  const [q, setQ] = useState('')
+  const qc = useQueryClient()
+  const r = useQuery({ queryKey: ['people', q.trim()], queryFn: () => searchPeople(q.trim()), enabled: q.trim().length >= 2, staleTime: 30_000 })
+  return (
+    <div className="mx-5 mb-4">
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar amigos pelo nome" aria-label="Buscar amigos pelo nome"
+        className="h-11 w-full rounded-full border border-line bg-white/[0.03] px-4 text-[14px] outline-none placeholder:text-faint focus:border-accent" />
+      {q.trim().length >= 2 && (
+        <div className="mt-2 divide-y divide-line overflow-hidden rounded-[20px] border border-line">
+          {r.isFetching && !r.data && <p className="p-4 text-[13px] text-faint">Buscando…</p>}
+          {r.data?.length === 0 && <p className="p-4 text-[13px] text-faint">Ninguém com esse nome no rolê ainda.</p>}
+          {r.data?.map((p) => (
+            <PersonRow key={p.pid} p={p} right={p.relation === 'nenhuma'
+              ? <button onClick={async () => { await personAction(p.pid, 'add'); qc.invalidateQueries({ queryKey: ['people'] }); qc.invalidateQueries({ queryKey: ['social'] }) }} aria-label={`Adicionar ${p.name}`} className="grid size-9 place-items-center rounded-full bg-accent text-accent-ink"><UserPlus size={15} /></button>
+              : <span className="text-[11px] text-faint">{p.relation === 'amigos' ? 'amigos' : p.relation === 'enviado' ? 'pedido enviado' : 'te pediu'}</span>} />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

@@ -62,7 +62,7 @@ const ListPage = lazy(() => retryImport(() => import('../features/Social').then(
 const QuickSearch = lazy(() => retryImport(() => import('../features/QuickSearch').then((m) => ({ default: m.QuickSearch }))))
 const TestesPage = lazy(() => retryImport(() => import('../features/Testes').then((m) => ({ default: m.TestesPage }))))
 
-const TAB_ROUTES = ['/', '/amigos', '/perfil']
+const TAB_ROUTES = ['/', '/amigos', '/turmas', '/perfil']
 
 function Fallback() {
   return (
@@ -77,6 +77,9 @@ export function App() {
   const { data: profile, isLoading } = useProfile()
   const isPublic = ['/u/', '/lista/', '/r/', '/s/', '/e/', '/p/', '/lugar/', '/avaliar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
   const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !isPublic
+  // /perfil/ (com barra no fim, como o GitHub Pages serve as rotas fixas) vira /perfil: antes a barra inferior sumia
+  // nessas telas porque a rota não batia
+  const trailing = location.pathname.length > 1 && location.pathname.endsWith('/')
   const showFeedback = !['/onboarding', '/r/', '/s/', '/i/', '/e/', '/c/', '/p/', '/divulgar', '/testes'].some((p) => location.pathname.startsWith(p))
 
   useEffect(() => {
@@ -85,6 +88,7 @@ export function App() {
   }, [])
   useEffect(() => { track('screen', { path: location.pathname }) }, [location.pathname])
 
+  if (trailing) return <Navigate to={`${location.pathname.replace(/\/+$/, '')}${location.search}${location.hash}`} replace />
   return (
     <MotionConfig reducedMotion="user">
       <PhoneFrame>

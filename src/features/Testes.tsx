@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { Cpu, Database, Download, MessageSquareHeart, Store } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { actClaim, adminClaims, adminUsers, openReports, resolveReport, checkAdmin, getAdminKey, setAdminKey, setUserRole } from '../mocks/remote'
+import { pushTest, actClaim, adminClaims, adminUsers, openReports, resolveReport, checkAdmin, getAdminKey, setAdminKey, setUserRole } from '../mocks/remote'
 import { useToast } from '../ui/Toast'
 import { cx } from '../ui/primitives'
 import { getLLMOverride, llmStatus, setLLMOverride } from '../mocks/llm'
@@ -196,6 +196,7 @@ export function TestesPage() {
 
       {canGlobal && <UsersCard />}
       {sync?.curator && <ReportsCard />}
+      {canGlobal && <PushTestCard />}
       {canGlobal && <ClaimsCard />}
       {canGlobal && global?.funnel && <FunnelCard f={global.funnel} />}
       {canGlobal && global?.apis && <ApisCard apis={global.apis} />}
@@ -491,6 +492,23 @@ function ClaimsCard() {
         ))}
       </div>
       <p className="mx-5 mt-2 text-[11px] text-faint">Verifique ligando no telefone da ficha do Google antes de aprovar. O destaque aparece marcado como patrocinado, no máximo 1 por votação e só quando encaixa no pedido.</p>
+    </section>
+  )
+}
+
+/* admin: confere se os avisos chegam neste aparelho */
+function PushTestCard() {
+  const [out, setOut] = useState<string>('')
+  return (
+    <section className="mx-5 mt-7 rounded-[20px] border border-line p-4">
+      <p className="text-[14px]">Avisos no celular</p>
+      <p className="mt-1 text-[12px] text-mute">Manda um aviso de teste pros aparelhos da sua conta que ativaram avisos.</p>
+      <button className="mt-3 h-10 rounded-full bg-accent px-4 text-[13px] font-medium text-accent-ink" onClick={async () => {
+        setOut('Enviando…')
+        const r = await pushTest()
+        setOut(!r ? 'Sem conexão com o servidor.' : !r.subs ? 'Nenhum aparelho seu com avisos ativos: ative em uma votação ("Ativar avisos").' : `${r.subs} aparelho(s): ${r.results.join(', ')}`)
+      }}>Testar aviso</button>
+      {out && <p className="mt-2 text-[12px] text-ink/80">{out}</p>}
     </section>
   )
 }

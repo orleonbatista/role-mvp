@@ -42,6 +42,7 @@ export function Results() {
   const [share, setShare] = useState(false)
   const [story, setStory] = useState(false)
   const [storySugira, setStorySugira] = useState(false)
+  const [storyDecided, setStoryDecided] = useState(false)
   const loaded = !!data
   const optKey = data?.options.map((o) => o.id).join() ?? ''
   const [link, setLink] = useState('')
@@ -145,6 +146,12 @@ export function Results() {
             </motion.section>
           )}
 
+          {/* Instagram em um toque: antes de decidir, pedir indicação; depois, mostrar o que foi decidido */}
+          <div className="mx-5 mt-5 grid">
+            {data.request.status !== 'decidido'
+              ? <button onClick={() => { track('ig_ask_click', { id }); setStorySugira(true) }} className="flex h-12 items-center justify-center gap-2 rounded-full text-[14px] font-medium text-white" style={{ background: 'linear-gradient(90deg,#f58529,#dd2a7b 45%,#8134af 75%,#515bd4)' }}>Pedir indicação no Instagram</button>
+              : <button onClick={() => { track('ig_decided_click', { id }); setStoryDecided(true) }} className="flex h-12 items-center justify-center gap-2 rounded-full text-[14px] font-medium text-white" style={{ background: 'linear-gradient(90deg,#f58529,#dd2a7b 45%,#8134af 75%,#515bd4)' }}>Postar no Story o rolê fechado</button>}
+          </div>
           {data.request.authorId === 'me' && <DeadlinePicker d={data} />}
 
           <Community data={data} />
@@ -169,6 +176,10 @@ export function Results() {
       {data && <ShareSheet open={share} onClose={() => setShare(false)} data={data} link={link} onStory={() => { setShare(false); setTimeout(() => setStory(true), 250) }} onStorySugira={() => { setShare(false); setTimeout(() => setStorySugira(true), 250) }} />}
       {data && <StorySheet open={storySugira} onClose={() => setStorySugira(false)} card={sugiraCard} link={link ? withSource(suggestUrl(link), 'ig') : ''} context="sugestoes" />}
       {data && <StorySheet open={story} onClose={() => setStory(false)} card={storyCard} link={link ? withSource(link, 'ig') : ''} context="pedido" />}
+      {data && data.request.status === 'decidido' && (() => {
+        const p = data.options.find((o) => o.id === data.request.decidedPlaceId)
+        return p ? <StorySheet open={storyDecided} onClose={() => setStoryDecided(false)} card={{ kind: 'fechado', place: p, time: data.request.decidedTime, people: data.request.criteria.groupSize, author: data.author.name.split(' ')[0] }} link={`${location.origin}${import.meta.env.BASE_URL}?src=ig`} context="fechado" /> : null
+      })()}
     </Page>
   )
 }
