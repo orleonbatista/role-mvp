@@ -89,6 +89,7 @@ export function Home() {
         <SectionTitle aside={<span className="text-xs text-faint">seu gosto · até 5 km</span>}>Pra você</SectionTitle>
         {forYou.isLoading && <p className="mb-3 px-5 text-[12px] text-faint">Buscando lugares abertos perto de você que combinam com seu gosto…</p>}
         {!forYou.isLoading && googleLimits.basic && <p className="mb-3 px-5 text-[12px] text-amber-300/90">Este celular chegou ao limite de buscas de hoje no Google. Mostrando o que já conhecemos; amanhã volta ao normal.</p>}
+        {!forYou.isLoading && forYou.data?.some((r) => r.place.source === 'osm') && <p className="mb-3 px-5 text-[12px] text-faint">Alguns lugares vêm do OpenStreetMap (dados © colaboradores do OpenStreetMap) enquanto o Google não responde.</p>}
         {forYou.data?.length === 0 && (
           <Link to="/fundador" className="mx-5 block rounded-[24px] border border-dashed border-accent/40 bg-accent/[0.05] p-5">
             <p className="font-serif text-[26px] leading-none">O rolê está começando<span className="text-accent">.</span></p>

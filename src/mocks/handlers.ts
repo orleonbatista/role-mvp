@@ -264,7 +264,15 @@ export const handlers = [
     const curated = rank(places.filter((p) => isCurated(p) && p.kind !== 'evento' && (near(p) ?? 0) <= 5), c, profile).filter((r) => r.match >= 35)
     const base = rank(places.filter((p) => p.curation === 'base' && (near(p) ?? 99) <= 5 && p.niches.some((n) => taste.has(n))), c, profile)
     const all = [...curated.map((r) => ({ r, s: r.score + 1 - (near(r.place) ?? 4) * 0.7 })), ...base.map((r) => ({ r, s: r.score - (near(r.place) ?? 5) * 0.7 }))]
-    const out = all.sort((a, b) => b.s - a.s).map((x) => x.r).slice(0, 10)
+    let out = all.sort((a, b) => b.s - a.s).map((x) => x.r).slice(0, 10)
+    // pouca coisa do seu estilo no raio (ex.: Google sem cota e só o OpenStreetMap respondeu): completa com
+    // outros lugares a até 5 km, do mais perto, depois dos que combinam
+    if (out.length < 6) {
+      const have = new Set(out.map((r) => r.place.id))
+      const more = rank(places.filter((p) => p.curation === 'base' && p.kind !== 'evento' && !have.has(p.id) && (near(p) ?? 99) <= 5), c, profile)
+        .sort((a, b) => (near(a.place) ?? 9) - (near(b.place) ?? 9)).slice(0, 10 - out.length)
+      out = [...out, ...more]
+    }
     if (out.length) return HttpResponse.json(out)
     // nada no raio (ex.: limite diário do Google batido): mostra o que já conhecemos, do mais perto, até 15 km
     const wide = rank(places.filter((p) => p.kind !== 'evento' && (near(p) ?? 99) <= 15), c, profile)

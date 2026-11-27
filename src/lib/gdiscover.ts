@@ -1,6 +1,6 @@
 import type { Criteria, Home, Niche, Place } from './types'
-import { FIELDS, toPlace } from './places'
-import { hoodCoord } from './hours'
+import { FIELDS, fromSnap, toPlace } from './places'
+import { hoodCoord, knownHoodNear } from './hours'
 import { registerPlace } from '../mocks/seeds/places'
 import { track } from './track'
 
@@ -33,8 +33,12 @@ export const limits = {
 const done = new Map<string, Promise<Place[]>>() // memória da sessão: mesma busca não repete
 const km = (a: { lat: number; lng: number }, b: Place) => (b.lat == null || b.lng == null ? 99 : Math.hypot((a.lat - b.lat) * 111, (a.lng - b.lng) * 102))
 
+/** Google recusou por cota (429/403): por 10 min nem tenta, vai direto pro plano B (OpenStreetMap) */
+let googleDownUntil = 0
+export const googleDown = () => Date.now() < googleDownUntil
+
 export async function discover(query: string, center: { lat: number; lng: number }, radius = RADIUS): Promise<Place[]> {
-  if (!KEY) return []
+  if (!KEY || googleDown()) return []
   const ck = `${query}|${center.lat.toFixed(2)},${center.lng.toFixed(2)}|${radius}`
   if (!done.has(ck)) {
     if (used() >= DEVICE_DAILY) return []
@@ -51,7 +55,7 @@ export async function discover(query: string, center: { lat: number; lng: number
           }),
           signal: AbortSignal.timeout(8000),
         })
-        if (!r.ok) { done.delete(ck); spend(-1); return [] } // falha (ex.: 429 do Google) não gasta a cota do aparelho
+        if (!r.ok) { done.delete(ck); spend(-1); if (r.status === 429 || r.status === 403) googleDownUntil = Date.now() + 10 * 60_000; return [] } // falha (ex.: 429 do Google) não gasta a cota do aparelho
         const j = (await r.json()) as { places?: Parameters<typeof toPlace>[0][] }
         const out: Place[] = []
         for (const g of j.places ?? []) {
@@ -73,7 +77,59 @@ export async function discoverForTaste(center: { lat: number; lng: number } | un
   if (!center) return 0
   const qs = (niches.length ? niches : (['drinks', 'boteco'] as Niche[])).slice(0, 3).map((n) => QUERY[n] ?? 'bar')
   const lists = await Promise.all(qs.map((q) => discover(q, center)))
-  return new Set(lists.flat().map((p) => p.id)).size
+  const n = new Set(lists.flat().map((p) => p.id)).size
+  if (n > 0) return n
+  // plano B: Google sem cota (ou sem nada no raio) → OpenStreetMap, gratuito e aberto
+  return (await discoverOSM(center)).length
+}
+
+/* ---------- plano B: OpenStreetMap (Overpass) ----------
+   Bares, botecos, restaurantes, cafés e baladas cadastrados no OpenStreetMap num raio de 5 km. Gratuito e aberto
+   (dados © colaboradores do OpenStreetMap, licença ODbL: a Home mostra o crédito). Entra como "sem curadoria",
+   igual ao que vem do Google. Uma busca por sessão por região. */
+const OSM_KIND: Record<string, { kind: Place['kind']; niche: Niche; tagline: string }> = {
+  bar: { kind: 'bar', niche: 'drinks', tagline: 'Bar' }, pub: { kind: 'bar', niche: 'boteco', tagline: 'Boteco' },
+  biergarten: { kind: 'bar', niche: 'ao-ar-livre', tagline: 'Cervejaria ao ar livre' }, restaurant: { kind: 'restaurante', niche: 'gastronomia', tagline: 'Restaurante' },
+  cafe: { kind: 'restaurante', niche: 'cafe' as Niche, tagline: 'Café' }, nightclub: { kind: 'balada', niche: 'eletronica', tagline: 'Balada' },
+}
+export let osmUsed = false
+export async function discoverOSM(center: { lat: number; lng: number }, radius = RADIUS): Promise<Place[]> {
+  const ck = `osm|${center.lat.toFixed(2)},${center.lng.toFixed(2)}|${radius}`
+  if (!done.has(ck)) {
+    done.set(ck, (async () => {
+      try {
+        track('osm_call', {})
+        const q = `[out:json][timeout:20];nwr(around:${radius},${center.lat},${center.lng})[amenity~"^(bar|pub|biergarten|restaurant|cafe|nightclub)$"][name];out center 120;`
+        // servidor principal e um espelho público (o principal às vezes fica ocupado)
+        let r: Response | null = null
+        for (const host of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+          try { r = await fetch(host, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: AbortSignal.timeout(15000) }) } catch { r = null }
+          if (r?.ok) break
+        }
+        if (!r?.ok) { done.delete(ck); return [] }
+        const j = (await r.json()) as { elements?: { type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[] }
+        const out: Place[] = []
+        for (const e of j.elements ?? []) {
+          const t = e.tags ?? {}
+          const k = OSM_KIND[t.amenity]
+          const lat = e.lat ?? e.center?.lat, lng = e.lon ?? e.center?.lon
+          if (!k || !t.name || lat == null || lng == null) continue
+          if (t.disused || t['disused:amenity'] || t.opening_hours === 'off') continue
+          const hood = t['addr:suburb'] || knownHoodNear(lat, lng, 3) || 'perto de você'
+          const id = `o-${e.type[0]}${e.id}`
+          const p = fromSnap([id, t.name, k.kind, hood, [k.niche], 2, [], ['amigos'], 'b', { la: lat, lo: lng }])
+          if (!p) continue
+          p.tagline = k.tagline
+          if (t.cuisine) p.description = `Cozinha: ${t.cuisine.replace(/_/g, ' ').replace(/;/g, ', ')}`
+          registerPlace(p)
+          out.push(p)
+        }
+        if (out.length) osmUsed = true
+        return out
+      } catch { done.delete(ck); return [] }
+    })())
+  }
+  return done.get(ck)!
 }
 
 /* ---------- pedido: busca rica (1 chamada) com confirmação ao vivo ----------
@@ -122,6 +178,7 @@ export async function discoverForRequest(c: Criteria, home?: Home, text = '') {
   if (c.hood && !q.includes(c.hood.toLowerCase())) q += ` ${c.hood}`
   const ck = `rich|${q}|${center.lat.toFixed(2)},${center.lng.toFixed(2)}|${radiusKm}`
   if (done.has(ck)) return (await done.get(ck)!).length
+  if (googleDown()) return (await discoverOSM(center, radiusKm * 1000)).length
   if (richUsed() >= RICH_DAILY) {
     // sem cota rica no aparelho: cai pra busca simples (sem confirmação)
     const lists = await Promise.all((c.niches.length ? c.niches.slice(0, 2) : (['drinks'] as Niche[])).map((x) => discover(QUERY[x] ?? 'bar', center, radiusKm * 1000)))
@@ -141,7 +198,7 @@ export async function discoverForRequest(c: Criteria, home?: Home, text = '') {
         }),
         signal: AbortSignal.timeout(8000),
       })
-      if (!r.ok) { done.delete(ck); refundRich(); return [] }
+      if (!r.ok) { done.delete(ck); refundRich(); if (r.status === 429 || r.status === 403) googleDownUntil = Date.now() + 10 * 60_000; return [] }
       type G = Parameters<typeof toPlace>[0] & { rating?: number; userRatingCount?: number; regularOpeningHours?: GHours; outdoorSeating?: boolean; servesBeer?: boolean; goodForGroups?: boolean; liveMusic?: boolean; servesCocktails?: boolean }
       const j = (await r.json()) as { places?: G[] }
       const out: Place[] = []
@@ -160,7 +217,9 @@ export async function discoverForRequest(c: Criteria, home?: Home, text = '') {
       return out
     } catch { done.delete(ck); refundRich(); return [] }
   })())
-  return (await done.get(ck)!).length
+  const n = (await done.get(ck)!).length
+  // Google sem cota ou sem resultado: lugares do OpenStreetMap no mesmo raio (plano B)
+  return n > 0 ? n : (await discoverOSM(center, radiusKm * 1000)).length
 }
 
 /** centro de quem usa: região do cadastro ou centro do bairro escolhido */
