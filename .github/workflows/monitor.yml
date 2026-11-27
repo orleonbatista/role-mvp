@@ -1,0 +1,47 @@
+name: Monitor do servidor
+
+# A cada 15 min confere se o servidor do rolê responde. Se cair, abre uma issue "Servidor fora do ar"
+# (o GitHub avisa o dono por e-mail e no app do GitHub); quando volta, comenta e fecha a issue.
+# Roda na nuvem, então avisa mesmo com o PC desligado. Na migração para a nuvem, troque a URL pelo domínio fixo.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verifica /api/health (3 tentativas)
+        id: health
+        run: |
+          URL=$(curl -fsS "https://raw.githubusercontent.com/${{ github.repository }}/main/llm.json" | jq -r '.url // empty')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          ok=0
+          for i in 1 2 3; do
+            if [ -n "$URL" ] && curl -fsS -m 10 -H "Origin: https://orleonbatista.github.io" "$URL/api/health" | jq -e '.db == true' >/dev/null; then ok=1; break; fi
+            sleep 20
+          done
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+      - name: Abre ou fecha o alerta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OK: ${{ steps.health.outputs.ok }}
+          URL: ${{ steps.health.outputs.url }}
+        run: |
+          OPEN=$(gh issue list -R "${{ github.repository }}" --state open --search 'in:title "Servidor fora do ar"' --json number -q '.[0].number')
+          if [ "$OK" = "1" ]; then
+            if [ -n "$OPEN" ]; then gh issue comment "$OPEN" -R "${{ github.repository }}" -b "Voltou ao ar em $(date -u +%FT%TZ)."; gh issue close "$OPEN" -R "${{ github.repository }}"; fi
+          else
+            if [ -z "$OPEN" ]; then
+              gh issue create -R "${{ github.repository }}" -t "Servidor fora do ar" -b "O /api/health não respondeu 3 vezes seguidas ($URL). Verifique se o PC está ligado e a tarefa role-gateway rodando. Detectado em $(date -u +%FT%TZ)." -a "${{ github.repository_owner }}"
+            fi
+          fi
