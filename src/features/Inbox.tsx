@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bell, CalendarCheck, Camera, Check, MessageCircle, Star, UserPlus, Vote } from 'lucide-react'
+import { Bell, CalendarCheck, Camera, Check, MessageCircle, Star, UserPlus, Users, Vote } from 'lucide-react'
 import { Page, Skeleton, TopBar, cx } from '../ui/primitives'
 import { inbox, inboxRead, personAction, type InboxItem } from '../mocks/remote'
 import { timeAgo } from '../lib/labels'
@@ -9,7 +9,7 @@ import { track } from '../lib/track'
 /* Central de notificações: tudo que vira aviso no celular também fica guardado aqui por 60 dias,
    então quem não ligou os avisos (ou trocou de aparelho) ainda vê pedidos de amizade, votos, mensagens etc. */
 
-const ICON: Record<string, typeof Bell> = { fr: UserPlus, fra: Check, v: Vote, s: Vote, d: CalendarCheck, close: CalendarCheck, rsvp: CalendarCheck, msg: MessageCircle, chat: MessageCircle, ph: Camera, rev: Star }
+const ICON: Record<string, typeof Bell> = { fr: UserPlus, fra: Check, v: Vote, s: Vote, d: CalendarCheck, close: CalendarCheck, rsvp: CalendarCheck, msg: MessageCircle, chat: MessageCircle, ph: Camera, rev: Star, gi: Users }
 
 export const useInbox = () => useQuery({ queryKey: ['inbox'], queryFn: inbox, refetchInterval: 30_000, staleTime: 10_000 })
 

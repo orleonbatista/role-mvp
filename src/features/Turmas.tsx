@@ -8,7 +8,7 @@ import { Avatar, Button, EmptyState, Page, Skeleton, TopBar } from '../ui/primit
 import { ease } from '../ui/motion'
 import { timeAgo } from '../lib/labels'
 import { track } from '../lib/track'
-import { groupChat, leaveGroup, myGroups, renameGroup, sendChat, setGroupVisibility, type Turma } from '../mocks/remote'
+import { groupChat, inviteToGroup, leaveGroup, myGroups, renameGroup, sendChat, setGroupVisibility, social, type Turma } from '../mocks/remote'
 import { Sheet } from '../ui/Sheet'
 import { ReportButton } from './Report'
 import { MessagesSquare, Send } from 'lucide-react'
@@ -177,6 +177,11 @@ export function TurmaChatSheet({ gid, open, onClose, from }: { gid: string; open
 /** lista completa de quem está na turma, com @ e nível; cada linha abre o perfil */
 function MembersButton({ t }: { t: Turma }) {
   const [open, setOpen] = useState(false)
+  const qc = useQueryClient()
+  const s = useQuery({ queryKey: ['social'], queryFn: social, enabled: open })
+  const inGroup = new Set(t.members.map((m) => m.pid))
+  const friends = (s.data?.friends ?? []).filter((f) => !inGroup.has(f.pid))
+  const invite = async (pid: string) => { if (await inviteToGroup(t.id, pid)) { track('turma_invite', {}); qc.invalidateQueries({ queryKey: ['turmas'] }) } }
   return (
     <>
       <button onClick={() => setOpen(true)} className="inline-flex h-7 items-center rounded-full border border-line px-2.5 text-xs text-mute">
@@ -198,6 +203,21 @@ function MembersButton({ t }: { t: Turma }) {
               </li>
             ))}
           </ul>
+          {friends.length > 0 && (
+            <>
+              <p className="mb-2 mt-5 text-[13px] uppercase tracking-[0.14em] text-mute">Chamar amigos</p>
+              <ul className="grid gap-1">
+                {friends.map((f) => (
+                  <li key={f.pid} className="flex items-center gap-3 py-1.5">
+                    <Avatar name={f.name} hue={f.hue} size={30} />
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[14px]">{f.name}</span><span className="block text-[11px] text-mute">{f.handle ?? f.reputation.level}</span></span>
+                    <button onClick={() => invite(f.pid)} className="h-8 rounded-full bg-accent px-3 text-[12px] font-medium text-accent-ink">Chamar</button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {s.data && !friends.length && <p className="mt-4 text-[12px] text-faint">Pra chamar alguém pelo @, adicione como amigo na aba Amigos.</p>}
         </div>
       </Sheet>
     </>

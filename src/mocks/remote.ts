@@ -458,4 +458,5 @@ export async function editOption(rid: string, action: 'add' | 'remove', place: P
 }
 export const setVoters = (rid: string, voters: 'link' | 'amigos') => call<{ ok: boolean }>('POST', `/api/requests/${encodeURIComponent(rid)}/settings`, { voters }).then(Boolean)
 export const setGroupVisibility = (gid: string, visibility: 'privada' | 'publica') => call('POST', `/api/groups/${gid}/settings`, { visibility }).then(Boolean)
+export const inviteToGroup = (gid: string, pid: string) => call<{ ok: boolean; already?: boolean }>('POST', `/api/groups/${gid}/invite`, { pid }).then(Boolean)
 export const joinGroup = (gid: string) => call('POST', `/api/groups/${gid}/join`, {}).then(Boolean)

@@ -119,6 +119,8 @@ db.exec(`
 `)
 if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'handle'").get()) db.exec('ALTER TABLE users ADD COLUMN handle TEXT')
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_users_handle ON users(handle)')
+if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'name_norm'").get()) db.exec('ALTER TABLE users ADD COLUMN name_norm TEXT')
+db.exec('CREATE INDEX IF NOT EXISTS ix_users_name ON users(name_norm)')
 // caixa de notificações: tudo que vira aviso no celular também fica aqui (dá pra ver depois, mesmo sem avisos ligados)
 db.exec(`CREATE TABLE IF NOT EXISTS inbox (id TEXT PRIMARY KEY, device TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, url TEXT NOT NULL, ref TEXT, actor TEXT, at INTEGER NOT NULL, read INTEGER NOT NULL DEFAULT 0);
   CREATE INDEX IF NOT EXISTS ix_inbox ON inbox(device, at);`)
@@ -693,6 +695,8 @@ function notify(e) {
 }
 const handleOf = (d) => { const h = db.prepare('SELECT handle FROM users WHERE device = ?').get(d)?.handle; return h ? `@${h}` : null }
 const slugHandle = (h) => String(h ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^@/, '').replace(/[^a-z0-9_.]/g, '').slice(0, 20)
+// nome normalizado indexado pra busca de pessoas (NF30)
+for (const u of db.prepare('SELECT device, data FROM users WHERE name_norm IS NULL').all()) db.prepare('UPDATE users SET name_norm = ? WHERE device = ?').run(normTxt(parse(u.data)?.name ?? ''), u.device)
 // quem se cadastrou antes do @ ganha um a partir do nome
 for (const u of db.prepare('SELECT device, data FROM users WHERE handle IS NULL').all()) {
   const want = slugHandle(parse(u.data)?.handle || parse(u.data)?.name) || 'role'
@@ -714,6 +718,7 @@ function handlePeople(method, path, body, device, now) {
     if (p.name.length < 2) return bad('profile')
     const ex = qp.getUser.get(device)
     qp.putUser.run(device, JSON.stringify(p), p.hood, p.home?.lat ?? null, p.home?.lng ?? null, consentAt, ex?.created_at ?? now, now)
+    db.prepare('UPDATE users SET name_norm = ? WHERE device = ?').run(normTxt(p.name), device)
     // @ único: mantém o que já tem; senão tenta o pedido e, se ocupado, acrescenta número
     let handle = ex?.handle ?? null
     if (!handle) {
@@ -1148,7 +1153,16 @@ export function handleApi(method, path, req, body) {
     if (q.length < 2) return ok([])
     const out = []
     // @ exato primeiro, depois começo do @, depois nome
-    const rows = db.prepare('SELECT device, data, hood, handle FROM users WHERE consent_at > 0').all()
+    // usa os índices (@ exato/prefixo, começo do nome) e só depois o "contém", sempre com teto
+    const esc = (x) => x.replace(/[%_\\]/g, (c) => `\\${c}`)
+    const pick = (where, ...args) => db.prepare(`SELECT device, data, hood, handle FROM users WHERE consent_at > 0 AND ${where} LIMIT 60`).all(...args)
+    const seen = new Set()
+    const rows = [
+      ...(h ? pick('handle = ?', h) : []),
+      ...(h ? pick("handle LIKE ? ESCAPE '\\'", `${esc(h)}%`) : []),
+      ...(!byAt ? pick("(name_norm LIKE ? ESCAPE '\\' OR name_norm LIKE ? ESCAPE '\\')", `${esc(q)}%`, `% ${esc(q)}%`) : []),
+      ...(h ? pick("handle LIKE ? ESCAPE '\\'", `%${esc(h)}%`) : []),
+    ].filter((u) => !seen.has(u.device) && seen.add(u.device))
       .map((u) => ({ u, rank: u.handle === h ? 0 : (u.handle ?? '').startsWith(h) && h ? 1 : !byAt && normTxt(parse(u.data)?.name ?? '').includes(q) ? 2 : (u.handle ?? '').includes(h) && h ? 3 : 9 }))
       .filter((x) => x.rank < 9).sort((a, b) => a.rank - b.rank)
     for (const { u } of rows) {
@@ -1274,6 +1288,21 @@ export function handleApi(method, path, req, body) {
     const vis = body.visibility === 'publica' ? 'publica' : 'privada'
     db.prepare('UPDATE groups SET visibility = ? WHERE id = ?').run(vis, m[1])
     return ok({ ok: true, visibility: vis })
+  }
+  // convidar amigo pro grupo (NF29): membro chama um amigo dele pelo perfil/@; entra direto e recebe aviso
+  if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/invite$/)) && write) {
+    if (!qp.member.get(m[1], device)) return bad('not_member', 403)
+    const other = deviceOfPseudo(str(body.pid, 20))
+    if (!other || other === device) return bad('not_found', 404)
+    if (relation(device, other) !== 'amigos' || isBlocked(device, other)) return bad('so_amigos', 403)
+    if (qp.member.get(m[1], other)) return ok({ ok: true, already: true })
+    const u = qp.getUser.get(other); const p = parse(u?.data ?? 'null') ?? {}
+    qp.addMember.run(m[1], other, p.name ?? 'Alguém', p.hue ?? 200, now, now)
+    qp.touchGroup.run(now, m[1])
+    const g = db.prepare('SELECT name FROM groups WHERE id = ?').get(m[1])
+    groupNote(m[1], `${userName(device) ?? 'Alguém'} chamou ${p.name ?? 'alguém'} pra turma`)
+    notify({ to: [other], from: device, key: `gi-${m[1]}`, title: `${userName(device) ?? 'Alguém'} te chamou pra turma${g?.name ? ` ${g.name}` : ''}`, body: 'Veja os rolês e o chat da turma', url: 'turmas' })
+    return ok({ ok: true })
   }
   if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/join$/)) && write) {
     const g = db.prepare('SELECT * FROM groups WHERE id = ?').get(m[1])
