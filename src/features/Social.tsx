@@ -59,7 +59,7 @@ export function SocialPage() {
           {s.isLoading && [0, 1, 2].map((i) => <Skeleton key={i} className="h-24" />)}
           {s.data && !s.data.feed.length && (
             <p className="rounded-[20px] border border-dashed border-line p-5 text-center text-[13px] text-faint">
-              {s.data.friends.length ? 'Seus amigos ainda não avaliaram nem fecharam rolês.' : 'Adicione amigos pelo ranking ou pelos perfis de quem vota com você pra ver as curadorias deles aqui.'}
+              {s.data.friends.length ? 'Seus amigos ainda não avaliaram nem fecharam rolês.' : 'Ache amigos pelo @ na aba Amigos (ou pelo ranking) pra ver as curadorias e os rolês deles aqui.'}
             </p>
           )}
           {s.data?.feed.map((f, i) => <FeedCard key={i} f={f} />)}

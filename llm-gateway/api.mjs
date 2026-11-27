@@ -468,7 +468,7 @@ export function insertReview(body, device, verdict) {
   if (!/^rv-[a-z0-9-]{1,24}$/.test(id) || !RE.place.test(placeId) || !(body.verdict in VERDICT_SCORE)) return bad('review')
   const rid = RE.request.test(String(body.requestId ?? '')) ? body.requestId : null
   const sp = snap(body.place)
-  const name = userName(device) ?? str(body.name, 40) ?? 'Alguém'
+  const name = userName(device) || str(body.name, 40) || 'Alguém'
   qp.insReview.run(id, device, placeId, rid, body.verdict, str(body.note, 400), name || 'Alguém', int(body.hue, 82), sp ? JSON.stringify(sp) : null,
     verdict.ok ? 'ok' : 'revisao', verdict.motivo || null, int(body.at, Date.now()))
   return ok({ ok: true, status: verdict.ok ? 'ok' : 'revisao' })
@@ -944,6 +944,7 @@ export function handleApi(method, path, req, body) {
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/messages$/)) && write) {
     const r = q.getReq.get(m[1])
     if (!r) return bad('not_found', 404)
+    if (!canVoteIn(r, device)) return bad('so_amigos', 403)
     const text = str(body.text, 280).trim()
     if (!text) return bad('text')
     if (/https?:\/\/|www\.|\b\d{4,5}-?\d{4}\b/i.test(text)) return bad('link_ou_telefone')
@@ -1088,6 +1089,11 @@ export function handleApi(method, path, req, body) {
     if (r.author_device !== device) return bad('not_author', 403)
     db.prepare('DELETE FROM votes WHERE request_id = ?').run(m[1])
     db.prepare('DELETE FROM suggestions WHERE request_id = ?').run(m[1])
+    // nada do pedido fica pra trás: horários, presença, recados, fotos (inclusive os arquivos) e o recado no chat da turma
+    for (const t of ['slots', 'rsvps', 'messages']) db.prepare(`DELETE FROM ${t} WHERE request_id = ?`).run(m[1])
+    for (const ph of db.prepare('SELECT id FROM photos WHERE request_id = ?').all(m[1])) removePhoto(ph.id)
+    db.prepare('DELETE FROM group_messages WHERE ref = ?').run(m[1])
+    db.prepare('DELETE FROM inbox WHERE url LIKE ?').run(`%${m[1]}`)
     db.prepare('DELETE FROM requests WHERE id = ?').run(m[1])
     return ok({ ok: true })
   }
@@ -1097,7 +1103,7 @@ export function handleApi(method, path, req, body) {
     const upd = q.decide.run(placeId, body.time ? str(body.time, 20) : null, now, m[1], device)
     if (upd.changes) {
       const r = q.getReq.get(m[1])
-      const voters = db.prepare('SELECT DISTINCT device FROM votes WHERE request_id = ? AND device != ?').all(m[1], device).map((x) => x.device)
+      const voters = participantsOf(m[1]).filter((d) => d !== device)
       groupNote(r.group_id, `Fechou: ${placeNameIn(r, placeId) ?? 'lugar escolhido'}${body.time ? ` · ${str(body.time, 20)}` : ''}`, m[1])
       notify({ to: voters, key: `d-${m[1]}`, title: 'Fechou o rolê!', body: `${placeNameIn(r, placeId) ?? 'O lugar foi escolhido'}${body.time ? ` · ${str(body.time, 20)}` : ''}`, url: `r/${m[1]}` })
     }
@@ -1204,6 +1210,12 @@ export function handleApi(method, path, req, body) {
     if (m[2] === 'remove') { db.prepare('DELETE FROM friendships WHERE a = ? AND b = ?').run(a, b); return ok({ ok: true }) }
     if (isBlocked(other, device)) return bad('not_found', 404)
     if (m[2] === 'add') {
+      if (cur?.status === `pedido:${other}`) {
+        // a outra pessoa já tinha pedido: adicionar de volta vira aceitar
+        db.prepare("UPDATE friendships SET status = 'amigos', at = ? WHERE a = ? AND b = ?").run(now, a, b)
+        notify({ to: [other], from: device, key: `fra-${device}`, title: `${userName(device) ?? 'Alguém'} aceitou sua amizade`, body: 'Agora vocês veem as curadorias um do outro', url: 'amigos' })
+        return ok({ ok: true, status: 'amigos' })
+      }
       if (cur) return ok({ ok: true, status: relation(device, other) })
       if (db.prepare("SELECT COUNT(*) n FROM friendships WHERE status LIKE 'pedido:%' AND status = ? AND at > ?").get(`pedido:${device}`, now - 86_400_000).n >= 30) return bad('rate_limited', 429)
       db.prepare('INSERT INTO friendships (a, b, status, at) VALUES (?, ?, ?, ?)').run(a, b, `pedido:${device}`, now)

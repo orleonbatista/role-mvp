@@ -112,13 +112,13 @@ export function Home() {
               <Link to={`/lugar/${r.place.id}`} className="group block w-[220px] shrink-0">
                 <div className="relative">
                   <Cover hue={r.place.hue} icon={placeIcon(r.place)} iconSize={72} layoutId={`cover-${r.place.id}`} className="h-[260px] w-full transition-transform duration-500 group-active:scale-[0.98]" />
-                  <PlacePhoto place={r.place} enabled={i < 3} carousel={false} />
+                  <PlacePhoto place={r.place} enabled={i < 3} carousel={false} credit="bottom" />
                   <div className="absolute inset-x-3 top-3 flex flex-wrap gap-1.5">
                     <Tag tone="accent">{fitLabel(r.match)}</Tag>
                     {r.place.curation === 'base' && <span className="inline-flex h-6 items-center rounded-full bg-black/45 px-2.5 text-[11px] text-white/85 backdrop-blur-md">sem curadoria</span>}
                     {openStatus(r.place).open && !r.place.source && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-black/40 px-2.5 text-[11px] text-white/90 backdrop-blur-md"><span className="size-1.5 rounded-full bg-accent" />aberto</span>}
                   </div>
-                  <div className="absolute inset-x-0 bottom-0 rounded-b-[28px] bg-gradient-to-t from-black/80 via-black/30 to-transparent p-4 pt-12">
+                  <div className="absolute inset-x-0 bottom-0 rounded-b-[28px] bg-gradient-to-t from-black/80 via-black/30 to-transparent p-4 pb-9 pt-12">
                     <p className="text-[11px] uppercase tracking-[0.12em] text-white/60">{KIND_LABEL[r.place.kind]} · {r.place.hood}</p>
                     <p className="mt-1 font-serif text-[26px] leading-none">{r.place.name}</p>
                   </div>

@@ -27,7 +27,7 @@ export function PlacePhoto({ place, enabled, className, rounded = 'rounded-[28px
               ? <img src={s.p.url} alt={`${place.name}: foto ${s.p.source === 'casa' ? 'da casa' : 'da comunidade'}`} loading="lazy" className="h-full w-full object-cover" />
               : <GoogleSlide place={place} name={s.name} w={w} load={i <= at + 1} />}
             {(s.kind === 'own' || s.by) && (
-              <span className={cx('absolute right-2 rounded-full bg-black/50 px-2 py-0.5 text-[9px] text-white/80 backdrop-blur', credit === 'top' ? 'top-2' : 'bottom-2')}>
+              <span className={cx('absolute right-2 rounded-full bg-black/50 max-w-[75%] truncate px-2 py-0.5 text-[10px] text-white/85 backdrop-blur', credit === 'top' ? 'top-2' : 'bottom-2')}>
                 {s.kind === 'own' ? (s.p.source === 'casa' ? 'Foto da casa' : 'Foto da comunidade') : `Foto: ${s.by}`}
               </span>
             )}

@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 // Auditoria da due diligence (manual, pelo workflow "Auditoria"): todas as telas em 3 aparelhos.
 // iPhone roda no WebKit (mesmo motor do Safari) pra pegar os problemas de área segura e layout do iOS.
-const base = { baseURL: process.env.E2E_BASE_URL ?? 'https://orleonbatista.github.io/role-mvp/', locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' }
+const base = { actionTimeout: 10_000, navigationTimeout: 20_000, baseURL: process.env.E2E_BASE_URL ?? 'https://orleonbatista.github.io/role-mvp/', locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' }
 export default defineConfig({
   testDir: 'auditoria',
   timeout: 300_000,

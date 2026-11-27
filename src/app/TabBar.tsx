@@ -27,7 +27,7 @@ export function TabBar({ visible }: { visible: boolean }) {
           animate={{ y: 0 }}
           exit={{ y: 100 }}
           transition={{ type: 'spring', stiffness: 360, damping: 34 }}
-          className="absolute inset-x-0 bottom-0 z-30 border-t border-white/10 bg-bg/85 pb-safe-bar backdrop-blur-2xl"
+          className="absolute inset-x-0 bottom-0 z-30 border-t border-white/10 bg-bg/[0.97] pb-safe-bar backdrop-blur-2xl"
         >
           <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2 pt-1.5">
             {left.map((t) => <Tab key={t.to} {...t} active={pathname === t.to} onClick={() => nav(t.to)} />)}

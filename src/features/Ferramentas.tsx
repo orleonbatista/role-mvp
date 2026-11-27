@@ -72,7 +72,7 @@ function FlyerTool({ open, onClose, format }: { open: boolean; onClose: () => vo
         <div className="mt-4 grid gap-2">
           <input className={fi} placeholder="Título (ex.: Aniver da Bia)" aria-label="Título" value={f.title} maxLength={60} onChange={(e) => setF({ ...f, title: e.target.value })} />
           <input className={fi} placeholder="Quando (ex.: sáb, 20h)" aria-label="Quando" value={f.when} maxLength={40} onChange={(e) => setF({ ...f, when: e.target.value })} />
-          <input className={fi} placeholder="Onde (ex.: Bar do Zé, Vila Madalena)" aria-label="Onde" value={f.where} maxLength={60} onChange={(e) => setF({ ...f, where: e.target.value })} />
+          <input className={fi} placeholder="Onde (ex.: Bar do Zé)" aria-label="Onde" value={f.where} maxLength={60} onChange={(e) => setF({ ...f, where: e.target.value })} />
           <input className={fi} placeholder="Recado (opcional)" aria-label="Recado" value={f.note} maxLength={90} onChange={(e) => setF({ ...f, note: e.target.value })} />
           {format === 'story' && <input className={fi} placeholder="Link pro sticker (opcional)" aria-label="Link" inputMode="url" value={f.link} onChange={(e) => setF({ ...f, link: e.target.value })} />}
         </div>

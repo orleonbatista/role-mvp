@@ -54,7 +54,7 @@ export function VoteSetup({ d }: { d: RequestDetail }) {
       </ul>
       <button onClick={() => { track('vote_option_add_click', {}); nav(`/s/${d.request.id}`) }} disabled={d.options.length >= 6}
         className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-full border border-dashed border-accent/50 text-[13px] text-accent disabled:opacity-40">
-        <MapPinPlus size={15} />{d.options.length >= 6 ? 'Máximo de 6 lugares (tire um pra pôr outro)' : 'Pôr outro lugar (busca no catálogo e no Google)'}
+        <MapPinPlus size={15} />{d.options.length >= 6 ? 'Máximo de 6: tire um pra pôr outro' : 'Pôr outro lugar'}
       </button>
       <button onClick={toggleVoters} className={cx('mt-3 flex w-full items-center gap-3 rounded-[16px] p-3 text-left', voters === 'amigos' ? 'bg-accent/[0.08]' : 'bg-white/[0.03]')}>
         {voters === 'amigos' ? <Lock size={16} className="shrink-0 text-accent" /> : <Unlock size={16} className="shrink-0 text-mute" />}

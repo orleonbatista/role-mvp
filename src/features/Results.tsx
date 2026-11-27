@@ -63,7 +63,7 @@ export function Results() {
 
   const footer = data ? (
           <div className="flex gap-2">
-            <Button size="lg" className="flex-1" onClick={() => { setShare(true); track('share_opened', { id }) }} icon={<Send size={16} />}>Mandar pro grupo</Button>
+            <Button size="lg" className="flex-1" onClick={() => { setShare(true); track('share_opened', { id }) }} icon={<Send size={16} />}><span className="whitespace-nowrap">Mandar pro grupo</span></Button>
             <Button size="lg" variant="soft" onClick={() => nav(`/r/${id}`)}>Votar</Button>
           </div>
   ) : null
@@ -111,8 +111,8 @@ export function Results() {
               {data.request.criteria.source && (
                 <p className="mt-2 text-[11px] text-faint">
                   {data.request.criteria.source.engine === 'llm'
-                    ? `entendido por ${data.request.criteria.source.model} ${/GPU/.test(data.request.criteria.source.via ?? 'GPU') ? 'rodando na' : 'via'} ${data.request.criteria.source.via ?? 'sua GPU'} · ${((data.request.criteria.source.ms ?? 0) / 1000).toFixed(1)}s`
-                    : 'entendido pelo parser local (regras)'}
+                    ? `entendido pela IA em ${((data.request.criteria.source.ms ?? 0) / 1000).toFixed(1).replace('.', ',')} s`
+                    : 'entendido pelas regras do app (IA fora do ar agora)'}
                 </p>
               )}
             </div>

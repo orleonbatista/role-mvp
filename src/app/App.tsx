@@ -95,7 +95,8 @@ export function App() {
   // /perfil/ (com barra no fim, como o GitHub Pages serve as rotas fixas) vira /perfil: antes a barra inferior sumia
   // nessas telas porque a rota não batia
   const trailing = location.pathname.length > 1 && location.pathname.endsWith('/')
-  const showFeedback = !['/onboarding', '/r/', '/s/', '/i/', '/e/', '/c/', '/p/', '/divulgar', '/testes'].some((p) => location.pathname.startsWith(p))
+  // fora da Início e das notificações: lá o canto de cima já tem botões (o de feedback ficava por cima do sino)
+  const showFeedback = location.pathname !== '/' && !['/notificacoes', '/onboarding', '/r/', '/s/', '/i/', '/e/', '/c/', '/p/', '/divulgar', '/testes'].some((p) => location.pathname.startsWith(p))
 
   useEffect(() => {
     const src = captureSource()

@@ -5,10 +5,19 @@ import { mkdirSync, writeFileSync } from 'node:fs'
    página (estouro de largura, botões sem nome, alvos de toque pequenos, texto minúsculo, contraste, erros de console).
    Dados de teste marcados [E2E] e apagados no fim. Saída: audit-out/<aparelho>/*.png e audit-out/<aparelho>.json */
 
+// rola a área que de fato rola (o app usa um contêiner com overflow, não a janela)
+async function scroll(page: Page, dy: number) {
+  await page.evaluate((dy) => {
+    const els = [...document.querySelectorAll('*')].filter((e) => { const s = getComputedStyle(e); return /(auto|scroll)/.test(s.overflowY) && e.scrollHeight > e.clientHeight + 20 })
+    const el = els.sort((a, b) => b.clientHeight - a.clientHeight)[0]
+    if (el) el.scrollBy(0, dy); else window.scrollBy(0, dy)
+  }, dy)
+}
+
 type Finding = { screen: string; kind: string; detail: string }
 const OUT = 'audit-out'
 
-async function audit(page: Page, screen: string, device: string, out: { screens: unknown[]; findings: Finding[] }, t0: number) {
+async function audit(page: Page, screen: string, device: string, out: { screens: unknown[]; findings: Finding[]; console?: string[] }, t0: number) {
   await page.waitForTimeout(900)
   const ms = Date.now() - t0
   const dir = `${OUT}/${device}`
@@ -61,6 +70,7 @@ async function audit(page: Page, screen: string, device: string, out: { screens:
   })
   out.screens.push({ screen, ms, h1: r.h1, title: r.title })
   for (const x of r.f) out.findings.push({ screen, ...x })
+  writeFileSync(`${OUT}/${device}.json`, JSON.stringify(out, null, 1))
 }
 
 test('auditoria de todas as telas', async ({ page }, info) => {
@@ -106,6 +116,8 @@ test('auditoria de todas as telas', async ({ page }, info) => {
   await page.waitForTimeout(4000)
   await audit(page, '14-inicio-carregada', device, out, Date.now())
 
+  let id = ''
+  try {
   // pedido
   await page.getByText('Descreve o rolê que você quer…').click()
   await audit(page, '15-novo-pedido', device, out, Date.now())
@@ -115,38 +127,41 @@ test('auditoria de todas as telas', async ({ page }, info) => {
   await expect(page).toHaveURL(/\/pedido\/r-/, { timeout: 40_000 })
   await expect(page.getByText(/combina|alternativa/).first()).toBeVisible({ timeout: 30_000 })
   await audit(page, '16-resultados', device, out, t0)
-  await page.mouse.wheel(0, 900); await audit(page, '17-resultados-meio', device, out, Date.now())
-  await page.mouse.wheel(0, 1400); await audit(page, '18-resultados-fim', device, out, Date.now())
-  const id = page.url().match(/r-[a-z0-9-]+/)![0]
+  await scroll(page, 900); await audit(page, '17-resultados-meio', device, out, Date.now())
+  await scroll(page, 1400); await audit(page, '18-resultados-fim', device, out, Date.now())
+  id = page.url().match(/r-[a-z0-9-]+/)![0]
   await go(`r/${id}`, '19-votacao', 'Onde vai ser?')
-  await page.mouse.wheel(0, 1000); await audit(page, '20-votacao-meio', device, out, Date.now())
-  await page.mouse.wheel(0, 1600); await audit(page, '21-votacao-fim', device, out, Date.now())
+  await scroll(page, 1000); await audit(page, '20-votacao-meio', device, out, Date.now())
+  await scroll(page, 1600); await audit(page, '21-votacao-fim', device, out, Date.now())
   await page.goto(`r/${id}`)
   const det = page.getByRole('link', { name: /^Ver detalhes de / }).first()
-  if (await det.count()) { t0 = Date.now(); await det.click(); await audit(page, '22-lugar', device, out, t0); await page.mouse.wheel(0, 1000); await audit(page, '23-lugar-fim', device, out, Date.now()) }
+  if (await det.count()) { t0 = Date.now(); await det.click(); await audit(page, '22-lugar', device, out, t0); await scroll(page, 1000); await audit(page, '23-lugar-fim', device, out, Date.now()) }
   await go(`s/${id}`, '24-sugerir')
 
   // abas e social
   await go('amigos', '25-amigos-feed')
-  await page.getByRole('button', { name: /^amigos$/i }).first().click().catch(() => {})
+  await page.getByRole('tab', { name: 'amigos' }).click().catch(() => {})
   await audit(page, '26-amigos-busca', device, out, Date.now())
   await page.getByLabel(/Buscar amigos/).fill('@orl').catch(() => {})
   await page.waitForTimeout(1500); await audit(page, '27-amigos-resultado', device, out, Date.now())
-  await page.getByRole('button', { name: /ranking/i }).first().click().catch(() => {})
+  await page.getByRole('tab', { name: 'ranking' }).click().catch(() => {})
   await audit(page, '28-ranking', device, out, Date.now())
   await go('turmas', '29-turmas')
   await go('notificacoes', '30-notificacoes', 'Notificações')
   await go('perfil', '31-perfil')
-  await page.mouse.wheel(0, 1200); await audit(page, '32-perfil-fim', device, out, Date.now())
+  await scroll(page, 1200); await audit(page, '32-perfil-fim', device, out, Date.now())
   await go('buscar', '33-busca-rapida')
   await go('indicar', '34-indicar')
+  } catch (e) { out.findings.push({ screen: 'roteiro', kind: 'falha', detail: String(e).slice(0, 300) }) }
 
-  // limpeza
+  // limpeza (sempre)
+  if (id) {
   await page.goto(`pedido/${id}`)
   await page.getByRole('button', { name: 'Apagar pedido' }).click()
   const delReq = page.waitForResponse((r) => /\/api\/requests\/r-[^/]+\/delete/.test(r.url()), { timeout: 15_000 })
   await page.getByRole('alertdialog').getByRole('button', { name: 'Apagar pedido' }).click()
   await delReq.catch(() => out.findings.push({ screen: 'limpeza', kind: 'falha', detail: 'pedido não apagado' }))
+  }
   await page.goto('perfil/')
   await page.getByText('Apagar meus dados').click()
   const del = page.waitForResponse((r) => r.url().includes('/api/me/delete'), { timeout: 15_000 })
