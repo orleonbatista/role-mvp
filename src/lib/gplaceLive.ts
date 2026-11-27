@@ -32,7 +32,7 @@ export interface LiveInfo {
 }
 export type LiveResult = { ok: true; info: LiveInfo } | { ok: false; reason: 'off' | 'nao_achou' | 'limite' | 'erro' }
 
-const dayKey = () => `role.glive.${new Date().toISOString().slice(0, 10)}`
+const dayKey = () => `role.glive.${new Date().toLocaleDateString('sv-SE')}`
 const left = () => { try { return DEVICE_DAILY - Number(localStorage.getItem(dayKey()) ?? 0) } catch { return DEVICE_DAILY } }
 const spend = () => { try { localStorage.setItem(dayKey(), String(Number(localStorage.getItem(dayKey()) ?? 0) + 1)) } catch { /* */ } }
 

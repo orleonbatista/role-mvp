@@ -1018,12 +1018,19 @@ export function handleApi(method, path, req, body) {
   }
   if ((m = path.match(/^\/api\/places\/([A-Za-z0-9_-]{4,120})\/photos$/)) && write) {
     const v = db.prepare('SELECT owner_device, status FROM venues WHERE place_id = ?').get(m[1])
-    if (!(v && v.status === 'verificada' && v.owner_device === device) && !isAdmin(req)) return bad('not_owner', 403)
+    const owner = (v && v.status === 'verificada' && v.owner_device === device) || isAdmin(req)
     const buf = Buffer.from(String(body.data ?? '').replace(/^data:image\/jpeg;base64,/, ''), 'base64')
     if (buf.length < 2000 || buf.length > 1_600_000 || buf[0] !== 0xff || buf[1] !== 0xd8) return bad('photo')
-    if (db.prepare("SELECT COUNT(*) n FROM place_photos WHERE place_id = ? AND source = 'casa'").get(m[1]).n >= 10) return bad('too_many')
-    const id = addPlacePhoto(m[1], 'casa', device, buf)
-    return id ? ok({ ok: true, id }) : bad('disk_full', 507)
+    if (owner) {
+      if (db.prepare("SELECT COUNT(*) n FROM place_photos WHERE place_id = ? AND source = 'casa'").get(m[1]).n >= 10) return bad('too_many')
+      const id = addPlacePhoto(m[1], 'casa', device, buf)
+      return id ? ok({ ok: true, id }) : bad('disk_full', 507)
+    }
+    // curadoria/comunidade: curador até 10 por lugar, demais até 3; a IA avalia e só as aprovadas aparecem
+    const mineN = db.prepare("SELECT COUNT(*) n FROM place_photos WHERE place_id = ? AND device = ? AND source = 'comunidade'").get(m[1], device).n
+    if (mineN >= (isCurator(req) ? 10 : 3)) return bad('too_many')
+    const id = addPlacePhoto(m[1], 'comunidade', device, buf)
+    return id ? ok({ ok: true, id }) : bad('too_many')
   }
   if ((m = path.match(/^\/api\/place-photos\/(pp-[a-f0-9]{12})\/delete$/)) && write) {
     const p = db.prepare('SELECT place_id, device FROM place_photos WHERE id = ?').get(m[1])
@@ -1036,7 +1043,7 @@ export function handleApi(method, path, req, body) {
   // fotos da casa na fila: dono vê as próprias com a nota e o motivo da IA
   if ((m = path.match(/^\/api\/places\/([A-Za-z0-9_-]{4,120})\/photos\/all$/)) && method === 'GET') {
     const v = db.prepare('SELECT owner_device FROM venues WHERE place_id = ?').get(m[1])
-    if (v?.owner_device !== device && !isAdmin(req)) return bad('not_owner', 403)
+    if (v?.owner_device !== device && !isAdmin(req)) return ok(db.prepare('SELECT id, source, score, reason, status FROM place_photos WHERE place_id = ? AND device = ? ORDER BY at DESC').all(m[1], device))
     return ok(db.prepare('SELECT id, source, score, reason, status FROM place_photos WHERE place_id = ? ORDER BY at DESC').all(m[1]))
   }
 

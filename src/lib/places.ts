@@ -23,7 +23,7 @@ const DEVICE_DAILY = 20
 
 export const placesEnabled = () => !!KEY
 
-const dayKey = () => `role.places.${new Date().toISOString().slice(0, 10)}`
+const dayKey = () => `role.places.${new Date().toLocaleDateString('sv-SE')}`
 export function searchesLeftToday() {
   try { return Math.max(0, DEVICE_DAILY - Number(localStorage.getItem(dayKey()) ?? 0)) } catch { return DEVICE_DAILY }
 }

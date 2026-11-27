@@ -122,7 +122,7 @@ export function Results() {
             <AnimatePresence>
               {introDone
                 ? data.recommendations.map((r, i) => (
-                    <motion.div key={r.place.id} initial={{ opacity: 0, y: 24, filter: 'blur(10px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ delay: i * 0.12, duration: 0.7, ease }}>
+                    <motion.div key={r.place.id} initial={{ opacity: 0, y: 24, filter: 'blur(10px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} transition={{ delay: i * 0.12, duration: 0.7, ease }}>
                       <RecCard rank={i + 1} detail={data} placeId={r.place.id} />
                     </motion.div>
                   ))
@@ -264,7 +264,7 @@ function Community({ data }: { data: RequestDetail }) {
               key={a.id}
               layout
               initial={{ opacity: 0, y: 20, scale: 0.97, filter: 'blur(8px)' }}
-              animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+              animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }}
               transition={{ duration: 0.6, ease }}
               className="rounded-[24px] border border-line bg-surface/70 p-4"
             >

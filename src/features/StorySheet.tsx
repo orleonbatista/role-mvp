@@ -78,7 +78,7 @@ export function StorySheet({ open, onClose, card, link, context }: { open: boole
           <AnimatePresence mode="wait">
             {preview ? (
               <motion.img key="img" src={preview} alt="Prévia da arte do Story" className="h-full w-full object-cover"
-                initial={{ opacity: 0, scale: 1.04, filter: 'blur(8px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} transition={{ duration: 0.6, ease }} />
+                initial={{ opacity: 0, scale: 1.04, filter: 'blur(8px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} transition={{ duration: 0.6, ease }} />
             ) : (
               <motion.div key="sk" exit={{ opacity: 0 }} className="h-full w-full"><Skeleton className="h-full w-full rounded-none" /></motion.div>
             )}

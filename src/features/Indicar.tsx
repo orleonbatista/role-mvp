@@ -1,11 +1,14 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { Check, MapPin, Search, Sparkles, X } from 'lucide-react'
+import { Camera, Check, MapPin, Search, Sparkles, X } from 'lucide-react'
 import { Button, Chip, Cover, Page, TopBar, cx } from '../ui/primitives'
 import { ease } from '../ui/motion'
 import { placeIcon } from '../ui/placeIcon'
-import { analyzePlace, confirmCommunityPlace } from '../lib/api'
+import { analyzePlace, confirmCommunityPlace, useSync } from '../lib/api'
+import { uploadPlacePhoto } from '../mocks/remote'
+import { shrink } from './GroupPanel'
+import { useQueryClient } from '@tanstack/react-query'
 import { NICHES, OCCASIONS, VIBES, nicheLabel, occasionLabel, priceLabel, vibeLabel } from '../lib/labels'
 import { placesEnabled, searchGoogle, searchesLeftToday } from '../lib/places'
 import { isCommunity, placeById, places } from '../mocks/seeds/places'
@@ -31,8 +34,13 @@ export function IndicarPage() {
   const [comment, setComment] = useState('')
   const [conf, setConf] = useState<{ name: string; niches: Niche[]; vibes: Vibe[]; occasions: Occasion[]; price: number } | null>(null)
   const [ai, setAi] = useState({ engine: '', flag: null as string | null, busy: false })
-  const [done, setDone] = useState<{ name: string; status: string; motivo?: string } | null>(null)
+  const [done, setDone] = useState<{ name: string; status: string; motivo?: string; photos?: string } | null>(null)
   const [count, setCount] = useState(0)
+  const [shots, setShots] = useState<string[]>([]) // fotos escolhidas (já reduzidas), enviadas ao salvar
+  const [sending, setSending] = useState(false)
+  const curator = !!useSync().data?.curator
+  const maxShots = curator ? 10 : 3
+  const qc = useQueryClient()
   useEffect(() => { track('indicar_opened', { preset: !!presetId, gap: fNiche && fHood ? `${fNiche}@${fHood}` : undefined }) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // candidatos: com busca, tudo que bate no nome/bairro; sem busca e com lacuna (estilo+bairro), a base daquele recorte
@@ -46,7 +54,7 @@ export function IndicarPage() {
   useEffect(() => {
     if (!picked) { setConf(null); return }
     setConf({ name: picked.name, niches: picked.niches.slice(0, 3), vibes: picked.vibes.slice(0, 2), occasions: picked.occasions.slice(0, 2), price: PRICES.reduce((a, b) => (Math.abs(b.v - picked.price) < Math.abs(a.v - picked.price) ? b : a)).v })
-    setComment(''); setAi({ engine: '', flag: null, busy: false })
+    setComment(''); setAi({ engine: '', flag: null, busy: false }); setShots([])
   }, [picked?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!picked || !comment.trim()) return
@@ -70,9 +78,14 @@ export function IndicarPage() {
   async function save() {
     if (!picked || !conf) return
     const final: Place = { ...picked, name: conf.name.trim() || picked.name, niches: conf.niches, vibes: conf.vibes, occasions: conf.occasions, price: conf.price, tagline: 'Sugerido pela comunidade', curation: undefined }
+    setSending(true)
     const r = await confirmCommunityPlace(final, comment.trim()).catch(() => null)
-    track('community_place', { status: r?.status, engine: ai.engine, from: 'indicar' })
-    setDone({ name: final.name, status: r?.status ?? 'local', motivo: r?.motivo })
+    let sent = 0
+    for (const d of shots) { try { if ((await uploadPlacePhoto(final.id, d))?.ok) sent++ } catch { /* segue */ } }
+    setSending(false)
+    if (sent) { qc.invalidateQueries({ queryKey: ['place-photos', final.id] }); qc.invalidateQueries({ queryKey: ['own-photos', final.id] }) }
+    track('community_place', { status: r?.status, engine: ai.engine, from: 'indicar', photos: shots.length, sent })
+    setDone({ name: final.name, status: r?.status ?? 'local', motivo: r?.motivo, photos: shots.length ? `${sent} de ${shots.length} foto(s) enviada(s); a IA avalia antes de aparecerem` : undefined })
     setCount((n) => n + 1)
     setPicked(null); setGoogle(null); setQ('')
   }
@@ -95,7 +108,7 @@ export function IndicarPage() {
 
   const footer = picked && conf ? (
     <div className="grid gap-2">
-      <Button size="lg" className="w-full" icon={<Check size={16} />} disabled={!conf.niches.length} onClick={save}>Adicionar ao rolê</Button>
+      <Button size="lg" className="w-full" icon={<Check size={16} />} disabled={!conf.niches.length || sending} onClick={save}>{sending ? 'Enviando…' : 'Adicionar ao rolê'}</Button>
     </div>
   ) : null
 
@@ -111,6 +124,7 @@ export function IndicarPage() {
           {done && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={cx('mt-4 rounded-[18px] p-3 text-[13px]', done.status === 'revisao' ? 'bg-amber-400/10 text-amber-200' : 'bg-accent/10 text-accent')}>
               {done.status === 'revisao' ? `${done.name} vai passar por uma revisão rápida (${done.motivo}).` : `${done.name} entrou no catálogo do rolê ✓`}
+              {done.photos && <span className="mt-1 block text-[12px] opacity-80">{done.photos}.</span>}
               <button onClick={() => setDone(null)} className="float-right text-mute" aria-label="Fechar"><X size={14} /></button>
             </motion.div>
           )}
@@ -171,6 +185,31 @@ export function IndicarPage() {
             <p className="mb-2 mt-4 text-[11px] uppercase tracking-[0.14em] text-mute">Quanto se gasta por pessoa</p>
             <div className="flex flex-wrap gap-1.5">{PRICES.map((p) => <Chip key={p.v} active={conf.price === p.v} onClick={() => setConf({ ...conf, price: p.v })}>{p.l}</Chip>)}</div>
             <p className="mt-3 text-[11px] text-faint">Preço atual: {priceLabel(conf.price)}</p>
+
+            <p className="mb-2 mt-5 text-[11px] uppercase tracking-[0.14em] text-mute">Fotos do lugar ({shots.length}/{maxShots})</p>
+            {shots.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {shots.map((d, i) => (
+                  <div key={i} className="relative size-20 overflow-hidden rounded-[12px]">
+                    <img src={d} alt="" className="size-full object-cover" />
+                    <button aria-label="Tirar foto" onClick={() => setShots(shots.filter((_, j) => j !== i))} className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/70"><X size={12} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {shots.length < maxShots && (
+              <label className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-full border border-dashed border-white/20 text-[13px]">
+                <Camera size={15} className="text-accent" />Adicionar fotos
+                <input type="file" accept="image/*" multiple className="sr-only" onChange={async (e) => {
+                  const fs = [...(e.target.files ?? [])].slice(0, maxShots - shots.length)
+                  e.target.value = ''
+                  const out: string[] = []
+                  for (const f of fs) { try { out.push(await shrink(f)) } catch { /* ilegível */ } }
+                  setShots((cur) => [...cur, ...out].slice(0, maxShots))
+                }} />
+              </label>
+            )}
+            <p className="mt-1.5 text-[11px] text-faint">Fotos suas do lugar. A IA avalia e só as boas entram no carrossel.</p>
           </motion.div>
         )}
 

@@ -98,7 +98,7 @@ export function PlacePage() {
           <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.5, ease }} className="text-xs uppercase tracking-[0.14em] text-white/70">
             {KIND_LABEL[place.kind]} · {place.hood}{place.when ? ` · ${place.when}` : ''}
           </motion.p>
-          <motion.h1 initial={{ opacity: 0, y: 16, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ delay: 0.2, duration: 0.7, ease }} className="mt-1.5 font-serif text-[52px] leading-[0.9] tracking-tight">
+          <motion.h1 initial={{ opacity: 0, y: 16, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} transition={{ delay: 0.2, duration: 0.7, ease }} className="mt-1.5 font-serif text-[52px] leading-[0.9] tracking-tight">
             {place.name}
           </motion.h1>
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }} className="mt-3 text-[15px] text-ink/80">{place.tagline}</motion.p>

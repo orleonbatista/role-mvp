@@ -39,7 +39,7 @@ export function CreatorPage() {
         <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 20 }}>
           <Avatar name={handle} hue={hue} size={84} />
         </motion.div>
-        <motion.h1 initial={{ opacity: 0, y: 10, filter: 'blur(6px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ delay: 0.1, duration: 0.6, ease }}
+        <motion.h1 initial={{ opacity: 0, y: 10, filter: 'blur(6px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} transition={{ delay: 0.1, duration: 0.6, ease }}
           className="mt-4 font-serif text-[40px] leading-none">{at}</motion.h1>
         <p className="mt-2 flex items-center gap-1.5 text-[13px] text-mute"><Megaphone size={13} className="text-accent" /><span>indica no rolê<span className="text-accent">.</span></span></p>
         <p className="mt-3 max-w-[300px] text-[13px] text-faint">Escolha um evento, mande a votação pro seu grupo e decidam juntos em 10 segundos.</p>

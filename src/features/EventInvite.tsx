@@ -59,7 +59,7 @@ export function EventInvite() {
             <Megaphone size={12} />{by} indica
           </motion.p>
         )}
-        <motion.h1 initial={{ opacity: 0, y: 16, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ delay: 0.1, duration: 0.7, ease }}
+        <motion.h1 initial={{ opacity: 0, y: 16, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} transition={{ delay: 0.1, duration: 0.7, ease }}
           className="mt-3 font-serif text-[52px] leading-[0.9] tracking-tight">{place.name}</motion.h1>
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="mt-3 text-[15px] text-ink/80">{place.tagline}</motion.p>
 

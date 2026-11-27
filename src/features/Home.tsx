@@ -106,7 +106,7 @@ export function Home() {
             <motion.div
               key={r.place.id}
               initial={{ opacity: 0, y: 20, filter: 'blur(8px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transition: { delay: i * 0.06, duration: 0.6, ease } }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' }, transition: { delay: i * 0.06, duration: 0.6, ease } }}
               className="snap-start"
             >
               <Link to={`/lugar/${r.place.id}`} className="group block w-[220px] shrink-0">

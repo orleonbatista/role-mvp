@@ -45,7 +45,7 @@ export function FundadorPage() {
     <Page>
       <TopBar title="Curador fundador" />
       <div className="px-5">
-        <motion.h1 initial={{ opacity: 0, y: 14, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 0.7, ease }}
+        <motion.h1 initial={{ opacity: 0, y: 14, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} transition={{ duration: 0.7, ease }}
           className="font-serif text-[44px] leading-[0.92] tracking-tight">Quem conhece,<br /><em className="text-accent">indica.</em></motion.h1>
         <p className="mt-3 text-[14px] text-mute">
           O rolê. só mostra lugar que alguém da comunidade conhece e indicou. A IA entende o pedido e cruza com essa curadoria. Os primeiros curadores definem a cara do app.

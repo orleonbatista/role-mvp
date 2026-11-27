@@ -7,9 +7,11 @@ export const softSpring: Transition = { type: 'spring', stiffness: 260, damping:
 /** usado nos elementos compartilhados entre telas (capa do lugar, composer) */
 export const sharedSpring: Transition = { type: 'spring', stiffness: 300, damping: 34, mass: 1 }
 
+/* transitionEnd tira o filtro no fim: no Safari do iPhone, um 'blur(0px)' que fica aplicado na tela deixa borrado o que
+   tem desfoque de fundo dentro dela (o topo das telas saía embaçado) */
 export const page: Variants = {
   initial: { opacity: 0, y: 18, filter: 'blur(10px)' },
-  animate: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.55, ease } },
+  animate: { opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' }, transition: { duration: 0.55, ease } },
   exit: { opacity: 0, y: -10, filter: 'blur(8px)', transition: { duration: 0.28, ease } },
 }
 
@@ -20,12 +22,12 @@ export const list: Variants = {
 
 export const item: Variants = {
   initial: { opacity: 0, y: 16, filter: 'blur(6px)' },
-  animate: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.6, ease } },
+  animate: { opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' }, transition: { duration: 0.6, ease } },
 }
 
 export const pop: Variants = {
   initial: { opacity: 0, scale: 0.85, filter: 'blur(4px)' },
-  animate: { opacity: 1, scale: 1, filter: 'blur(0px)', transition: spring },
+  animate: { opacity: 1, scale: 1, filter: 'blur(0px)', transitionEnd: { filter: 'none' }, transition: spring },
   exit: { opacity: 0, scale: 0.85, filter: 'blur(4px)', transition: { duration: 0.18 } },
 }
 

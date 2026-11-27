@@ -56,7 +56,7 @@ export function Page({ children, className, tabbed, footer, chrome, scrollRef }:
 export function TopBar({ title, right, back = true }: { title?: ReactNode; right?: ReactNode; back?: boolean }) {
   const nav = useNavigate()
   return (
-    <div className="sticky top-0 z-20 flex items-center gap-2 bg-bg/[0.92] px-4 pb-2 pt-safe backdrop-blur-xl">
+    <div className="sticky top-0 z-20 flex items-center gap-2 bg-bg px-4 pb-2 pt-safe">
       {back && (
         <motion.button
           whileTap={{ scale: 0.9 }}
@@ -193,7 +193,7 @@ export function StreamText({ text, className, speed = 28, onDone }: { text: stri
   return (
     <p className={className}>
       {words.slice(0, n).map((w, i) => (
-        <motion.span key={i} initial={{ opacity: 0, filter: 'blur(4px)' }} animate={{ opacity: 1, filter: 'blur(0px)' }} transition={{ duration: 0.4 }}>
+        <motion.span key={i} initial={{ opacity: 0, filter: 'blur(4px)' }} animate={{ opacity: 1, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} transition={{ duration: 0.4 }}>
           {w.b ? <b className="font-semibold text-ink">{w.w}</b> : w.w}{' '}
         </motion.span>
       ))}

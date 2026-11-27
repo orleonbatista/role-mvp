@@ -97,7 +97,7 @@ export function Onboarding() {
             custom={dir}
             variants={{
               enter: (d: number) => ({ x: d * 60, opacity: 0, filter: 'blur(8px)' }),
-              center: { x: 0, opacity: 1, filter: 'blur(0px)' },
+              center: { x: 0, opacity: 1, filter: 'blur(0px)', transitionEnd: { filter: 'none' } },
               exit: (d: number) => ({ x: d * -60, opacity: 0, filter: 'blur(8px)' }),
             }}
             initial="enter"
@@ -263,7 +263,7 @@ function Welcome({ onGoogle }: { onGoogle: (r: LoginOutcome) => void }) {
       <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.2 } }} className="relative mb-4 font-serif text-2xl italic text-accent">rolê.</motion.p>
       <h1 className="relative font-serif text-[clamp(40px,9.5vh,56px)] leading-[0.92] tracking-tight text-balance">
         {['O rolê certo,', 'pra cada', 'ocasião.'].map((l, i) => (
-          <motion.span key={i} className="block" initial={{ opacity: 0, y: 30, filter: 'blur(10px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ delay: 0.3 + i * 0.12, duration: 0.8, ease }}>
+          <motion.span key={i} className="block" initial={{ opacity: 0, y: 30, filter: 'blur(10px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} transition={{ delay: 0.3 + i * 0.12, duration: 0.8, ease }}>
             {i === 2 ? <em>{l}</em> : l}
           </motion.span>
         ))}

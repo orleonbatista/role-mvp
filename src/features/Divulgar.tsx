@@ -97,7 +97,7 @@ export function DivulgarPage() {
     <Page footer={footer}>
       <TopBar title="Divulgar evento" />
       <div className="px-5">
-        <motion.h1 initial={{ opacity: 0, y: 14, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 0.7, ease }}
+        <motion.h1 initial={{ opacity: 0, y: 14, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} transition={{ duration: 0.7, ease }}
           className="font-serif text-[44px] leading-[0.95] tracking-tight">Seu evento<br /><span className="italic text-accent">no rolê.</span></motion.h1>
         <p className="mt-3 text-[14px] text-mute">A curadoria revisa cada envio. Entra no feed quem encaixa no que a comunidade está pedindo. Aprovado, você ganha o link de divulgação com o seu @.</p>
 

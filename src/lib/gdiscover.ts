@@ -10,7 +10,7 @@ import { track } from './track'
    guardado — só o place_id + o que a pessoa confirmou. */
 
 const KEY = import.meta.env.VITE_PLACES_KEY as string | undefined
-const DEVICE_DAILY = 30
+const DEVICE_DAILY = 60
 const RADIUS = 5000
 
 const QUERY: Record<Niche, string> = {
@@ -19,12 +19,16 @@ const QUERY: Record<Niche, string> = {
   samba: 'roda de samba', rock: 'bar de rock', indie: 'bar alternativo',
 } as Record<Niche, string>
 
-const dayKey = () => `role.gdisc.${new Date().toISOString().slice(0, 10)}`
+const dayKey = () => `role.gdisc.${new Date().toLocaleDateString('sv-SE')}`
 const used = () => { try { return Number(localStorage.getItem(dayKey()) ?? 0) } catch { return 0 } }
-const spend = () => { try { localStorage.setItem(dayKey(), String(used() + 1)) } catch { /* */ } }
+const spend = (n = 1) => { try { localStorage.setItem(dayKey(), String(Math.max(0, used() + n))) } catch { /* */ } }
 
-/** limites do dia batidos neste aparelho (a tela avisa em vez de falhar em silêncio) */
-export const limits = { basic: false, rich: false }
+/** limites do dia batidos neste aparelho (a tela avisa em vez de falhar em silêncio). Calculado na hora:
+ *  antes era uma bandeira que, uma vez ligada, só desligava ao fechar o app (no iPhone o PWA fica dias aberto). */
+export const limits = {
+  get basic() { return used() >= DEVICE_DAILY },
+  get rich() { return richUsed() >= RICH_DAILY },
+}
 
 const done = new Map<string, Promise<Place[]>>() // memória da sessão: mesma busca não repete
 const km = (a: { lat: number; lng: number }, b: Place) => (b.lat == null || b.lng == null ? 99 : Math.hypot((a.lat - b.lat) * 111, (a.lng - b.lng) * 102))
@@ -33,7 +37,7 @@ export async function discover(query: string, center: { lat: number; lng: number
   if (!KEY) return []
   const ck = `${query}|${center.lat.toFixed(2)},${center.lng.toFixed(2)}|${radius}`
   if (!done.has(ck)) {
-    if (used() >= DEVICE_DAILY) { limits.basic = true; return [] }
+    if (used() >= DEVICE_DAILY) return []
     done.set(ck, (async () => {
       try {
         spend()
@@ -47,7 +51,7 @@ export async function discover(query: string, center: { lat: number; lng: number
           }),
           signal: AbortSignal.timeout(8000),
         })
-        if (!r.ok) { done.delete(ck); return [] }
+        if (!r.ok) { done.delete(ck); spend(-1); return [] } // falha (ex.: 429 do Google) não gasta a cota do aparelho
         const j = (await r.json()) as { places?: Parameters<typeof toPlace>[0][] }
         const out: Place[] = []
         for (const g of j.places ?? []) {
@@ -58,7 +62,7 @@ export async function discover(query: string, center: { lat: number; lng: number
           out.push(p)
         }
         return out
-      } catch { done.delete(ck); return [] }
+      } catch { done.delete(ck); spend(-1); return [] }
     })())
   }
   return done.get(ck)!
@@ -77,9 +81,10 @@ export async function discoverForTaste(center: { lat: number; lng: number } | un
    (1.000 grátis/mês) — uma chamada por pedido traz até 20 lugares já com o que precisa ser confirmado. */
 const RICH = [FIELDS, 'places.rating', 'places.userRatingCount', 'places.regularOpeningHours', 'places.outdoorSeating', 'places.servesBeer',
   'places.goodForGroups', 'places.liveMusic', 'places.servesCocktails'].join(',')
-const RICH_DAILY = 12
-const richKey = () => `role.grich.${new Date().toISOString().slice(0, 10)}`
+const RICH_DAILY = 20
+const richKey = () => `role.grich.${new Date().toLocaleDateString('sv-SE')}`
 const richUsed = () => { try { return Number(localStorage.getItem(richKey()) ?? 0) } catch { return 0 } }
+const refundRich = () => { try { localStorage.setItem(richKey(), String(Math.max(0, richUsed() - 1))) } catch { /* */ } }
 
 interface GHours { periods?: { open: { day: number; hour: number; minute?: number }; close?: { day: number; hour: number; minute?: number } }[] }
 /** horário do Google → períodos do app (dia 0 = domingo nos dois); fecha depois da meia-noite vira > 24 */
@@ -118,7 +123,6 @@ export async function discoverForRequest(c: Criteria, home?: Home, text = '') {
   const ck = `rich|${q}|${center.lat.toFixed(2)},${center.lng.toFixed(2)}|${radiusKm}`
   if (done.has(ck)) return (await done.get(ck)!).length
   if (richUsed() >= RICH_DAILY) {
-    limits.rich = true
     // sem cota rica no aparelho: cai pra busca simples (sem confirmação)
     const lists = await Promise.all((c.niches.length ? c.niches.slice(0, 2) : (['drinks'] as Niche[])).map((x) => discover(QUERY[x] ?? 'bar', center, radiusKm * 1000)))
     return lists.flat().length
@@ -137,7 +141,7 @@ export async function discoverForRequest(c: Criteria, home?: Home, text = '') {
         }),
         signal: AbortSignal.timeout(8000),
       })
-      if (!r.ok) { done.delete(ck); return [] }
+      if (!r.ok) { done.delete(ck); refundRich(); return [] }
       type G = Parameters<typeof toPlace>[0] & { rating?: number; userRatingCount?: number; regularOpeningHours?: GHours; outdoorSeating?: boolean; servesBeer?: boolean; goodForGroups?: boolean; liveMusic?: boolean; servesCocktails?: boolean }
       const j = (await r.json()) as { places?: G[] }
       const out: Place[] = []
@@ -154,7 +158,7 @@ export async function discoverForRequest(c: Criteria, home?: Home, text = '') {
         out.push(p)
       }
       return out
-    } catch { done.delete(ck); return [] }
+    } catch { done.delete(ck); refundRich(); return [] }
   })())
   return (await done.get(ck)!).length
 }

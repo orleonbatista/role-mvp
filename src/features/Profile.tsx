@@ -9,6 +9,7 @@ import { FeedbackButton } from '../app/FeedbackButton'
 import { MyLists } from './Social'
 import { useState } from 'react'
 import { Sheet } from '../ui/Sheet'
+import { AvatarCrop } from './AvatarCrop'
 import { useToast } from '../ui/Toast'
 import { AnimatedNumber, Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
@@ -249,25 +250,24 @@ function AvatarEditor({ name, hue, pid, photoAt }: { name: string; hue: number; 
   const save = useSaveProfile()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
-  async function pick(file?: File) {
-    if (!file) return
-    setBusy(true)
+  const [file, setFile] = useState<File | null>(null) // escolhida, esperando o ajuste (enquadrar/zoom)
+  async function send(dataUrl: string) {
+    setFile(null); setBusy(true)
     try {
-      const bmp = await createImageBitmap(file)
-      const side = Math.min(bmp.width, bmp.height)
-      const c = document.createElement('canvas'); c.width = c.height = 400
-      c.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 400, 400)
-      const r = await uploadAvatar(c.toDataURL('image/jpeg', 0.82))
+      const r = await uploadAvatar(dataUrl)
       if (!r?.ok) { toast('Não deu pra enviar a foto agora (precisa de conexão)'); return }
       await save.mutateAsync({ photoAt: r.photo ?? undefined, pid: r.pid })
       toast('Foto de perfil atualizada')
-    } catch { toast('Não consegui ler essa imagem') } finally { setBusy(false) }
+    } catch { toast('Não consegui enviar essa imagem') } finally { setBusy(false) }
   }
   return (
+    <>
     <label className="relative block cursor-pointer" aria-label="Trocar foto de perfil">
       <Avatar name={name} hue={hue} size={76} src={avatarUrl(pid, photoAt)} />
       <span className="absolute -bottom-1 -right-1 grid size-7 place-items-center rounded-full border border-bg bg-surface-2 text-[11px]">{busy ? '…' : '📷'}</span>
-      <input type="file" accept="image/*" className="sr-only" onChange={(e) => pick(e.target.files?.[0])} />
+      <input type="file" accept="image/*" className="sr-only" onChange={(e) => { setFile(e.target.files?.[0] ?? null); e.target.value = '' }} />
     </label>
+    <AvatarCrop file={file} onCancel={() => setFile(null)} onDone={send} />
+    </>
   )
 }

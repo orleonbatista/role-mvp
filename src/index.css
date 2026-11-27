@@ -75,7 +75,7 @@ body {
 
   /* topo das telas: segue a área segura real do aparelho (iPhone com ilha/entalhe, Android, navegador) em vez de um
      valor fixo, que no iPhone instalado ficava alto demais */
-  .pt-safe { padding-top: max(calc(env(safe-area-inset-top) + 12px), 18px); }
+  .pt-safe { padding-top: max(calc(env(safe-area-inset-top) + 6px), 18px); }
   .pt-safe-lg { padding-top: max(calc(env(safe-area-inset-top) + 18px), 28px); }
   @media (min-width: 640px) { .pt-safe { padding-top: 48px; } .pt-safe-lg { padding-top: 56px; } }
   /* barra inferior: encosta no indicador de início do iPhone como as abas nativas (antes somava 34 px inteiros) */
@@ -95,4 +95,7 @@ body {
 
 /* fora de layer e com !important: a classe utilitária 'relative' da casca vencia o 'fixed' e o app ficava com altura 0
    no celular (quebrou os cliques no E2E de 27/11, corrigido no mesmo deploy seguinte) */
-@media (max-width: 639px) { .app-shell { position: fixed !important; inset: 0; height: auto !important; } }
+@media (max-width: 639px) { .app-shell { position: fixed !important; inset: 0; bottom: var(--app-gap, 0px); height: auto !important; } }
+/* --app-gap (main.tsx): no iPhone instalado na tela de início o iOS às vezes entrega uma área de layout mais curta
+   que a tela, faltando exatamente a altura da barra de status (62 pt no Pro Max). A casca é esticada até o fim real
+   da tela; sem isso o menu inferior ficava 62 pt acima do fundo (print de 27/11) */

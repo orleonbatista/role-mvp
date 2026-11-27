@@ -6,7 +6,7 @@ import { track } from './track'
    (1.000/mês). Guarda por aparelho: 15 fotos/dia; só memória (o endereço final da foto é temporário). */
 const KEY = import.meta.env.VITE_PLACES_KEY as string | undefined
 const DAILY = 40
-const k = () => `role.gphoto.${new Date().toISOString().slice(0, 10)}`
+const k = () => `role.gphoto.${new Date().toLocaleDateString('sv-SE')}`
 const used = () => { try { return Number(localStorage.getItem(k()) ?? 0) } catch { return DAILY } }
 // endereço da foto reaproveitado no mesmo dia (antes cada reabertura gastava a cota de novo e as fotos sumiam)
 const CK = 'role.gphoto.uri'

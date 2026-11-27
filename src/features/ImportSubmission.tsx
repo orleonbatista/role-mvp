@@ -36,7 +36,7 @@ export function ImportSubmission() {
     <Page>
       <TopBar title="Curadoria" />
       <div className="px-5">
-        <motion.h1 initial={{ opacity: 0, y: 14, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 0.6, ease }}
+        <motion.h1 initial={{ opacity: 0, y: 14, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} transition={{ duration: 0.6, ease }}
           className="font-serif text-[40px] leading-[0.95]">Novo evento<br /><span className="italic text-accent">pra revisar</span></motion.h1>
         <p className="mt-3 text-[14px] text-mute">Aprove se encaixa no que a comunidade pede e se parece real. O critério é confiança: na dúvida, recuse.</p>
         <div className="mt-6">{state === 'loading' || !s ? <Skeleton className="h-64" /> : <SubmissionReview s={s} />}</div>
