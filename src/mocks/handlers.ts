@@ -262,7 +262,12 @@ export const handlers = [
     const curated = rank(places.filter((p) => isCurated(p) && p.kind !== 'evento' && (near(p) ?? 0) <= 5), c, profile).filter((r) => r.match >= 35)
     const base = rank(places.filter((p) => p.curation === 'base' && (near(p) ?? 99) <= 5 && p.niches.some((n) => taste.has(n))), c, profile)
     const all = [...curated.map((r) => ({ r, s: r.score + 1 - (near(r.place) ?? 4) * 0.7 })), ...base.map((r) => ({ r, s: r.score - (near(r.place) ?? 5) * 0.7 }))]
-    return HttpResponse.json(all.sort((a, b) => b.s - a.s).map((x) => x.r).slice(0, 10))
+    const out = all.sort((a, b) => b.s - a.s).map((x) => x.r).slice(0, 10)
+    if (out.length) return HttpResponse.json(out)
+    // nada no raio (ex.: limite diário do Google batido): mostra o que já conhecemos, do mais perto, até 15 km
+    const wide = rank(places.filter((p) => p.kind !== 'evento' && (near(p) ?? 99) <= 15), c, profile)
+      .sort((a, b) => (near(a.place) ?? 99) - (near(b.place) ?? 99)).slice(0, 10)
+    return HttpResponse.json(wide)
   }),
 
   http.get('/api/events', async () => {

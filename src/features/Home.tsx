@@ -1,3 +1,4 @@
+import { limits as googleLimits } from '../lib/gdiscover'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
@@ -79,6 +80,7 @@ export function Home() {
       <section className="mt-9">
         <SectionTitle aside={<span className="text-xs text-faint">seu gosto · até 5 km</span>}>Pra você</SectionTitle>
         {forYou.isLoading && <p className="mb-3 px-5 text-[12px] text-faint">Buscando lugares abertos perto de você que combinam com seu gosto…</p>}
+        {!forYou.isLoading && googleLimits.basic && <p className="mb-3 px-5 text-[12px] text-amber-300/90">Este celular chegou ao limite de buscas de hoje no Google. Mostrando o que já conhecemos; amanhã volta ao normal.</p>}
         {forYou.data?.length === 0 && (
           <Link to="/fundador" className="mx-5 block rounded-[24px] border border-dashed border-accent/40 bg-accent/[0.05] p-5">
             <p className="font-serif text-[26px] leading-none">O rolê está começando<span className="text-accent">.</span></p>
