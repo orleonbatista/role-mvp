@@ -6,7 +6,7 @@ import '@fontsource-variable/geist'
 import '@fontsource/instrument-serif/400.css'
 import '@fontsource/instrument-serif/400-italic.css'
 import './index.css'
-import { startMocks } from './mocks/browser'
+import { setCatalogLoading, startMocks } from './mocks/browser'
 import { demoOn, purgeSeeds, seedIfEmpty } from './db/db'
 import { registerDemoSeeds } from './mocks/seeds/places'
 import { loadExtraEvents } from './mocks/extraEvents'
@@ -24,18 +24,14 @@ async function boot() {
   await startMocks()
   // ordem importa: fictícios (só demo) primeiro, depois curados (comunidade, eventos), por último a base OSM
   if (await demoOn()) { registerDemoSeeds(); await seedIfEmpty() } else await purgeSeeds()
-  await Promise.all([loadExtraEvents(), loadGooglePlaces()])
+  // a tela abre na hora: catálogo remoto e servidor chegam em segundo plano e atualizam o que estiver na tela
+  const catalog = Promise.all([loadExtraEvents(), loadGooglePlaces()])
+  setCatalogLoading(catalog)
+  void catalog.then(() => qc.invalidateQueries())
   // região de quem já se cadastrou: lugares em volta vindos do banco do PC (não trava a abertura)
   // reset geral de perfis feito no servidor: este aparelho apaga o perfil local e volta pro cadastro
   // (pedidos, votos, avaliações e turmas ficam)
-  try {
-    const { apiBase, serverEpoch } = await import('./mocks/remote')
-    if (await apiBase()) {
-      const ep = (await import('./mocks/remote')).serverEpoch || serverEpoch
-      const local = Number(localStorage.getItem('role.profileEpoch') ?? 0)
-      if (ep > local) { await db.profile.delete('me'); localStorage.setItem('role.profileEpoch', String(ep)) }
-    }
-  } catch { /* sem backend: segue */ }
+  // (o reset de perfis feito no servidor é aplicado pelo reconcile abaixo, sem travar a abertura)
   const me = await db.profile.get('me')
   // termos do Google: resumo de lugares sem curadoria guardado nos pedidos some depois de 30 dias
   const cut = Date.now() - 30 * 86_400_000

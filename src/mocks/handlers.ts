@@ -132,7 +132,9 @@ function noteFrom(ds: string[], f: PickFact, chosen: PickFact[]): string | null 
   const k = f.distancia_km, n = f.nota_google, c = f.avaliacoes_google ?? 0
   // 1) o que diferencia ESTE lugar dos outros escolhidos (sempre conferido nos fatos)
   let diff: string | null = null
-  if (k != null && k <= minKm && chosen.length > 1) diff = `o mais perto (${fmt1(k)} km de quem pediu)`
+  // só UM pode ser "o mais perto": em empate, o primeiro da lista
+  const nearest = chosen.find((x) => km(x) === minKm)
+  if (k != null && k <= minKm && chosen.length > 1 && nearest?.i === f.i) diff = `o mais perto (${fmt1(k)} km de quem pediu)`
   else if (n != null && n >= maxNota && c >= 50) diff = `a melhor nota no Google entre as opções (${fmt1(n)}, ${fmtN(c)} avaliações)`
   else if (c >= maxCount && c >= 500) diff = `o mais avaliado (${fmtN(c)} avaliações, nota ${fmt1(n ?? 0)})`
   else if (n != null && n >= 4.6 && c >= 200) diff = `nota ${fmt1(n)} com ${fmtN(c)} avaliações`
@@ -254,15 +256,12 @@ export const handlers = [
     // curados primeiro (gosto + perto); se ainda não há curadoria suficiente, completa com lugares reais
     // num raio de 5 km que batem com o gosto (estilo), marcados "sem curadoria" no card
     const near = (p: Place) => kmTo(profile, p)
-    const curated = rank(places.filter((p) => isCurated(p) && p.kind !== 'evento' && (near(p) ?? 0) <= 8), c, profile)
-      .filter((r) => r.match >= 35)
-      .map((r) => ({ r, s: r.score - (near(r.place) ?? 4) * 0.6 }))
-      .sort((a, b) => b.s - a.s).map((x) => x.r).slice(0, 8)
+    // uma lista só, dentro dos 5 km prometidos na tela: curadoria da comunidade dá vantagem, mas não passa por cima da distância
     const taste = new Set(profile?.niches ?? [])
-    const base = curated.length >= 6 ? [] : rank(places.filter((p) => p.curation === 'base' && (near(p) ?? 99) <= 5 && p.niches.some((n) => taste.has(n))), c, profile)
-      .map((r) => ({ r, s: r.score - (near(r.place) ?? 5) * 0.8 }))
-      .sort((a, b) => b.s - a.s).map((x) => x.r).slice(0, 10 - curated.length)
-    return HttpResponse.json([...curated, ...base])
+    const curated = rank(places.filter((p) => isCurated(p) && p.kind !== 'evento' && (near(p) ?? 0) <= 5), c, profile).filter((r) => r.match >= 35)
+    const base = rank(places.filter((p) => p.curation === 'base' && (near(p) ?? 99) <= 5 && p.niches.some((n) => taste.has(n))), c, profile)
+    const all = [...curated.map((r) => ({ r, s: r.score + 1 - (near(r.place) ?? 4) * 0.7 })), ...base.map((r) => ({ r, s: r.score - (near(r.place) ?? 5) * 0.7 }))]
+    return HttpResponse.json(all.sort((a, b) => b.s - a.s).map((x) => x.r).slice(0, 10))
   }),
 
   http.get('/api/events', async () => {

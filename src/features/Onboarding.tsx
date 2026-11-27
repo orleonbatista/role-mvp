@@ -32,7 +32,7 @@ export function Onboarding() {
   const [niches, setNiches] = useState<Niche[]>(me?.niches ?? [])
   const [vibes, setVibes] = useState<Vibe[]>(me?.vibes ?? [])
   const [home, setHome] = useState<Home | undefined>(me?.home)
-  const [loadingRegion, setLoadingRegion] = useState(false)
+  const loadingRegion = false
   const [consent, setConsent] = useState(!!me?.consentAt)
   const [email, setEmail] = useState(me?.email)
   const onGoogle = useCallback((r: LoginOutcome) => {
@@ -61,11 +61,11 @@ export function Onboarding() {
     track(me?.onboarded ? 'taste_edited' : 'onboarding_done', { niches, vibes, hood: finalHood, via: home?.via ?? 'bairro' })
     // lugares reais em volta, ao vivo no Google: abertos, até 5 km, do gosto escolhido
     if (home) registerHood(finalHood, [home.lat, home.lng])
-    setLoadingRegion(true)
-    const n = await Promise.race([discoverForTaste(centerOf({ home, hood: finalHood }), niches), new Promise<number>((res) => setTimeout(() => res(-1), 9000))])
-    setLoadingRegion(false)
-    track('region_loaded', { n, via: home?.via ?? 'bairro' })
-    if (n > 0) { qc.invalidateQueries(); toast(`${n} lugares abertos perto de você que combinam com seu gosto`) }
+    // a busca no Google segue em segundo plano: a Home abre na hora e se completa quando os lugares chegarem
+    void discoverForTaste(centerOf({ home, hood: finalHood }), niches).then((n) => {
+      track('region_loaded', { n, via: home?.via ?? 'bairro' })
+      if (n > 0) { qc.invalidateQueries(); toast(`${n} lugares abertos perto de você que combinam com seu gosto`) }
+    }).catch(() => {})
     // veio de um convite (ex.: evento divulgado): volta pro que a pessoa estava fazendo
     let next: string | null = null
     try { next = localStorage.getItem('role.next'); localStorage.removeItem('role.next') } catch { /* */ }
@@ -129,6 +129,7 @@ export function Onboarding() {
                         initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0, transition: { delay: 0.05 * i, duration: 0.5, ease } }}
                         whileTap={{ scale: 0.98 }}
+                        type="button" aria-pressed={on} aria-label={`${n.label}: ${n.hint}`}
                         onClick={() => setNiches((a) => toggle(a, n.id))}
                         className={`relative flex items-center justify-between overflow-hidden rounded-2xl border px-4 py-3 text-left transition-colors ${on ? 'border-accent/60' : 'border-line bg-white/[0.02]'}`}
                       >
@@ -189,7 +190,7 @@ function Region({ home, setHome, hood, setHood }: { home?: Home; setHome: (h?: H
   const [busy, setBusy] = useState<'gps' | 'cep' | null>(null)
   const [err, setErr] = useState('')
   const [manual, setManual] = useState(!!home && home.via === 'bairro')
-  const MSG = { negado: 'Localização bloqueada. Use o CEP ou escolha o bairro.', indisponivel: 'Não deu pra pegar a localização. Tente o CEP.', cep: 'CEP inválido.', offline: 'Não achei esse CEP (ou o servidor está fora). Escolha o bairro.' } as const
+  const MSG = { negado: 'Localização bloqueada. Use o CEP ou escolha o bairro.', indisponivel: 'Não deu pra pegar a localização. Tente o CEP.', cep: 'CEP inválido.', naoachei: 'Não achei esse CEP. Confira os números ou escolha o bairro.', offline: 'Sem conexão com o servidor agora. Escolha o bairro, dá pra trocar depois no Perfil.' } as const
   async function run(kind: 'gps' | 'cep') {
     setBusy(kind); setErr('')
     const r = kind === 'gps' ? await homeFromGps() : await homeFromCep(cep)

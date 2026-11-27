@@ -23,7 +23,13 @@ export interface GatewayConfig { enabled: boolean; url?: string; model?: string;
 let cfg: { at: number; value: GatewayConfig | null } | null = null
 let downUntil = 0
 
+let cfgInflight: Promise<GatewayConfig | null> | null = null
 export async function gatewayConfig(force = false): Promise<GatewayConfig | null> {
+  if (cfgInflight && !force) return cfgInflight
+  cfgInflight = loadConfig(force).finally(() => { cfgInflight = null })
+  return cfgInflight
+}
+async function loadConfig(force: boolean): Promise<GatewayConfig | null> {
   const override = typeof localStorage !== 'undefined' ? localStorage.getItem(OVERRIDE_KEY) : null
   if (override) return { enabled: true, url: override.replace(/\/$/, ''), owner: 'override' }
   if (!CONFIG_URL) return null

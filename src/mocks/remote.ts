@@ -33,14 +33,21 @@ export let serverEpoch = 0
 let downUntil = 0
 
 /** URL do backend se ele estiver no ar (cache de 60s; 30s de pausa depois de uma falha) */
+let probing: Promise<string | null> | null = null
 export async function apiBase(force = false): Promise<string | null> {
   if (Date.now() < downUntil && !force) return null
   if (!force && health && Date.now() - health.at < 60_000) return health.base
+  // várias telas perguntando ao mesmo tempo: um teste só
+  if (probing) return probing
+  probing = probe().finally(() => { probing = null })
+  return probing
+}
+async function probe(): Promise<string | null> {
   const cfg = API_URL ? { enabled: true, url: API_URL } : await gatewayConfig()
   const base = cfg?.enabled && cfg.url ? cfg.url.replace(/\/$/, '') : null
   if (!base) { health = { at: Date.now(), base: null }; return null }
   try {
-    const r = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(3500) })
+    const r = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(6000) })
     const j = r.ok ? await r.json() : null
     const ok = j?.db === true
     if (ok) serverEpoch = Number(j.profileEpoch ?? 0)

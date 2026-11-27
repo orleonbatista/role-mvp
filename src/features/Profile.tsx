@@ -31,11 +31,10 @@ export function ProfilePage() {
 
   // curadoria: quanto você já validou em cada nicho
   const scores = NICHES.map((n) => {
-    const fromReviews = diary.filter((d) => d.went && d.place.niches.includes(n.id)).length * 18
-    const fromTaste = me?.niches.includes(n.id) ? 22 : 0
-    return { ...n, score: Math.min(100, fromReviews + fromTaste + (requests.filter((r) => r.criteria.niches.includes(n.id)).length * 6)) }
-  }).sort((a, b) => b.score - a.score)
-  const rep = diary.length * 15 + requests.length * 5
+    // curadoria só sobe com avaliação de verdade (antes o gosto e os pedidos inflavam a barra de quem nunca avaliou)
+    return { ...n, score: Math.min(100, diary.filter((d) => d.went && d.place.niches.includes(n.id)).length * 20) }
+  }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score)
+  const rep = diary.filter((d) => d.went).length * 15
 
   if (!me) return <Page tabbed><Skeleton className="m-5 h-40" /></Page>
 
@@ -55,7 +54,7 @@ export function ProfilePage() {
         <p className="mt-1 text-sm text-mute">{me.handle} · {me.hood}</p>
 
         <div className="mt-6 grid grid-cols-3 divide-x divide-line rounded-[22px] border border-line bg-surface/60 py-4 text-center">
-          {[{ k: 'rolês', v: diary.filter((d) => d.went).length }, { k: 'pedidos', v: requests.length }, { k: 'reputação', v: rep }].map((s) => (
+          {[{ k: 'rolês avaliados', v: diary.filter((d) => d.went).length }, { k: 'pedidos', v: requests.length }, { k: 'reputação', v: rep }].map((s) => (
             <div key={s.k}>
               <AnimatedNumber value={s.v} className="font-serif text-3xl leading-none" />
               <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-mute">{s.k}</p>
@@ -88,6 +87,7 @@ export function ProfilePage() {
       <section className="mt-8">
         <SectionTitle aside={<span className="text-xs text-faint">sobe quando você avalia</span>}>Curadoria</SectionTitle>
         <motion.div variants={list} initial="initial" animate="animate" className="grid gap-3 px-5">
+          {!scores.length && <p className="text-[13px] text-faint">Avalie um rolê que você foi e sua curadoria começa a aparecer aqui.</p>}
           {scores.slice(0, 4).map((s) => (
             <motion.div key={s.id} variants={item}>
               <div className="mb-1.5 flex justify-between text-[13px]"><span>{s.label}</span><span className="text-mute">{s.score}</span></div>
@@ -126,7 +126,7 @@ export function ProfilePage() {
         <SectionTitle>Seus pedidos</SectionTitle>
         <div className="grid gap-2 px-5">
           {!requests.length && <p className="text-sm text-faint">Nenhum ainda.</p>}
-          {requests.map((r) => (
+          {requests.filter((r, i, a) => a.findIndex((x) => x.text.trim().toLowerCase() === r.text.trim().toLowerCase()) === i).slice(0, 8).map((r) => (
             <Link key={r.id} to={`/pedido/${r.id}`} className="flex items-center gap-3 rounded-[20px] border border-line p-4 text-[14px] hover:bg-surface">
               <span className="line-clamp-1 flex-1">“{r.text}”</span>
               {r.status === 'decidido' ? <Tag tone="accent">decidido</Tag> : <ArrowUpRight size={14} className="text-mute" />}

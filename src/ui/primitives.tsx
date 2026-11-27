@@ -100,6 +100,7 @@ export function Chip({ active, children, onClick, className }: { active?: boolea
   return (
     <motion.button
       type="button"
+      aria-pressed={active}
       layout
       whileTap={{ scale: 0.94 }}
       transition={spring}
@@ -176,7 +177,8 @@ export function AnimatedNumber({ value, className, decimals = 0 }: { value: numb
 
 /** Texto que "chega" palavra a palavra, como streaming de IA. */
 export function StreamText({ text, className, speed = 28, onDone }: { text: string; className?: string; speed?: number; onDone?: () => void }) {
-  const words = text.split(' ')
+  // **negrito** vindo da IA vira negrito de verdade (antes aparecia com os asteriscos)
+  const words = text.split('**').flatMap((seg, k) => seg.split(' ').filter(Boolean).map((w) => ({ w, b: k % 2 === 1 })))
   const [n, setN] = useState(0)
   useEffect(() => {
     setN(0)
@@ -191,7 +193,7 @@ export function StreamText({ text, className, speed = 28, onDone }: { text: stri
     <p className={className}>
       {words.slice(0, n).map((w, i) => (
         <motion.span key={i} initial={{ opacity: 0, filter: 'blur(4px)' }} animate={{ opacity: 1, filter: 'blur(0px)' }} transition={{ duration: 0.4 }}>
-          {w}{' '}
+          {w.b ? <b className="font-semibold text-ink">{w.w}</b> : w.w}{' '}
         </motion.span>
       ))}
       {n < words.length && <motion.span className="inline-block h-[1em] w-[2px] translate-y-[2px] bg-accent" animate={{ opacity: [1, 0, 1] }} transition={{ repeat: Infinity, duration: 0.9 }} />}

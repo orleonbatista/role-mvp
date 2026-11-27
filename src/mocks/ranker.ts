@@ -168,7 +168,9 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
 
     if (c.occasion) {
       if (place.occasions.includes(c.occasion)) { score += 3; if (!base) why.push([2.8, `Comunidade aprova pra ${OCC_PHRASE[c.occasion]}`]) }
-      else score -= 1.5
+      // lugar sem curadoria não tem ocasião marcada: não sabemos, então não pune (antes isso dava vantagem
+      // artificial ao único lugar curado, mesmo longe)
+      else if (!base) score -= 1.5
     }
 
     if (c.groupSize > place.capacity) { score -= 7; warn.push(`Comporta até ${place.capacity} pessoas`) }
@@ -186,7 +188,13 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
 
     if (c.hood) {
       if (place.hood === c.hood) { score += 2.5; why.push([2.4, `Fica em ${place.hood}`]) }
-      else score -= 0.5
+      else {
+        // fora da região pedida: pesa pela distância até ela (perto ainda serve; do outro lado da cidade não)
+        const km = distanceKm(c.hood, place.hood)
+        if (km === undefined || km <= 2) score -= 0.5
+        else if (km <= 4) { score += 0.5; why.push([1.2, `Perto de ${c.hood} (~${Math.round(km)} km)`]) }
+        else { score -= Math.min(6, (km - 3) * 1.2); warn.push(`A ~${Math.round(km)} km de ${c.hood}`) }
+      }
     } else if (c.maxKm && profile?.home && place.lat != null) {
       const km = kmBetween(profile.home, place) ?? 99
       if (km <= c.maxKm) { score += 1.2; why.push([1.6, `A ~${km.toFixed(km < 10 ? 1 : 0).replace('.', ',')} km de você`]) }

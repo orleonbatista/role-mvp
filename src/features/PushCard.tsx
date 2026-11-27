@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell } from 'lucide-react'
+import { Bell, X } from 'lucide-react'
 import { Button } from '../ui/primitives'
 import { enablePush, pushState, type PushState } from '../lib/push'
 
@@ -7,8 +7,12 @@ import { enablePush, pushState, type PushState } from '../lib/push'
 export function PushCard({ text, context }: { text: string; context: string }) {
   const [st, setSt] = useState<PushState | null>(null)
   const [busy, setBusy] = useState(false)
+  // dispensado (ou já visto bloqueado nesta sessão): não insiste em toda tela
+  const [hidden, setHidden] = useState(() => { try { return !!localStorage.getItem('role.pushDismissed') || !!sessionStorage.getItem('role.pushDeniedSeen') } catch { return false } })
   useEffect(() => { pushState().then(setSt).catch(() => setSt('unsupported')) }, [])
-  if (!st || st === 'on' || st === 'unsupported') return null
+  useEffect(() => { if (st === 'denied') try { sessionStorage.setItem('role.pushDeniedSeen', '1') } catch { /* */ } }, [st])
+  if (hidden || !st || st === 'on' || st === 'unsupported') return null
+  const dismiss = () => { setHidden(true); try { localStorage.setItem('role.pushDismissed', '1') } catch { /* */ } }
   return (
     <div className="mx-5 mt-5 flex items-start gap-3 rounded-[20px] border border-line bg-surface p-4">
       <Bell size={18} className="mt-0.5 shrink-0 text-accent" />
@@ -24,6 +28,7 @@ export function PushCard({ text, context }: { text: string; context: string }) {
           </>
         )}
       </div>
+      <button onClick={dismiss} aria-label="Dispensar aviso" className="-m-1 grid size-8 shrink-0 place-items-center rounded-full text-mute hover:text-ink"><X size={15} /></button>
     </div>
   )
 }

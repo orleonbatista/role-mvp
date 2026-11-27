@@ -146,7 +146,7 @@ export function VotePage() {
                   <p className="text-[11px] uppercase tracking-[0.14em] text-accent">Fechado</p>
                   <p className="truncate font-serif text-[22px] leading-tight">{p.name}{data.request.decidedTime ? ` · ${data.request.decidedTime}` : ''}</p>
                 </div>
-                <Link to={`/lugar/${p.id}`} className="shrink-0 rounded-full bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-ink">Ver</Link>
+                <Link to={`/lugar/${p.id}?n=${data.request.criteria.groupSize}`} className="shrink-0 rounded-full bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-ink">Ver</Link>
               </motion.div>
             ) : null
           })()}
@@ -190,6 +190,7 @@ export function VotePage() {
                   animate={{ opacity: 1, y: 0, transition: { delay: i * 0.08, duration: 0.6, ease } }}
                   whileTap={{ scale: 0.98 }}
                   aria-pressed={mine}
+                  aria-label={`${decided ? '' : 'Votar em '}${p.name}, ${count} ${count === 1 ? 'voto' : 'votos'}`}
                   data-opt={p.id}
                   onClick={() => !decided && cast(p.id)}
                   className={cx('relative overflow-hidden rounded-[22px] border p-3 text-left transition-[colors,box-shadow] duration-500', mine ? 'border-accent/70' : 'border-line bg-surface/60', highlight.includes(p.id) && 'shadow-[0_0_0_2px_rgba(198,255,61,0.9),0_0_40px_-6px_rgba(198,255,61,0.55)]')}
@@ -385,7 +386,7 @@ function Celebration({ place, size, time, onReview, onHome, author }: { place: P
       </div>
       <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.6, ease }} className="mt-10 text-sm uppercase tracking-[0.16em] text-accent">rolê fechado</motion.p>
       <motion.h2 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45, duration: 0.6, ease }} className="mt-2 font-serif text-[44px] leading-none">{place.name}</motion.h2>
-      <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-3 text-sm text-mute">{time ? `${time} · ` : ''}Reserva simulada pra {size} {size === 1 ? 'pessoa' : 'pessoas'}.</motion.p>
+      <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-3 text-sm text-mute">{time ? `${time} · ` : ''}{size} {size === 1 ? 'pessoa' : 'pessoas'}. Avise a casa pela ficha do lugar.</motion.p>
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.75, duration: 0.5, ease }} className="mt-10 grid w-full gap-2">
         <button
           onClick={() => setStory(true)}

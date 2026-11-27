@@ -11,7 +11,7 @@ import { track } from '../lib/track'
 import { shareText, shareUrl, suggestUrl } from '../lib/share'
 import { withSource, type StoryCard } from '../lib/storyCard'
 import { StorySheet } from './StorySheet'
-import { occasionLabel as occLabel } from '../lib/labels'
+import { fitLabel, occasionLabel as occLabel } from '../lib/labels'
 import { openStatus } from '../lib/hours'
 import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
@@ -187,7 +187,7 @@ function RecCard({ rank, detail, placeId }: { rank: number; detail: RequestDetai
                 initial={{ pathLength: 0 }} animate={{ pathLength: r.match / 100 }} transition={{ duration: 1.2, ease, delay: 0.3 }} />
             </svg>
           </span>
-          <span><AnimatedNumber value={r.match} />% match</span>
+          <span>{fitLabel(r.match)}</span>
         </div>
       </div>
       <div className="p-4">
@@ -249,7 +249,7 @@ function Community({ data }: { data: RequestDetail }) {
                     {a.kind === 'sugestao' ? 'sugestão pelo link' : `curador · ${a.user.curatorOf.map(nicheLabel).join(', ').toLowerCase()} · ${a.user.reputation} rep`}
                   </p>
                 </div>
-                <span className={cx('shrink-0 rounded-full px-2 py-0.5 text-[11px]', a.fit.match >= 70 ? 'bg-accent/15 text-accent' : 'bg-amber-400/15 text-amber-300')}>{a.fit.match}% encaixe</span>
+                <span className={cx('shrink-0 rounded-full px-2 py-0.5 text-[11px]', a.fit.match >= 70 ? 'bg-accent/15 text-accent' : 'bg-amber-400/15 text-amber-300')}>{fitLabel(a.fit.match)}</span>
               </div>
               <p className="mt-3 text-[14px] leading-relaxed text-ink/90">{a.comment}</p>
               {a.fit.warnings[0] && <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-amber-300/90"><AlertTriangle size={12} />{a.fit.warnings[0]}</p>}

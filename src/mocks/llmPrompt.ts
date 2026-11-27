@@ -92,6 +92,8 @@ Regras:
 - Se os fatos não respondem, diga isso com honestidade e sugira o que dá pra comparar.
 - Responda em português do Brasil, tom leve, no máximo 3 frases curtas.
 - Cite os nomes exatos das opções que você está recomendando ou comparando.
+- Preço é ESTIMADO: escreva sempre "cerca de R$ X" ou "~R$ X por pessoa", nunca "custa R$ X".
+- Não termine com pergunta: a pessoa não tem como responder aqui.
 - Se a pergunta não for sobre essas opções ou sobre o rolê, responda só: "Só consigo ajudar com as opções desta votação."`
 
 export function askBody(model: string, question: string, pedido: string, facts: PlaceFact[]) {

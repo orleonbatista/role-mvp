@@ -1,11 +1,12 @@
 import { motion } from 'motion/react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { ArrowUpRight, CalendarDays, MessageCircle, Sparkles, Users } from 'lucide-react'
 import { InvitesList } from './Invites'
 import { Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
 import { useEvents, useFeed, useForYou, useProfile } from '../lib/api'
-import { KIND_LABEL, OCCASIONS, occasionLabel, priceLabel, timeAgo } from '../lib/labels'
+import { KIND_LABEL, fitLabel, OCCASIONS, occasionLabel, priceLabel, timeAgo } from '../lib/labels'
 import { distanceKm, fmtKm, kmTo, openStatus } from '../lib/hours'
 import { placeIcon } from '../ui/placeIcon'
 import { places } from '../mocks/seeds/places'
@@ -24,6 +25,18 @@ export function Home() {
   const forYou = useForYou()
   const events = useEvents()
   const feed = useFeed()
+  const [allReqs, setAllReqs] = useState(false)
+  // pedidos repetidos (mesmo texto) viram um card só, com a contagem; a lista mostra 4 e abre o resto sob demanda
+  const reqGroups = (() => {
+    const m = new Map<string, { item: NonNullable<typeof feed.data>[number]; n: number }>()
+    for (const it of feed.data ?? []) {
+      const k = it.request.text.trim().toLowerCase()
+      const g = m.get(k)
+      if (g) g.n++
+      else m.set(k, { item: it, n: 1 })
+    }
+    return [...m.values()]
+  })()
 
   return (
     <Page tabbed>
@@ -91,7 +104,7 @@ export function Home() {
                   <Cover hue={r.place.hue} icon={placeIcon(r.place)} iconSize={72} layoutId={`cover-${r.place.id}`} className="h-[260px] w-full transition-transform duration-500 group-active:scale-[0.98]" />
                   <PlacePhoto place={r.place} enabled={i < 3} />
                   <div className="absolute left-3 top-3 flex gap-1.5">
-                    <Tag tone="accent">{r.match}% seu gosto</Tag>
+                    <Tag tone="accent">{fitLabel(r.match)} com seu gosto</Tag>
                     {r.place.curation === 'base' && <span className="inline-flex h-6 items-center rounded-full bg-black/45 px-2.5 text-[11px] text-white/85 backdrop-blur-md">sem curadoria</span>}
                     {openStatus(r.place).open && !r.place.source && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-black/40 px-2.5 text-[11px] text-white/90 backdrop-blur-md"><span className="size-1.5 rounded-full bg-accent" />aberto</span>}
                   </div>
@@ -139,7 +152,7 @@ export function Home() {
         <motion.div variants={list} initial="initial" animate="animate" className="grid gap-3 px-5">
           {feed.isLoading && [0, 1, 2].map((i) => <Skeleton key={i} className="h-28" />)}
           {feed.data?.length === 0 && <p className="rounded-[20px] border border-dashed border-line px-4 py-4 text-center text-[13px] text-faint">Seus pedidos e as votações que você abrir aparecem aqui.</p>}
-          {feed.data?.map(({ request, author, answers, votes, topPlace }) => (
+          {(allReqs ? reqGroups : reqGroups.slice(0, 4)).map(({ item: { request, author, answers, votes, topPlace }, n: reps }) => (
             <motion.div key={request.id} variants={item} layout>
               <Link to={`/pedido/${request.id}`} className="block rounded-[24px] border border-line bg-surface/60 p-4 transition-colors hover:bg-surface">
                 <div className="flex items-center gap-2.5">
@@ -153,15 +166,21 @@ export function Home() {
                   {request.criteria.occasion && <Tag>{occasionLabel(request.criteria.occasion)}</Tag>}
                   {request.criteria.groupSize > 2 && <Tag>{request.criteria.groupSize} pessoas</Tag>}
                   {request.criteria.hood && <Tag>{request.criteria.hood}</Tag>}
+                  {reps > 1 && <Tag>pedido {reps}×</Tag>}
                 </div>
-                <div className="mt-3.5 flex items-center gap-4 border-t border-line pt-3 text-xs text-mute">
-                  <span className="flex items-center gap-1.5"><MessageCircle size={13} />{answers}</span>
-                  <span className="flex items-center gap-1.5"><Users size={13} />{votes} votos</span>
-                  {topPlace && <span className="ml-auto flex items-center gap-1 truncate text-ink/80">top: {topPlace.name}<ArrowUpRight size={12} /></span>}
-                </div>
+                {(answers > 0 || votes > 0 || topPlace) && (
+                  <div className="mt-3.5 flex items-center gap-4 border-t border-line pt-3 text-xs text-mute">
+                    {answers > 0 && <span className="flex items-center gap-1.5"><MessageCircle size={13} />{answers}</span>}
+                    {votes > 0 && <span className="flex items-center gap-1.5"><Users size={13} />{votes} {votes === 1 ? 'voto' : 'votos'}</span>}
+                    {topPlace && <span className="ml-auto flex items-center gap-1 truncate text-ink/80">top: {topPlace.name}<ArrowUpRight size={12} /></span>}
+                  </div>
+                )}
               </Link>
             </motion.div>
           ))}
+          {!allReqs && reqGroups.length > 4 && (
+            <button onClick={() => setAllReqs(true)} className="rounded-full py-2.5 text-[13px] text-mute hover:text-ink">Ver mais {reqGroups.length - 4} pedidos</button>
+          )}
         </motion.div>
       </section>
     </Page>

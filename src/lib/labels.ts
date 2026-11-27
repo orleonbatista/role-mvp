@@ -62,3 +62,6 @@ export function timeAgo(ts: number) {
   if (h < 24) return `${h} h`
   return `${Math.round(h / 24)} d`
 }
+
+/** encaixe em palavras: ninguém escolhe um bar por "19% match" */
+export const fitLabel = (m: number) => (m >= 70 ? 'combina muito' : m >= 45 ? 'combina' : 'alternativa')

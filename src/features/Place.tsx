@@ -5,18 +5,17 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { GoogleLive } from './GoogleLive'
 import { useQuery } from '@tanstack/react-query'
 import { placeReviews } from '../mocks/remote'
-import { CalendarCheck, ChevronLeft, Clock, MapPin, Megaphone, Minus, Plus, Share2, Star, Ticket, Users } from 'lucide-react'
+import { ChevronLeft, Clock, MapPin, Megaphone, MessageCircle, Phone, Share2, Star, Ticket, Users } from 'lucide-react'
 import { Link } from 'react-router'
 import { PromoteSheet } from './PromoteSheet'
 import { StorySheet } from './StorySheet'
-import { Avatar, Button, Chip, Cover, EmptyState, Page, Skeleton, Tag, cx } from '../ui/primitives'
-import { Sheet } from '../ui/Sheet'
+import { Avatar, Button, Cover, EmptyState, Page, Skeleton, Tag, cx } from '../ui/primitives'
 import { placeIcon } from '../ui/placeIcon'
-import { DAY_SHORT, fmtKm, isOpenAt, kmTo, openStatus } from '../lib/hours'
+import { fmtKm, kmTo, openStatus } from '../lib/hours'
+import { liveInfo } from '../lib/gplaceLive'
 import { track } from '../lib/track'
-import { useCreateLead, useProfile } from '../lib/api'
+import { useProfile } from '../lib/api'
 import type { Place } from '../lib/types'
-import { useToast } from '../ui/Toast'
 import { ease, item, list } from '../ui/motion'
 import { usePlace } from '../lib/api'
 import { placeById } from '../mocks/seeds/places'
@@ -25,13 +24,12 @@ import { KIND_LABEL, VERDICT_LABEL, nicheLabel, occasionLabel, priceLabel, timeA
 export function PlacePage() {
   const { id = '' } = useParams()
   const [sp] = useSearchParams()
+  const groupN = Number(sp.get('n')) || undefined
   const community = useQuery({ queryKey: ['place-reviews', id], queryFn: () => placeReviews(id), staleTime: 30_000 })
   const cr = community.data
   const nav = useNavigate()
-  const toast = useToast()
   const { data, isError } = usePlace(id)
   const { data: me } = useProfile()
-  const [lead, setLead] = useState(false)
   const [promote, setPromote] = useState(false)
   const [story, setStory] = useState<{ link: string; by?: string } | null>(null)
   useEffect(() => { track('place_viewed', { id }) }, [id])
@@ -61,9 +59,7 @@ export function PlacePage() {
         className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-accent text-[15px] font-medium text-accent-ink shadow-[0_8px_30px_-8px_rgba(198,255,61,0.55)] active:scale-[0.98]">
         <Ticket size={16} />Ingresso · {priceLabel(place.price)}
       </a>
-    : <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} onClick={() => { setLead(true); track('reserve_intent', { id: place.id, kind: place.kind }) }}>
-          {place.kind === 'evento' ? `Garantir ingresso · ${priceLabel(place.price)}` : place.privateSpace ? 'Reservar pra grupo' : 'Reservar mesa'}
-        </Button>
+    : <ContactCasa place={place} group={groupN} />
   const chrome = (
       <div className="absolute inset-x-0 top-0 z-20 flex h-24 items-end gap-3 px-4 pb-3">
         <motion.div style={{ opacity: titleOpacity }} className="absolute inset-0 border-b border-line bg-bg/80 backdrop-blur-xl" />
@@ -223,62 +219,31 @@ export function PlacePage() {
 
       {isEvent && <PromoteSheet open={promote} onClose={() => setPromote(false)} place={place} onStory={(link, by) => { setPromote(false); setStory({ link, by }) }} />}
       {isEvent && <StorySheet open={!!story} onClose={() => setStory(null)} card={storyCard} link={story?.link ?? ''} context="promote" />}
-      <LeadSheet open={lead} onClose={() => setLead(false)} place={place} defaultName={me?.name} onDone={() => toast('Pedido enviado! A casa responde em até 2h (simulado)')} />
     </Page>
   )
 }
 
-/** "Fake door" de reserva: mede intenção real e gera o lead que a casa pagaria para receber. */
-function LeadSheet({ open, onClose, place, defaultName, onDone }: { open: boolean; onClose: () => void; place: Place; defaultName?: string; onDone: () => void }) {
-  const create = useCreateLead()
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(Date.now() + i * 86_400_000)
-    return { key: d.toISOString().slice(0, 10), label: i === 0 ? 'Hoje' : i === 1 ? 'Amanhã' : `${DAY_SHORT[d.getDay()]} ${d.getDate()}`, dow: d.getDay() }
-  }).filter((d) => isOpenAt(place.periods, d.dow, Math.max(...place.periods.map((p) => p.open))))
-  const [day, setDay] = useState<string>()
-  const [time, setTime] = useState('20h')
-  const [people, setPeople] = useState(place.privateSpace ? 10 : 2)
-  const [name, setName] = useState(defaultName ?? '')
-  useEffect(() => { if (defaultName && !name) setName(defaultName) }, [defaultName]) // eslint-disable-line react-hooks/exhaustive-deps
-  const [contact, setContact] = useState('')
-  const [note, setNote] = useState('')
-  const sel = day ?? days[0]?.key
-  const times = place.kind === 'evento' ? [place.when?.split(', ')[1] ?? '20h'] : place.periods[0].open >= 18 ? ['19h', '20h', '21h', '22h'] : ['12h', '13h', '19h', '20h']
 
-  async function submit() {
-    if (!sel || !name.trim()) return
-    await create.mutateAsync({ placeId: place.id, day: sel, time, people, name: name.trim(), contact: contact.trim(), note: note.trim() })
-    track('lead_submitted', { placeId: place.id, people, hasContact: !!contact.trim() })
-    onClose(); onDone()
-  }
-
+/** contato direto com a casa (sem reserva simulada): WhatsApp com mensagem pronta quando o número é celular,
+ *  senão ligação; sem telefone, rota no Maps. Telefone vem ao vivo do Google (não é guardado). */
+function ContactCasa({ place, group }: { place: Place; group?: number }) {
+  const q = useQuery({ queryKey: ['glive', place.id, false], queryFn: () => liveInfo(place), enabled: !!place.source, staleTime: Infinity, gcTime: 30 * 60_000, retry: false })
+  const phone = q.data?.ok ? q.data.info.phone : undefined
+  const digits = phone?.replace(/\D/g, '') ?? ''
+  const mobile = digits.length === 11 && digits[2] === '9'
+  const msg = `Oi! Achei vocês pelo rolê. Vocês reservam mesa${group ? ` pra ${group} pessoas` : ' pra grupo'}? Qual horário tem disponível?`
+  const cls = 'inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-accent text-[15px] font-medium text-accent-ink shadow-[0_8px_30px_-8px_rgba(198,255,61,0.55)] active:scale-[0.98]'
+  if (mobile) return (
+    <a href={`https://wa.me/55${digits}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" className={cls}
+      onClick={() => track('contact_casa', { id: place.id, via: 'whatsapp' })}><MessageCircle size={16} />Chamar a casa no WhatsApp</a>
+  )
+  if (digits) return (
+    <a href={`tel:+55${digits}`} className={cls} onClick={() => track('contact_casa', { id: place.id, via: 'tel' })}><Phone size={16} />Ligar pra casa · {phone}</a>
+  )
+  const gid = place.id.startsWith('g-') ? place.id.slice(2) : ''
+  const maps = gid ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${encodeURIComponent(gid)}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.name} ${place.hood} São Paulo`)}`
   return (
-    <Sheet open={open} onClose={onClose}>
-      <p className="font-serif text-[28px] leading-none">{place.kind === 'evento' ? 'Garantir lugar' : 'Pedir reserva'}</p>
-      <p className="mt-2 text-sm text-mute">{place.name} recebe o pedido e confirma com você. Nada é cobrado agora.</p>
-      <p className="mb-2 mt-5 text-[12px] uppercase tracking-[0.14em] text-mute">Dia</p>
-      <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5">
-        {days.length ? days.map((d) => <Chip key={d.key} active={sel === d.key} onClick={() => setDay(d.key)}>{d.label}</Chip>) : <span className="text-sm text-faint">Sem datas abertas nesta semana</span>}
-      </div>
-      <p className="mb-2 mt-4 text-[12px] uppercase tracking-[0.14em] text-mute">Horário</p>
-      <div className="flex flex-wrap gap-2">{times.map((t) => <Chip key={t} active={time === t} onClick={() => setTime(t)}>{t}</Chip>)}</div>
-      <div className="mt-4 flex items-center justify-between">
-        <p className="text-[12px] uppercase tracking-[0.14em] text-mute">Pessoas</p>
-        <div className="flex items-center gap-3">
-          <button aria-label="Menos" onClick={() => setPeople((n) => Math.max(1, n - 1))} className="grid size-9 place-items-center rounded-full bg-white/[0.07]"><Minus size={14} /></button>
-          <span className="w-8 text-center font-serif text-2xl">{people}</span>
-          <button aria-label="Mais" onClick={() => setPeople((n) => Math.min(place.capacity, n + 1))} className="grid size-9 place-items-center rounded-full bg-white/[0.07]"><Plus size={14} /></button>
-        </div>
-      </div>
-      <div className="mt-4 grid gap-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" aria-label="Seu nome" className="h-12 rounded-[16px] border border-line bg-bg px-4 text-[15px] outline-none placeholder:text-faint focus:border-accent/50" />
-        <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="WhatsApp (opcional)" aria-label="WhatsApp" inputMode="tel" className="h-12 rounded-[16px] border border-line bg-bg px-4 text-[15px] outline-none placeholder:text-faint focus:border-accent/50" />
-        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Observação (ex.: aniversário, bolo)" aria-label="Observação" className="h-12 rounded-[16px] border border-line bg-bg px-4 text-[15px] outline-none placeholder:text-faint focus:border-accent/50" />
-      </div>
-      <Button size="lg" className="mt-4 w-full" disabled={!sel || !name.trim() || create.isPending} onClick={submit}>
-        {create.isPending ? 'Enviando…' : 'Enviar pedido de reserva'}
-      </Button>
-      <p className="mt-2 text-center text-[11px] text-faint">Versão de teste: ainda não reservamos de verdade. Seu pedido ajuda a medir o interesse.</p>
-    </Sheet>
+    <a href={maps} target="_blank" rel="noreferrer" className={cls} onClick={() => track('contact_casa', { id: place.id, via: 'maps' })}><MapPin size={16} />Como chegar</a>
   )
 }

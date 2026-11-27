@@ -9,7 +9,7 @@ import { ease } from '../ui/motion'
 import { placeIcon } from '../ui/placeIcon'
 import { addSuggestion, analyzePlace, confirmCommunityPlace, importRequest, searchPlaces, useProfile, useRequest } from '../lib/api'
 import { currentVoteLink, readPayload, returnUrl } from '../lib/share'
-import { KIND_LABEL, NICHES, OCCASIONS, VIBES, nicheLabel, occasionLabel, priceLabel, vibeLabel } from '../lib/labels'
+import { KIND_LABEL, fitLabel, NICHES, OCCASIONS, VIBES, nicheLabel, occasionLabel, priceLabel, vibeLabel } from '../lib/labels'
 import { track } from '../lib/track'
 import type { Niche, Occasion, Ranked, Vibe } from '../lib/types'
 import { placesEnabled, searchGoogle, searchesLeftToday } from '../lib/places'
@@ -156,7 +156,7 @@ export function SuggestPage() {
             : <p className="mt-0.5 truncate text-[11px] text-accent/90">{r.reasons[0]}</p>}
         </div>
         <span className={cx('shrink-0 rounded-full px-2 py-1 text-[11px]', already ? 'bg-white/10 text-mute' : r.match >= 70 ? 'bg-accent/15 text-accent' : 'bg-amber-400/15 text-amber-300')}>
-          {already ? 'já na lista' : `${r.match}%`}
+          {already ? 'já na lista' : fitLabel(r.match)}
         </span>
       </motion.button>
     )
@@ -169,7 +169,7 @@ export function SuggestPage() {
           <Cover hue={picked.place.hue} icon={placeIcon(picked.place)} iconSize={18} className="size-11 shrink-0" rounded="rounded-[12px]" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px]">{picked.place.name}</p>
-            <p className={cx('text-xs', picked.match >= 70 ? 'text-accent' : 'text-amber-300')}>{picked.match}% de encaixe{picked.warnings[0] ? ` · ${picked.warnings[0].toLowerCase()}` : ''}</p>
+            <p className={cx('text-xs', picked.match >= 70 ? 'text-accent' : 'text-amber-300')}>{fitLabel(picked.match)}{picked.warnings[0] ? ` · ${picked.warnings[0].toLowerCase()}` : ''}</p>
           </div>
           <button onClick={() => setPicked(null)} aria-label="Trocar" className="grid size-8 place-items-center rounded-full bg-white/[0.06]"><X size={14} /></button>
         </div>
