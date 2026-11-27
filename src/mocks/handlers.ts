@@ -437,6 +437,20 @@ export const handlers = [
     return HttpResponse.json(c)
   }),
 
+  /** busca rápida: descreve o que quer e recebe uma lista, sem pedido nem votação (nada fica salvo) */
+  http.post('/api/quick', async ({ request }) => {
+    const body = (await request.json()) as { text: string }
+    const criteria = await analyze(body.text)
+    const profile = await getProfile()
+    await Promise.race([discoverForRequest(criteria, profile?.home, body.text).catch(() => 0), delay(7000)])
+    const tmp: RoleRequest = { id: uid('q'), authorId: 'me', text: body.text.trim(), criteria, createdAt: Date.now(), status: 'aberto' }
+    let top = rankLayered(criteria, profile, new Set(), 10)
+    const picked = await curateWithLLM(tmp, top, profile)
+    if (picked) top = [...picked, ...top.filter((r) => !picked.some((p) => p.place.id === r.place.id))]
+    track('quick_search', { n: top.length, niches: criteria.niches })
+    return HttpResponse.json({ criteria, results: top.slice(0, 8).map((r) => ({ ...r, aiNote: r.aiNote ?? aiNotes.get(tmp.id)?.get(r.place.id) })) })
+  }),
+
   http.post('/api/requests', async ({ request }) => {
     const body = (await request.json()) as { text: string; overrides?: Partial<Criteria>; groupId?: string }
     const criteria = await analyze(body.text, body.overrides)

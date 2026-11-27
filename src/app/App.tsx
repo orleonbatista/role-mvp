@@ -29,6 +29,7 @@ const IndicarPage = lazy(() => import('../features/Indicar').then((m) => ({ defa
 const FundadorPage = lazy(() => import('../features/Fundador').then((m) => ({ default: m.FundadorPage })))
 const PrivacidadePage = lazy(() => import('../features/Privacidade').then((m) => ({ default: m.PrivacidadePage })))
 const TurmasPage = lazy(() => import('../features/Turmas').then((m) => ({ default: m.TurmasPage })))
+const QuickSearch = lazy(() => import('../features/QuickSearch').then((m) => ({ default: m.QuickSearch })))
 const TestesPage = lazy(() => import('../features/Testes').then((m) => ({ default: m.TestesPage })))
 
 const TAB_ROUTES = ['/', '/perfil']
@@ -69,7 +70,7 @@ export function App() {
                     ['/onboarding', <Onboarding />], ['/novo', <NewRequest />], ['/pedido/:id', <Results />], ['/r/:id', <VotePage />],
                     ['/lugar/:id', <PlacePage />], ['/avaliar/:id', <ReviewPage />], ['/perfil', <ProfilePage />], ['/testes', <TestesPage />],
                     ['/s/:id', <SuggestPage />], ['/i/:id', <ImportSuggestion />],
-                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />],
+                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />], ['/buscar', <QuickSearch />],
                   ].map(([path, el]) => (
                     <Route key={path as string} path={path as string} element={<Suspense fallback={<Fallback />}>{el}</Suspense>} />
                   ))}
