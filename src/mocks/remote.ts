@@ -61,14 +61,41 @@ async function probe(): Promise<string | null> {
 }
 export const isOnline = async () => !!(await apiBase())
 
-async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opts: { admin?: boolean; timeout?: number } = {}): Promise<T | null> {
+/* sessão: token guardado no aparelho e mandado em toda chamada; o servidor passa a ignorar o id do aparelho
+   (que já vazou para outros participantes antes da correção) para quem tem sessão */
+const SESSION_KEY = 'role.session'
+export const getSession = () => { try { return localStorage.getItem(SESSION_KEY) ?? '' } catch { return '' } }
+export const setSession = (t: string | null) => { try { t ? localStorage.setItem(SESSION_KEY, t) : localStorage.removeItem(SESSION_KEY) } catch { /* */ } }
+let starting: Promise<boolean> | null = null
+/** garante a sessão: pede a primeira se não houver; devolve false se o aparelho precisa entrar com Google */
+export function ensureSession(): Promise<boolean> {
+  if (getSession()) return Promise.resolve(true)
+  if (starting) return starting
+  starting = (async () => {
+    const base = await apiBase()
+    if (!base) return false
+    try {
+      const r = await fetch(`${base}/api/session/start`, { method: 'POST', headers: { 'X-Device': deviceId(), 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(5000) })
+      if (r.ok) { setSession(((await r.json()) as { token: string }).token); return true }
+      if (r.status === 409 || r.status === 401) sessionLost = true
+    } catch { /* fora do ar */ }
+    return false
+  })().finally(() => { starting = null })
+  return starting
+}
+/** este aparelho já teve sessão e perdeu o token (limpou dados?): só volta entrando com Google */
+export let sessionLost = false
+
+async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opts: { admin?: boolean; timeout?: number } = {}, retried = false): Promise<T | null> {
   const base = await apiBase()
   if (!base) return null
+  if (!getSession() && path !== '/api/auth/google') await ensureSession()
   try {
     const r = await fetch(base + path, {
       method,
       headers: {
         'X-Device': deviceId(),
+        ...(getSession() ? { 'X-Session': getSession() } : {}),
         ...(body ? { 'Content-Type': 'application/json' } : {}),
         ...(opts.admin ? { 'X-Admin-Key': getAdminKey() } : {}),
       },
@@ -77,6 +104,10 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opt
       // keepalive só pra corpo pequeno: o navegador recusa keepalive acima de 64 KB (era isso que barrava as fotos)
       keepalive: method === 'POST' && (body ? JSON.stringify(body).length < 60_000 : true),
     })
+    if (r.status === 401 && !retried && !opts.admin) {
+      const j = await r.clone().json().catch(() => null)
+      if (j?.error === 'session') { setSession(null); if (await ensureSession()) return call<T>(method, path, body, opts, true) }
+    }
     if (!r.ok) return null
     return (await r.json()) as T
   } catch {
@@ -189,6 +220,14 @@ export async function syncRequest(id: string): Promise<boolean> {
 
 export const pushVote = (rid: string, kind: 'place' | 'time', value: string, voter: string) =>
   call('POST', `/api/requests/${encodeURIComponent(rid)}/votes`, { kind, value, voter }).then(Boolean)
+export const myRequests = () => call<{ id: string; createdAt: number }[]>('GET', '/api/requests/mine', undefined, { timeout: 5000 })
+/** baixa pro aparelho os pedidos da conta que ainda não estão nele (celular novo, login em outro aparelho) */
+export async function pullMyRequests() {
+  const mine = (await myRequests()) ?? []
+  let n = 0
+  for (const x of mine) if (!(await db.requests.get(x.id)) && (await syncRequest(x.id).catch(() => false))) n++
+  return n
+}
 export const myInvites = () => call<{ id: string; createdAt: number }[]>('GET', '/api/invites', undefined, { timeout: 4000 })
 export const pushSlot = (rid: string, slot: string, on: boolean, voter: string) =>
   call('POST', `/api/requests/${encodeURIComponent(rid)}/slots`, { slot, on, voter }).then(Boolean)
@@ -303,7 +342,7 @@ export const geoRev = (lat: number, lng: number) => call<GeoOut>('GET', `/api/ge
 /* ---------- pessoas: perfil, avaliações, turmas (LGPD: perfil só com consentimento) ---------- */
 export const pushMe = (p: Profile) => (p.consentAt ? call('POST', '/api/me', { consentAt: p.consentAt, profile: { name: p.name, handle: p.handle, hue: p.hue, hood: p.hood, niches: p.niches, vibes: p.vibes, home: p.home } }) : Promise.resolve(null))
 export interface GoogleLogin {
-  existing: boolean; device: string; email: string; name?: string; profile?: Partial<Profile>; consentAt?: number
+  existing: boolean; device: string; session?: string; email: string; name?: string; profile?: Partial<Profile>; consentAt?: number
   reviews?: { id: string; place_id: string; request_id: string | null; verdict: Review['verdict']; note: string; place?: unknown; at: number }[]
 }
 export const googleLogin = (credential: string) => call<GoogleLogin>('POST', '/api/auth/google', { credential }, { timeout: 12000 })

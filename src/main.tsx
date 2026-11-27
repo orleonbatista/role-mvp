@@ -55,12 +55,14 @@ async function boot() {
   const reconcile = async () => {
     const r = await import('./mocks/remote')
     if (!(await r.apiBase(synced ? false : true))) return
+    await r.ensureSession()
     const local = Number(localStorage.getItem('role.profileEpoch') ?? 0)
     if (r.serverEpoch > local) {
       localStorage.setItem('role.profileEpoch', String(r.serverEpoch))
       if (await db.profile.get('me')) { await db.profile.delete('me'); location.assign(import.meta.env.BASE_URL + 'onboarding'); return }
     }
     if (synced) return
+    if (await r.pullMyRequests().catch(() => 0)) qc.invalidateQueries()
     const cur = await db.profile.get('me')
     synced = !cur?.consentAt || !!(await pushMe(cur))
   }

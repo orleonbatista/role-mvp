@@ -5,7 +5,7 @@ import { createReadStream } from 'node:fs'
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { DESTAQUES, askBody, moderateBody, moderationRules, ollamaBody, pickBody } from '../src/mocks/llmPrompt.ts'
-import { checkDeadlines, ogPage, photoFile, placePhotoFile, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
+import { deviceForLogin, resolveSession, checkDeadlines, ogPage, photoFile, placePhotoFile, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
 import { geoFromCep, geoReverse } from './geo.mjs'
 import { createLLM } from './providers.mjs'
 import { createPush } from './push.mjs'
@@ -96,7 +96,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(origin ? 204 : 403, origin ? {
       'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'GET, POST',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Device, X-Admin-Key', 'Access-Control-Max-Age': '600', Vary: 'Origin',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Device, X-Admin-Key, X-Session', 'Access-Control-Max-Age': '600', Vary: 'Origin',
     } : {})
     return res.end()
   }
@@ -125,6 +125,8 @@ const server = http.createServer(async (req, res) => {
     const ip = String(req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? '?')
     const write = req.method === 'POST'
     if (apiLimited(ip, write)) return send(res, 429, { error: 'rate_limited' }, origin)
+    const sessErr = resolveSession(req, path)
+    if (sessErr) return send(res, 401, sessErr, origin)
     let body = {}
     if (write) {
       let raw = ''
@@ -156,7 +158,7 @@ const server = http.createServer(async (req, res) => {
         const valid = t && t.aud === GOOGLE_CLIENT_ID && ['accounts.google.com', 'https://accounts.google.com'].includes(t.iss) &&
           Number(t.exp) * 1000 > Date.now() && (t.email_verified === 'true' || t.email_verified === true) && t.sub
         if (!valid) return send(res, 401, { error: 'google_token' }, origin)
-        const [status, out] = googleLogin(String(t.sub), String(t.email ?? '').slice(0, 120), String(t.given_name ?? t.name ?? ''), String(req.headers['x-device'] ?? ''))
+        const [status, out] = googleLogin(String(t.sub), String(t.email ?? '').slice(0, 120), String(t.given_name ?? t.name ?? ''), deviceForLogin(req))
         console.log(`[${new Date().toLocaleTimeString('pt-BR')}] login google ${status} ${out.existing ? 'conta existente' : 'conta nova'}`)
         return send(res, status, out, origin)
       } catch (e) {

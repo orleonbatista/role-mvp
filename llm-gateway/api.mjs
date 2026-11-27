@@ -105,6 +105,10 @@ db.exec(`
     place_id TEXT PRIMARY KEY, owner_device TEXT, status TEXT NOT NULL, claim TEXT, data TEXT NOT NULL DEFAULT '{}',
     sponsored_until INTEGER, at INTEGER NOT NULL, updated_at INTEGER NOT NULL
   );
+  -- sessão: token aleatório (só o hash fica aqui) ligado ao aparelho/conta; depois que um aparelho tem sessão,
+  -- o id dele sozinho não vale mais como credencial
+  CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, device TEXT NOT NULL, at INTEGER NOT NULL, last_at INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS ix_sess_dev ON sessions(device);
   CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, kind TEXT NOT NULL, target_id TEXT NOT NULL, device TEXT NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'aberta', UNIQUE (kind, target_id, device));
 `)
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'closes_at'").get()) { db.exec('ALTER TABLE requests ADD COLUMN closes_at INTEGER'); db.exec('ALTER TABLE requests ADD COLUMN close_notified INTEGER') }
@@ -165,6 +169,36 @@ export function roleOf(device) {
   return u.role === 'curador' || u.role === 'admin' ? u.role : 'usuario'
 }
 const devOf = (req) => String(req.headers['x-device'] ?? '')
+const sha = (t) => createHash('sha256').update(String(t)).digest('hex')
+function newSession(device) {
+  const token = randomBytes(24).toString('base64url')
+  db.prepare('INSERT INTO sessions (token_hash, device, at, last_at) VALUES (?, ?, ?, ?)').run(sha(token), device, Date.now(), Date.now())
+  return token
+}
+/** confere a sessão antes de qualquer rota: com token, o aparelho vem dele (o X-Device é ignorado);
+ *  sem token, só vale um aparelho que ainda não tem sessão (transição) — id vazado de quem já tem sessão não abre nada */
+/** aparelho a usar no login Google: o da sessão; sem sessão, o informado só se ele ainda não tem sessão;
+ *  senão um aparelho novo (quem tem um id vazado não consegue ligar a própria conta ao aparelho de outra pessoa) */
+export function deviceForLogin(req) {
+  const claimed = String(req.headers['x-device'] ?? '')
+  if (req.headers['x-session']) return claimed // já trocado pelo da sessão em resolveSession
+  if (!claimed || db.prepare('SELECT 1 FROM sessions WHERE device = ? LIMIT 1').get(claimed)) return `d-${randomBytes(10).toString('hex')}`
+  return claimed
+}
+export function resolveSession(req, path) {
+  const tok = String(req.headers['x-session'] ?? '')
+  if (tok) {
+    const s = db.prepare('SELECT device, last_at FROM sessions WHERE token_hash = ?').get(sha(tok))
+    if (!s) return { error: 'session' }
+    if (Date.now() - s.last_at > 3600_000) db.prepare('UPDATE sessions SET last_at = ? WHERE token_hash = ?').run(Date.now(), sha(tok))
+    req.headers['x-device'] = s.device
+    return null
+  }
+  const claimed = String(req.headers['x-device'] ?? '')
+  if (!claimed || path === '/api/auth/google' || path === '/api/health') return null
+  if (db.prepare('SELECT 1 FROM sessions WHERE device = ? LIMIT 1').get(claimed)) return { error: 'session' }
+  return null
+}
 function isAdmin(req) { return keyOk(req) || roleOf(devOf(req)) === 'admin' }
 function isCurator(req) { return isAdmin(req) || roleOf(devOf(req)) === 'curador' }
 
@@ -390,13 +424,14 @@ export function googleLogin(sub, email, givenName, device) {
   const now = Date.now()
   const acc = qp.byGoogle.get(sub)
   if (acc) {
-    return ok({ existing: true, device: acc.device, email, profile: parse(acc.data), consentAt: acc.consent_at,
+    return ok({ existing: true, device: acc.device, session: newSession(acc.device), email, profile: parse(acc.data), consentAt: acc.consent_at,
       reviews: qp.myReviews.all(acc.device).map((r) => ({ ...r, place: r.place ? parse(r.place) : undefined })) })
   }
   const here = qp.getUser.get(device)
+  if (here?.google_sub && here.google_sub !== sub) return bad('device_has_account', 409) // nunca troca a conta de um aparelho
   if (here) qp.linkGoogle.run(sub, email, device)
   else qp.insBare.run(device, JSON.stringify({ name: str(givenName, 40) }), now, now, sub, email)
-  return ok({ existing: false, device, email, name: str(givenName, 40) })
+  return ok({ existing: false, device, session: newSession(device), email, name: str(givenName, 40) })
 }
 
 /** avaliação "Quem foi" (moderação do comentário feita no server.mjs antes de chegar aqui) */
@@ -578,6 +613,8 @@ function handlePeople(method, path, body, device, now) {
       db.prepare('DELETE FROM feedback WHERE device = ?').run(device)
       db.prepare('DELETE FROM leads WHERE device = ?').run(device)
       db.prepare('DELETE FROM events WHERE device = ?').run(device)
+      for (const t of ['slots', 'rsvps', 'push_subs', 'sessions']) db.prepare(`DELETE FROM ${t} WHERE device = ?`).run(device)
+      db.prepare("UPDATE messages SET voter = 'Alguém' WHERE device = ?").run(device)
       db.exec('COMMIT')
     } catch (e) { db.exec('ROLLBACK'); throw e }
     return ok({ ok: true })
@@ -612,6 +649,12 @@ export function handleApi(method, path, req, body) {
   const now = Date.now()
   let m
 
+  // primeira sessão do aparelho (o app pede ao abrir); aparelho que já tem sessão precisa do token ou do login Google
+  if (method === 'POST' && path === '/api/session/start') {
+    if (!RE.device.test(device)) return bad('device')
+    if (db.prepare('SELECT 1 FROM sessions WHERE device = ? LIMIT 1').get(device)) return bad('has_session', 409)
+    return ok({ token: newSession(device) })
+  }
   if (method === 'GET' && path === '/api/health') return ok({ ok: true, db: true, at: now, profileEpoch: Number(db.prepare("SELECT v FROM meta WHERE k = 'profile_epoch'").get()?.v ?? 0) })
   if (/^\/api\/(me|reviews|ratings|groups)\b|^\/api\/places\/[^/]+\/reviews$/.test(path)) {
     if (!RE.device.test(device)) return bad('device')
@@ -690,6 +733,10 @@ export function handleApi(method, path, req, body) {
   }
 
   // votações de outras pessoas em que este aparelho (ou a conta Google dele) participou: segue a pessoa de celular em celular
+  // meus pedidos (pra outro celular da mesma conta montar a lista)
+  if (method === 'GET' && path === '/api/requests/mine') {
+    return ok(db.prepare('SELECT id, created_at FROM requests WHERE author_device = ? ORDER BY created_at DESC LIMIT 50').all(device).map((r) => ({ id: r.id, createdAt: r.created_at })))
+  }
   if (method === 'GET' && path === '/api/invites') {
     const ids = db.prepare(`SELECT DISTINCT request_id id FROM (
         SELECT request_id FROM votes WHERE device = ? UNION SELECT request_id FROM slots WHERE device = ?

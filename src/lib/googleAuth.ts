@@ -1,6 +1,6 @@
 import { db } from '../db/db'
 import type { Profile, Review } from './types'
-import { googleLogin, setDeviceId, deviceId, type GoogleLogin } from '../mocks/remote'
+import { googleLogin, setDeviceId, setSession, deviceId, type GoogleLogin } from '../mocks/remote'
 import { fromSnap } from './places'
 import { registerPlace } from '../mocks/seeds/places'
 
@@ -59,6 +59,9 @@ export type LoginOutcome = { ok: false } | { ok: true; existing: true } | { ok: 
 export async function loginWithGoogle(credential: string): Promise<LoginOutcome> {
   const r: GoogleLogin | null = await googleLogin(credential)
   if (!r) return { ok: false }
+  if (r.session) setSession(r.session)
+  // o servidor pode devolver outro aparelho (conta existente, ou o deste celular já tinha sessão): passa a usar o dele
+  if (r.device && r.device !== deviceId()) setDeviceId(r.device)
   try { localStorage.setItem('role.googleLinked', '1') } catch { /* */ }
   if (!r.existing) {
     const cur = await db.profile.get('me')
@@ -78,6 +81,7 @@ export async function loginWithGoogle(credential: string): Promise<LoginOutcome>
     if (pl) registerPlace(pl)
     const rv: Review = { id: x.id, placeId: x.place_id, requestId: x.request_id ?? undefined, went: true, verdict: x.verdict, note: x.note, createdAt: x.at }
     await db.reviews.put(rv)
+    if (x.request_id) try { localStorage.setItem(`role.reviewed.${x.request_id}`, '1') } catch { /* */ }
   }
   return { ok: true, existing: true }
 }
