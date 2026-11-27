@@ -6,3 +6,4 @@ dist
 llm-gateway/data/
 playwright-report/
 test-results/
+audit-out/

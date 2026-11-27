@@ -1,0 +1,21 @@
+name: Auditoria (due diligence)
+
+# Roda sob demanda: todas as telas em iPhone 13 (WebKit), Android 360 e 320px, com prints e checagens.
+# Resultado nos artefatos (audit-out): um .json por aparelho e os prints.
+on:
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npx playwright test -c playwright.audit.config.ts
+        continue-on-error: true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: audit-out, path: audit-out, retention-days: 14 }
