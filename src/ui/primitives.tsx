@@ -119,7 +119,7 @@ export function Chip({ active, children, onClick, className }: { active?: boolea
 
 export function Tag({ children, tone = 'default' }: { children: ReactNode; tone?: 'default' | 'accent' }) {
   return (
-    <span className={cx('inline-flex h-6 items-center rounded-full px-2.5 text-[11px] font-medium', tone === 'accent' ? 'bg-accent/15 text-accent' : 'bg-white/[0.06] text-mute')}>
+    <span className={cx('inline-flex h-6 max-w-full items-center whitespace-nowrap rounded-full px-2.5 text-[11px] font-medium', tone === 'accent' ? 'bg-accent/15 text-accent' : 'bg-white/[0.06] text-mute')}>
       {children}
     </span>
   )

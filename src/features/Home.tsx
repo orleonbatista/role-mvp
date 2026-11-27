@@ -103,8 +103,8 @@ export function Home() {
                 <div className="relative">
                   <Cover hue={r.place.hue} icon={placeIcon(r.place)} iconSize={72} layoutId={`cover-${r.place.id}`} className="h-[260px] w-full transition-transform duration-500 group-active:scale-[0.98]" />
                   <PlacePhoto place={r.place} enabled={i < 3} />
-                  <div className="absolute left-3 top-3 flex gap-1.5">
-                    <Tag tone="accent">{fitLabel(r.match)} com seu gosto</Tag>
+                  <div className="absolute inset-x-3 top-3 flex flex-wrap gap-1.5">
+                    <Tag tone="accent">{fitLabel(r.match)}</Tag>
                     {r.place.curation === 'base' && <span className="inline-flex h-6 items-center rounded-full bg-black/45 px-2.5 text-[11px] text-white/85 backdrop-blur-md">sem curadoria</span>}
                     {openStatus(r.place).open && !r.place.source && <span className="inline-flex h-6 items-center gap-1 rounded-full bg-black/40 px-2.5 text-[11px] text-white/90 backdrop-blur-md"><span className="size-1.5 rounded-full bg-accent" />aberto</span>}
                   </div>
