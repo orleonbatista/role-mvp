@@ -1,5 +1,6 @@
 import { ConfirmHost } from '../ui/Confirm'
 import { AnimatePresence, LayoutGroup, MotionConfig } from 'motion/react'
+import { PullToRefresh } from './PullToRefresh'
 import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 
 /* App instalado na tela de início fica aberto por dias com a versão antiga na memória; depois de um deploy,
@@ -31,7 +32,6 @@ class RouteError extends Component<{ children: ReactNode }, { err: boolean }> {
 import { Navigate, Route, Routes, useLocation } from 'react-router'
 import { PhoneFrame } from './PhoneFrame'
 import { TabBar } from './TabBar'
-import { FeedbackButton } from './FeedbackButton'
 import { ToastHost } from '../ui/Toast'
 import { Skeleton } from '../ui/primitives'
 import { useProfile } from '../lib/api'
@@ -95,8 +95,6 @@ export function App() {
   // /perfil/ (com barra no fim, como o GitHub Pages serve as rotas fixas) vira /perfil: antes a barra inferior sumia
   // nessas telas porque a rota não batia
   const trailing = location.pathname.length > 1 && location.pathname.endsWith('/')
-  // fora da Início e das notificações: lá o canto de cima já tem botões (o de feedback ficava por cima do sino)
-  const showFeedback = location.pathname !== '/' && !['/notificacoes', '/onboarding', '/r/', '/s/', '/i/', '/e/', '/c/', '/p/', '/divulgar', '/testes'].some((p) => location.pathname.startsWith(p))
 
   useEffect(() => {
     const src = captureSource()
@@ -110,6 +108,7 @@ export function App() {
       <PhoneFrame>
         <ToastHost>
           <RouteProgress />
+          <PullToRefresh />
           <LayoutGroup>
             <AnimatePresence initial={false}>
               {(isLoading || !booted) && !isPublic ? (
@@ -132,7 +131,6 @@ export function App() {
               )}
             </AnimatePresence>
           </LayoutGroup>
-          {showFeedback && profile?.onboarded && <FeedbackButton path={location.pathname} />}
           <TabBar visible={TAB_ROUTES.includes(location.pathname) && !!profile?.onboarded} />
           <ConfirmHost />
         </ToastHost>

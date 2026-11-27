@@ -153,13 +153,14 @@ interface RemoteState {
   /** apelido deste aparelho no servidor (os ids reais não saem de lá) */
   me?: string
   decision: { placeId: string; time?: string; at: number } | null
+  reopenedAt?: number | null
   votes: { device: string; kind: 'place' | 'time'; value: string; voter: string; at: number }[]
   suggestions: { id: string; placeId: string; byName: string; comment: string; hue: number; device: string; at: number; place?: unknown }[]
   slots?: { device: string; slot: string; voter: string; at: number }[]
   rsvps?: { device: string; status: Rsvp; voter: string; at: number }[]
   messages?: { id: string; device: string; voter: string; text: string; at: number }[]
   closesAt?: number | null
-  participants?: { pid: string; handle?: string | null; name: string; hue: number; level: string; points: number; me: boolean; author: boolean }[]
+  participants?: { pid: string; handle?: string | null; photo?: number | null; name: string; hue: number; level: string; points: number; me: boolean; author: boolean }[]
   photos?: { id: string; device: string; voter: string; at: number }[]
 }
 export type Rsvp = 'vou' | 'talvez' | 'nao'
@@ -209,6 +210,11 @@ export async function syncRequest(id: string): Promise<boolean> {
     const removed = new Set(s.request.removed ?? [])
     const merged = [...(local.optionIds ?? []).filter((x) => !removed.has(x)), ...optionIds.filter((x) => !(local.optionIds ?? []).includes(x))].slice(0, 6)
     if (merged.join() !== (local.optionIds ?? []).join() || snaps.length !== (local.optSnaps?.length ?? 0)) await db.requests.update(id, { optionIds: merged, optSnaps: snaps })
+  }
+  // a autora reabriu a votação: volta pra aberto em todo aparelho
+  if (!s.decision && s.reopenedAt) {
+    const cur = await db.requests.get(id)
+    if (cur?.status === 'decidido') await db.requests.update(id, { status: 'aberto', decidedPlaceId: undefined, decidedTime: undefined })
   }
   if (s.decision) {
     const cur = await db.requests.get(id)
@@ -273,6 +279,14 @@ export const pushSuggestion = (rid: string, b: { placeId: string; by: string; co
   const p = placeById.get(b.placeId)
   return call('POST', `/api/requests/${encodeURIComponent(rid)}/suggestions`, { ...b, place: p?.source ? snapOf(p) : undefined }).then(Boolean)
 }
+export const pushReopen = (rid: string) => call<{ ok: boolean }>('POST', `/api/requests/${encodeURIComponent(rid)}/reopen`, {}).then(Boolean)
+/** endereço da foto de perfil (pública por apelido; ?v= troca quando a pessoa muda a foto) */
+export function avatarUrl(pid?: string | null, v?: number | null): string | null {
+  if (!pid || !v) return null
+  const base = health?.base ?? lastGood()
+  return base ? `${base}/media/a/${pid}.jpg?v=${v}` : null
+}
+export const uploadAvatar = (data: string | null) => call<{ ok: boolean; photo: number | null; pid: string }>('POST', '/api/me/photo', { data }, { timeout: 15000 })
 export const pushDecision = (rid: string, placeId: string, time?: string) =>
   call('POST', `/api/requests/${encodeURIComponent(rid)}/decide`, { placeId, time }).then(Boolean)
 
@@ -384,7 +398,7 @@ export const pushPlaceReview = (r: Review & { name: string; hue: number; placeNa
 export interface CommunityReviews { score: number | null; count: number; items: { id: string; name: string; hue: number; verdict: NonNullable<Review['verdict']>; note: string; at: number; mine: boolean; pending: boolean; pid: string }[] }
 export const placeReviews = (id: string) => call<CommunityReviews>('GET', `/api/places/${encodeURIComponent(id)}/reviews`, undefined, { timeout: 4000 })
 export const ratings = () => call<Record<string, [number, number]>>('GET', '/api/ratings', undefined, { timeout: 4000 })
-export interface Turma { id: string; name: string | null; mine: boolean; updatedAt: number; visibility?: 'privada' | 'publica'; members: { name: string; hue: number; me: boolean; pid?: string; handle?: string | null; level?: string }[]; requests: { id: string; text: string; createdAt: number; decided: boolean }[] }
+export interface Turma { id: string; name: string | null; mine: boolean; updatedAt: number; visibility?: 'privada' | 'publica'; members: { name: string; hue: number; me: boolean; pid?: string; handle?: string | null; photo?: number | null; level?: string }[]; requests: { id: string; text: string; createdAt: number; decided: boolean }[] }
 export const myGroups = () => call<Turma[]>('GET', '/api/groups', undefined, { timeout: 4000 })
 export const renameGroup = (id: string, name: string) => call('POST', `/api/groups/${id}/name`, { name })
 export const leaveGroup = (id: string) => call('POST', `/api/groups/${id}/leave`, {})
@@ -447,8 +461,8 @@ export interface InboxItem { id: string; kind: string; title: string; body: stri
 export const inbox = () => call<{ unread: number; items: InboxItem[] }>('GET', '/api/inbox', undefined, { timeout: 5000 })
 export const inboxRead = (id?: string) => call('POST', '/api/inbox/read', id ? { id } : {}).then(Boolean)
 export interface Rep { points: number; level: string; reviews: number; photos: number; closed: number }
-export interface PersonCard { pid: string; handle?: string | null; name: string; hue: number; reputation: Rep }
-export interface PersonPage { pid: string; handle?: string | null; name: string; hue: number; hood: string | null; niches: string[]; me: boolean; relation: 'nenhuma' | 'enviado' | 'recebido' | 'amigos'; reputation: Rep
+export interface PersonCard { pid: string; handle?: string | null; photo?: number | null; name: string; hue: number; reputation: Rep }
+export interface PersonPage { pid: string; handle?: string | null; photo?: number | null; requests?: { id: string; text: string; decided: boolean; place: string | null; time: string | null; at: number }[]; name: string; hue: number; hood: string | null; niches: string[]; me: boolean; relation: 'nenhuma' | 'enviado' | 'recebido' | 'amigos'; reputation: Rep
   reviews: { placeId: string; verdict: string; note: string; name: string | null; at: number }[]; lists: { id: string; title: string; places: unknown[]; updatedAt: number }[]; friendsCount: number; groups?: { id: string; name: string; members: number; member: boolean }[] }
 export type FeedItem = { kind: 'review'; who: PersonCard; placeId: string; placeName: string | null; verdict: string; note: string; at: number }
   | { kind: 'list'; who: PersonCard; listId: string; title: string; count: number; at: number }

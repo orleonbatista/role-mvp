@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarPlus, Camera, CloudSun, Copy, Navigation, Receipt, Send, Timer, Trash2 } from 'lucide-react'
-import { apiBase, deletePhoto, pushDeadline, pushMessage, pushPhoto, pushRsvp, type Rsvp } from '../mocks/remote'
+import { apiBase, avatarUrl, deletePhoto, pushDeadline, pushMessage, pushPhoto, pushRsvp, type Rsvp } from '../mocks/remote'
 import { pixKeyOk, pixPayload } from '../lib/pix'
 import { Sheet } from '../ui/Sheet'
 import { Button } from '../ui/primitives'
@@ -233,39 +233,89 @@ export function SplitSheet({ open, onClose, people: defPeople = 2, place }: { op
     try { saved = JSON.parse(localStorage.getItem('role.pix') ?? '{}') } catch { /* */ }
     return { total: '', people: String(defPeople), key: saved.key ?? '', name: saved.name ?? '', city: saved.city ?? '', tip: false }
   })
+  const [step, setStep] = useState<1 | 2 | 3>(1)
   const toast = useToast()
-  const total = (Number(f.total.replace(',', '.')) || 0) * (f.tip ? 1.1 : 1)
+  const base = Number(f.total.replace(/\./g, '').replace(',', '.')) || 0
+  const total = base * (f.tip ? 1.1 : 1)
   const people = Math.max(1, Number(f.people) || 1)
   const each = Math.ceil((total / people) * 100) / 100
   const keyOk = pixKeyOk(f.key)
   const code = total > 0 && keyOk && f.name.trim() ? pixPayload({ key: f.key, name: f.name, city: f.city || 'SAO PAULO', amount: each }) : ''
   useEffect(() => { if (code) try { localStorage.setItem('role.pix', JSON.stringify({ key: f.key, name: f.name, city: f.city })) } catch { /* */ } }, [code]) // eslint-disable-line react-hooks/exhaustive-deps
-  const fi = 'h-12 w-full rounded-2xl border border-line bg-white/[0.03] px-4 text-[14px] outline-none placeholder:text-faint focus:border-accent'
-  const brl = (n: number) => n.toFixed(2).replace('.', ',')
+  useEffect(() => { if (open) setStep(1) }, [open])
+  const fi = 'h-12 w-full rounded-2xl border border-line bg-white/[0.03] px-4 text-[15px] outline-none placeholder:text-faint focus:border-accent'
+  const brl = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const first = f.name.trim().split(' ')[0]
+  // mensagem curta e legível no zap; o código vai numa mensagem só dele (no WhatsApp, tocar e segurar copia a mensagem inteira)
+  const msg = `💸 ${place ? `Rolê no ${place}` : 'Conta do rolê'}\n` +
+    `Deu R$ ${brl(total)}${f.tip ? ' com os 10%' : ''} ÷ ${people} = *R$ ${brl(each)} pra cada*.\n\n` +
+    `Pix pra ${first || 'quem pagou'}: no app do banco, Pix → *Copia e cola* e cole o código da próxima mensagem 👇`
+  const share = async (text: string) => {
+    if (navigator.share) { try { await navigator.share({ text }); return } catch { /* cancelou */ } }
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
+  }
+  const copy = async (text: string, what: string) => { try { await navigator.clipboard.writeText(text); toast(`${what} copiado`) } catch { toast('Não deu pra copiar') } }
   return (
     <Sheet open={open} onClose={onClose}>
-      <p className="font-serif text-[28px] leading-tight">Dividir a conta</p>
-      <p className="mt-1 text-[13px] text-mute">Quem pagou põe a chave Pix; o app gera o código com o valor de cada um. O pagamento acontece no app do banco.</p>
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <input className={fi} inputMode="decimal" placeholder="Total (R$)" aria-label="Total da conta" value={f.total} onChange={(e) => setF({ ...f, total: e.target.value.replace(/[^\d,.]/g, '') })} />
-        <input className={fi} inputMode="numeric" placeholder="Pessoas" aria-label="Quantas pessoas" value={f.people} onChange={(e) => setF({ ...f, people: e.target.value.replace(/\D/g, '') })} />
+      <div className="flex items-center justify-between">
+        <p className="font-serif text-[28px] leading-tight">Dividir a conta</p>
+        <span className="text-[12px] text-faint">{step} de 3</span>
       </div>
-      <label className="mt-2 flex items-center gap-2 text-[13px] text-mute"><input type="checkbox" checked={f.tip} onChange={(e) => setF({ ...f, tip: e.target.checked })} className="accent-[#c6ff3d]" />Somar 10% de serviço</label>
-      {total > 0 && <p className="mt-3 text-center font-serif text-[34px] leading-none">R$ {brl(each)} <span className="font-sans text-[13px] text-mute">por pessoa{f.tip ? ` (total R$ ${brl(total)})` : ''}</span></p>}
-      <div className="mt-4 grid gap-2">
-        <input className={fi} placeholder="Chave Pix de quem pagou" aria-label="Chave Pix" value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })} />
-        {f.key && !keyOk && <p className="text-[12px] text-[#ff8a8a]">Chave inválida: CPF/CNPJ só números, celular com +55, e-mail ou chave aleatória.</p>}
-        <div className="grid grid-cols-2 gap-2">
-          <input className={fi} placeholder="Nome de quem recebe" aria-label="Nome de quem recebe" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-          <input className={fi} placeholder="Cidade" aria-label="Cidade" value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} />
-        </div>
-      </div>
-      {code && (
+      {step === 1 && (
         <>
-          <p className="mt-4 break-all rounded-2xl bg-white/[0.04] p-3 font-mono text-[11px] text-ink/80">{code}</p>
-          <Button size="lg" className="mt-3 w-full" icon={<Copy size={16} />} onClick={async () => { await navigator.clipboard.writeText(code); toast('Código Pix copiado'); track('pix_copied', {}) }}>Copiar Pix copia e cola</Button>
-          <a className="mt-2 flex h-12 items-center justify-center rounded-full border border-line text-[14px]" target="_blank" rel="noreferrer"
-            href={`https://wa.me/?text=${encodeURIComponent(`${place ? `Rolê no ${place}` : 'Rolê'}: R$ ${brl(each)} pra cada. Pix copia e cola:\n${code}`)}`}>Mandar no grupo</a>
+          <p className="mt-1 text-[13px] text-mute">Quanto deu e pra quantos?</p>
+          <label className="mt-4 flex h-16 items-center rounded-2xl border border-line bg-white/[0.03] px-4 focus-within:border-accent">
+            <span className="text-mute">R$</span>
+            <input inputMode="decimal" autoFocus placeholder="0,00" aria-label="Total da conta" value={f.total} onChange={(e) => setF({ ...f, total: e.target.value.replace(/[^\d,.]/g, '') })} className="ml-2 min-w-0 flex-1 bg-transparent font-serif text-[30px] outline-none" />
+          </label>
+          <div className="mt-3 flex items-center justify-between rounded-2xl border border-line px-4 py-2">
+            <span className="text-[14px]">Pessoas</span>
+            <span className="flex items-center gap-3">
+              <button aria-label="Menos uma pessoa" onClick={() => setF({ ...f, people: String(Math.max(1, people - 1)) })} className="grid size-10 place-items-center rounded-full bg-white/[0.06] text-[18px]">−</button>
+              <span className="w-8 text-center font-serif text-[24px]" aria-label="Quantas pessoas">{people}</span>
+              <button aria-label="Mais uma pessoa" onClick={() => setF({ ...f, people: String(Math.min(99, people + 1)) })} className="grid size-10 place-items-center rounded-full bg-white/[0.06] text-[18px]">+</button>
+            </span>
+          </div>
+          <label className="mt-3 flex items-center gap-2 text-[14px] text-mute"><input type="checkbox" checked={f.tip} onChange={(e) => setF({ ...f, tip: e.target.checked })} className="size-4 accent-[#c6ff3d]" />Somar 10% de serviço</label>
+          <div className="mt-4 rounded-2xl bg-accent/[0.08] p-4 text-center">
+            <p className="font-serif text-[40px] leading-none">R$ {brl(each)}</p>
+            <p className="mt-1 text-[12px] text-mute">pra cada{total ? ` · total R$ ${brl(total)}` : ''}</p>
+          </div>
+          <Button size="lg" className="mt-4 w-full" disabled={!total} onClick={() => setStep(2)}>Continuar</Button>
+        </>
+      )}
+      {step === 2 && (
+        <>
+          <p className="mt-1 text-[13px] text-mute">Quem pagou recebe. Fica salvo só neste celular pra próxima.</p>
+          <div className="mt-4 grid gap-2">
+            <input className={fi} placeholder="Chave Pix (celular, e-mail, CPF ou aleatória)" aria-label="Chave Pix" value={f.key} onChange={(e) => setF({ ...f, key: e.target.value.trim() })} />
+            {f.key && !keyOk && <p className="text-[12px] text-[#ff8a8a]">Confira a chave: celular com +55 e DDD, CPF só números, e-mail ou chave aleatória.</p>}
+            <input className={fi} placeholder="Nome de quem recebe (como no banco)" aria-label="Nome de quem recebe" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+            <input className={fi} placeholder="Cidade (opcional)" aria-label="Cidade" value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} />
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Button variant="ghost" onClick={() => setStep(1)}>Voltar</Button>
+            <Button size="lg" className="flex-1" disabled={!code} onClick={() => { setStep(3); track('pix_ready', {}) }}>Gerar o Pix</Button>
+          </div>
+        </>
+      )}
+      {step === 3 && code && (
+        <>
+          <div className="mt-3 rounded-2xl border border-accent/40 bg-accent/[0.06] p-4">
+            <p className="text-[12px] uppercase tracking-[0.12em] text-accent">Cada um paga</p>
+            <p className="font-serif text-[40px] leading-none">R$ {brl(each)}</p>
+            <p className="mt-1 text-[12px] text-mute">pra {f.name.trim()} · {people} pessoas</p>
+          </div>
+          <p className="mt-4 text-[13px] text-mute">Mande em duas mensagens: primeiro o recado, depois o código (assim a galera copia o código com um toque).</p>
+          <div className="mt-3 grid gap-2">
+            <Button size="lg" className="w-full" icon={<Send size={16} />} onClick={() => { share(msg); track('pix_share_msg', {}) }}>1. Mandar o recado</Button>
+            <Button size="lg" variant="soft" className="w-full" icon={<Copy size={16} />} onClick={() => { copy(code, 'Código Pix'); track('pix_copied', {}) }}>2. Copiar o código e colar no grupo</Button>
+          </div>
+          <details className="mt-3 text-[12px] text-faint">
+            <summary className="cursor-pointer">Ver o código</summary>
+            <p className="mt-2 break-all rounded-xl bg-white/[0.04] p-3 font-mono text-[11px] text-ink/80">{code}</p>
+          </details>
+          <button onClick={() => setStep(1)} className="mt-3 text-[13px] text-mute underline underline-offset-4">Refazer a conta</button>
         </>
       )}
     </Sheet>
@@ -281,7 +331,7 @@ export function Participants({ d }: { d: RequestDetail }) {
       <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5">
         {ps.map((p) => (
           <a key={p.pid} href={p.me ? `${import.meta.env.BASE_URL}perfil` : `${import.meta.env.BASE_URL}u/${p.pid}`} className="flex shrink-0 items-center gap-2 rounded-full border border-line py-1.5 pl-1.5 pr-3">
-            <span className="grid size-7 place-items-center rounded-full text-[12px] font-medium text-black" style={{ background: `hsl(${p.hue} 80% 70%)` }}>{p.name[0]}</span>
+            {avatarUrl(p.pid, p.photo) ? <img src={avatarUrl(p.pid, p.photo)!} alt="" className="size-7 rounded-full object-cover" /> : <span className="grid size-7 place-items-center rounded-full text-[12px] font-medium text-black" style={{ background: `hsl(${p.hue} 80% 70%)` }}>{p.name[0]}</span>}
             <span className="text-[12px]"><span className="block leading-tight">{p.me ? 'Você' : p.name.split(' ')[0]}{p.author ? ' · criou' : ''}</span><span className="block text-[10px] text-mute">{p.handle ?? `${p.level} · ${p.points} pts`}</span></span>
           </a>
         ))}

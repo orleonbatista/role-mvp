@@ -28,16 +28,6 @@ export function GoogleLive({ place, group }: { place: Place; group?: boolean }) 
           <AlertTriangle size={14} />{closed ? 'O Google indica que este lugar fechou definitivamente.' : 'O Google indica que está fechado temporariamente.'}
         </p>
       )}
-      {g.photo && (
-        <figure className="relative">
-          <img src={g.photo.url} alt={`Foto de ${place.name}`} loading="lazy" referrerPolicy="strict-origin-when-cross-origin" className="aspect-[16/10] w-full object-cover" />
-          {g.photo.author && (
-            <figcaption className="absolute bottom-2 right-2 rounded-full bg-black/55 px-2.5 py-1 text-[10px] text-white/85 backdrop-blur">
-              Foto: {g.photo.authorUri ? <a href={g.photo.authorUri} target="_blank" rel="noreferrer" className="underline">{g.photo.author}</a> : g.photo.author}
-            </figcaption>
-          )}
-        </figure>
-      )}
       <div className="grid gap-2 p-4 text-[13px]">
         <div className="flex flex-wrap items-center gap-2">
           {!closed && g.openNow !== undefined && (

@@ -8,6 +8,7 @@ export const NICHES: { id: Niche; label: string; hint: string }[] = [
   { id: 'drinks', label: 'Drinks', hint: 'coquetel, vinho, rooftop' },
   { id: 'jazz', label: 'Jazz & ao vivo', hint: 'sax, trio, porão' },
   { id: 'ao-ar-livre', label: 'Ao ar livre', hint: 'quintal, laje, sol' },
+  { id: 'cafe', label: 'Cafés & doces', hint: 'café especial, padaria, brunch' },
 ]
 
 export const VIBES: { id: Vibe; label: string }[] = [

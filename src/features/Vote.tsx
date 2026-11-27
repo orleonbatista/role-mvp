@@ -10,7 +10,10 @@ import { ease, spring } from '../ui/motion'
 import { placeIcon } from '../ui/placeIcon'
 import { OptionsMap } from './OptionsMap'
 import { PushCard } from './PushCard'
-import { importRequest, useDecide, useProfile, useRequest, useSync, useVote } from '../lib/api'
+import { importRequest, useDecide, useProfile, useReopen, useRequest, useSync, useVote } from '../lib/api'
+import { Sheet } from '../ui/Sheet'
+import { useToast } from '../ui/Toast'
+import { confirmSheet } from '../ui/Confirm'
 import { priceLabel } from '../lib/labels'
 import { currentVoteLink, readPayload } from '../lib/share'
 import { track } from '../lib/track'
@@ -54,6 +57,9 @@ export function VotePage() {
   const { data: me } = useProfile()
   const vote = useVote(id)
   const decide = useDecide(id)
+  const reopen = useReopen(id)
+  const [pickTime, setPickTime] = useState(false)
+  const toast = useToast()
   const syncQ = useSync()
   const live = !!syncQ.data?.online
   const [voter, setVoter] = useState(() => localStorage.getItem('role.voter') ?? '')
@@ -114,10 +120,16 @@ export function VotePage() {
     <Page><EmptyState title="Rolê não encontrado" text="Esse link está incompleto ou expirou. Peça para reenviarem pelo botão “Mandar pro grupo”." action={<Button onClick={() => nav('/')}>Conhecer o rolê.</Button>} /></Page>
   )
 
+  // fechar exige horário quando a votação tem horários: sem voto de horário, a autora escolhe antes de fechar
+  const needTime = !!data?.times.length
+  async function close(time?: string) {
+    if (!leader) return
+    if (needTime && !time) { setPickTime(true); return }
+    await decide.mutateAsync({ placeId: leader.id, time }); track('decided', { placeId: leader.id, time }); setPickTime(false); setCelebrate(true)
+  }
   const footer = data && leader && total >= 2 && !decided && !external ? (
-            <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} disabled={decide.isPending}
-              onClick={async () => { await decide.mutateAsync({ placeId: leader.id, time: leaderTime }); track('decided', { placeId: leader.id, time: leaderTime }); setCelebrate(true) }}>
-              Fechar no {leader.name}{leaderTime ? ` · ${leaderTime}` : ''}
+            <Button size="lg" className="w-full" icon={<CalendarCheck size={16} />} disabled={decide.isPending} onClick={() => close(leaderTime)}>
+              Fechar no {leader.name}{leaderTime ? ` · ${leaderTime}` : needTime ? ' · escolher horário' : ''}
             </Button>
   ) : null
 
@@ -154,6 +166,16 @@ export function VotePage() {
                 <Link to={`/lugar/${p.id}?n=${data.request.criteria.groupSize}`} className="shrink-0 rounded-full bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-ink">Ver</Link>
               </motion.div>
             ) : null
+          })()}
+          {decided && data.request.authorId === 'me' && (() => {
+            const when = slotDate(data.request.decidedTime, data.request.createdAt)
+            if (when && when.getTime() < Date.now()) return null
+            return (
+              <button disabled={reopen.isPending} onClick={async () => {
+                if (!(await confirmSheet({ title: 'Reabrir a votação?', text: 'O rolê deixa de estar fechado e a turma recebe um aviso pra votar de novo. Os votos continuam.', ok: 'Reabrir' }))) return
+                try { await reopen.mutateAsync(); track('vote_reopened', {}) } catch { toast('Reabrir precisa de conexão com o servidor') }
+              }} className="mx-5 mt-2 text-[13px] text-mute underline underline-offset-4">Reabrir a votação</button>
+            )
           })()}
           {decided && (() => {
             const p = data.options.find((o) => o.id === data.request.decidedPlaceId)
@@ -374,6 +396,15 @@ export function VotePage() {
           )}
         </AnimatePresence>
       </Overlay>
+      <Sheet open={pickTime} onClose={() => setPickTime(false)}>
+        <p className="font-serif text-[26px] leading-tight">Que horário fecha?</p>
+        <p className="mt-1 text-[13px] text-mute">Ninguém votou em horário ainda. Escolha um pra fechar o rolê no {leader?.name}.</p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          {[...(data?.times ?? [])].sort((a, b) => (data?.timeTally.find((x) => x.placeId === b)?.count ?? 0) - (data?.timeTally.find((x) => x.placeId === a)?.count ?? 0)).map((tm) => (
+            <button key={tm} disabled={decide.isPending} onClick={() => close(tm)} className="h-12 rounded-full border border-line text-[14px] hover:border-accent">{tm}</button>
+          ))}
+        </div>
+      </Sheet>
     </Page>
   )
 }

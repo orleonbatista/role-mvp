@@ -17,6 +17,7 @@ import { Avatar, Button, Cover, EmptyState, Page, Skeleton, Tag, cx } from '../u
 import { placeIcon } from '../ui/placeIcon'
 import { fmtKm, kmTo, openStatus } from '../lib/hours'
 import { liveInfo } from '../lib/gplaceLive'
+import { useSync } from '../lib/api'
 import { track } from '../lib/track'
 import { useProfile } from '../lib/api'
 import type { Place } from '../lib/types'
@@ -28,6 +29,7 @@ import { KIND_LABEL, VERDICT_LABEL, nicheLabel, occasionLabel, priceLabel, timeA
 export function PlacePage() {
   const { id = '' } = useParams()
   const [sp] = useSearchParams()
+  const sync = useSync().data
   const groupN = Number(sp.get('n')) || undefined
   const community = useQuery({ queryKey: ['place-reviews', id], queryFn: () => placeReviews(id), staleTime: 30_000 })
   const cr = community.data
@@ -44,6 +46,11 @@ export function PlacePage() {
   const coverScale = useTransform(scrollY, [-100, 0, 300], [1.15, 1, 1.05])
   const coverY = useTransform(scrollY, [0, 300], [0, 90])
   const titleOpacity = useTransform(scrollY, [140, 220], [0, 1])
+  // fotos do lugar: se o resumo veio sem as referências (aberto de um link/outro aparelho), usa as dos detalhes ao vivo
+  // (mesma consulta do bloco do Google, sem gasto extra)
+  const live = useQuery({ queryKey: ['glive', id, sp.get('grupo') === '1'], queryFn: () => liveInfo(place!, { group: sp.get('grupo') === '1' }), enabled: !!place?.source, staleTime: Infinity, gcTime: 30 * 60_000, retry: false })
+  const livePhotos = live.data?.ok ? live.data.info.photos : undefined
+  const heroPlace = useMemo(() => (place && !place.photos?.length && livePhotos?.length ? { ...place, photos: livePhotos, photo: livePhotos[0] } : place), [place, livePhotos])
   const storyCard = useMemo<StoryCard | null>(() => (story && place ? { kind: 'evento', place, by: story.by } : null), [story, place])
 
   if (!place && isError) return (
@@ -83,7 +90,7 @@ export function PlacePage() {
     <Page scrollRef={scroller} chrome={chrome} footer={footer}>
         <motion.div style={{ scale: coverScale, y: coverY }} className="relative h-[380px] origin-top">
           <Cover hue={place.hue} icon={placeIcon(place)} iconSize={120} layoutId={`cover-${place.id}`} className="h-full w-full" rounded="rounded-none" />
-          <PlacePhoto place={place} enabled rounded="rounded-none" w={800} credit="top" className="top-16" />
+          <PlacePhoto place={heroPlace ?? place} enabled rounded="rounded-none" credit="top" className="top-16" />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-bg via-bg/20 to-transparent" />
         </motion.div>
 
@@ -187,7 +194,14 @@ export function PlacePage() {
             )}
           </div>
 
-          <div className="mt-6"><SaveToList place={place} /></div>
+          <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <SaveToList place={place} />
+            {/* curadoria direto daqui (antes só pelo menu do Perfil); curador vê como ação principal */}
+            <Link to={`/indicar?id=${encodeURIComponent(place.id)}`} onClick={() => track('curate_from_place', { id: place.id })}
+              className={cx('hit flex items-center gap-2 text-[13px] underline-offset-4 hover:underline', sync?.curator ? 'font-medium text-accent' : 'text-mute')}>
+              <Star size={15} />{sync?.curator ? 'Curar este lugar' : base ? 'Indicar pro rolê' : 'Avaliar / curar'}
+            </Link>
+          </div>
           {place.kind !== 'evento' && <VenueSection place={place} />}
 
           <h2 className="mb-3 mt-9 text-[13px] uppercase tracking-[0.14em] text-mute">Quem foi</h2>

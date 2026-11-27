@@ -34,6 +34,7 @@ const NICHE_KW: Record<Niche, string[]> = {
   drinks: ['drink*', 'coquetel*', 'cocktail*', 'vinho*', 'rooftop', 'bar de vinho'],
   jazz: ['jazz', 'sax', 'ao vivo', 'blues', 'jam', 'musica ao vivo'],
   'ao-ar-livre': ['ar livre', 'quintal', 'laje', 'terraco', 'rooftop', 'por do sol', 'day party'],
+  cafe: ['cafe', 'cafes', 'cafeteria', 'cafezinho', 'padaria', 'confeitaria', 'doce*', 'brunch', 'cafe da manha', 'bolo*', 'sorvete*', 'trabalhar'],
 }
 const VIBE_KW: Record<Vibe, string[]> = {
   tranquilo: ['tranquilo', 'calmo', 'conversar', 'sossegado', 'silencio', 'ler', 'trabalhar'],
@@ -128,7 +129,7 @@ export function parseRequest(text: string): Criteria {
 const NICHE_REASON: Record<Niche, string> = {
   listening: 'Listening bar de verdade', eletronica: 'Pista de eletrônica forte', boteco: 'Boteco com acepipe de respeito',
   gastronomia: 'Cozinha que vale a ida', drinks: 'Carta de drinks caprichada', jazz: 'Música ao vivo de qualidade',
-  'ao-ar-livre': 'Espaço ao ar livre',
+  'ao-ar-livre': 'Espaço ao ar livre', cafe: 'Café e doces de respeito',
 }
 
 const OCC_PHRASE: Record<Occasion, string> = { aniversario: 'aniversário', date: 'date', amigos: 'ir com amigos', trabalho: 'happy hour', esquenta: 'esquenta', solo: 'ir sozinho' }

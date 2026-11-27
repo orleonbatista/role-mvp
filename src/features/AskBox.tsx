@@ -1,3 +1,4 @@
+import { GUARD_REPLY, screen } from '../lib/guard'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, Sparkles } from 'lucide-react'
@@ -30,7 +31,9 @@ export function AskBox({ pedido, options, criteria, tally, hood, onHighlight }: 
     setMsgs((m) => [...m, { id, q: question }])
     setText('')
     setBusy(true)
-    const a = await askPoll(question, pedido, options, criteria, tally, hood)
+    // fora do assunto ou tentativa de mexer na IA: responde aqui mesmo, sem chamar o modelo
+    const g = screen(question, 200)
+    const a = g.ok ? await askPoll(g.text, pedido, options, criteria, tally, hood) : { text: GUARD_REPLY[g.reason], highlight: [], engine: 'regras' as const }
     setMsgs((m) => m.map((x) => (x.id === id ? { ...x, a } : x)))
     onHighlight(a.highlight)
     setBusy(false)

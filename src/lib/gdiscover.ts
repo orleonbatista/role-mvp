@@ -15,7 +15,7 @@ const RADIUS = 5000
 
 const QUERY: Record<Niche, string> = {
   jazz: 'bar com música ao vivo jazz', listening: 'listening bar vinil', eletronica: 'balada música eletrônica',
-  drinks: 'bar de drinks coquetelaria', boteco: 'boteco', gastronomia: 'restaurante', 'ao-ar-livre': 'bar ao ar livre',
+  drinks: 'bar de drinks coquetelaria', boteco: 'boteco', gastronomia: 'restaurante', 'ao-ar-livre': 'bar ao ar livre', cafe: 'cafeteria café especial',
   samba: 'roda de samba', rock: 'bar de rock', indie: 'bar alternativo',
 } as Record<Niche, string>
 

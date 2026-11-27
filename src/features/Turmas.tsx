@@ -8,7 +8,7 @@ import { Avatar, Button, EmptyState, Page, Skeleton, TopBar } from '../ui/primit
 import { ease } from '../ui/motion'
 import { timeAgo } from '../lib/labels'
 import { track } from '../lib/track'
-import { groupChat, inviteToGroup, leaveGroup, myGroups, renameGroup, sendChat, setGroupVisibility, social, type Turma } from '../mocks/remote'
+import { avatarUrl, groupChat, inviteToGroup, leaveGroup, myGroups, renameGroup, sendChat, setGroupVisibility, social, type Turma } from '../mocks/remote'
 import { Sheet } from '../ui/Sheet'
 import { ReportButton } from './Report'
 import { MessagesSquare, Send } from 'lucide-react'
@@ -64,7 +64,7 @@ function TurmaCard({ t, i }: { t: Turma; i: number }) {
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         {t.members.slice(0, 5).map((m, j) => (
           <Link key={j} to={m.me || !m.pid ? '/perfil' : `/u/${m.pid}`} className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.05] py-1 pl-1 pr-2.5 text-xs">
-            <Avatar name={m.name} hue={m.hue ?? 200} size={20} />{m.me ? 'Você' : m.name.split(' ')[0]}
+            <Avatar name={m.name} hue={m.hue ?? 200} size={20} src={avatarUrl(m.pid, m.photo)} />{m.me ? 'Você' : m.name.split(' ')[0]}
           </Link>
         ))}
         <MembersButton t={t} />
@@ -107,7 +107,7 @@ export function TurmasStrip() {
     <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-1">
       {groups.slice(0, 6).map((t) => (
         <Link key={t.id} to={`/novo?turma=${t.id}`} className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface py-1.5 pl-1.5 pr-3.5 text-[13px]">
-          <span className="flex -space-x-2">{t.members.slice(0, 3).map((m, j) => <Avatar key={j} name={m.name} hue={m.hue ?? 200} size={22} />)}</span>
+          <span className="flex -space-x-2">{t.members.slice(0, 3).map((m, j) => <Avatar key={j} name={m.name} hue={m.hue ?? 200} size={22} src={avatarUrl(m.pid, m.photo)} />)}</span>
           {turmaName(t)}
         </Link>
       ))}
@@ -194,7 +194,7 @@ function MembersButton({ t }: { t: Turma }) {
             {t.members.map((m, j) => (
               <li key={j}>
                 <Link to={m.me || !m.pid ? '/perfil' : `/u/${m.pid}`} onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-3">
-                  <Avatar name={m.name} hue={m.hue ?? 200} size={34} />
+                  <Avatar name={m.name} hue={m.hue ?? 200} size={34} src={avatarUrl(m.pid, m.photo)} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px]">{m.me ? `${m.name} (você)` : m.name}</span>
                     <span className="block text-[12px] text-mute">{[m.handle, m.level].filter(Boolean).join(' · ') || 'sem @ ainda'}</span>
@@ -209,7 +209,7 @@ function MembersButton({ t }: { t: Turma }) {
               <ul className="grid gap-1">
                 {friends.map((f) => (
                   <li key={f.pid} className="flex items-center gap-3 py-1.5">
-                    <Avatar name={f.name} hue={f.hue} size={30} />
+                    <Avatar name={f.name} hue={f.hue} size={30} src={avatarUrl(f.pid, f.photo)} />
                     <span className="min-w-0 flex-1"><span className="block truncate text-[14px]">{f.name}</span><span className="block text-[11px] text-mute">{f.handle ?? f.reputation.level}</span></span>
                     <button onClick={() => invite(f.pid)} className="h-8 rounded-full bg-accent px-3 text-[12px] font-medium text-accent-ink">Chamar</button>
                   </li>

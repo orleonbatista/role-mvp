@@ -6,7 +6,7 @@ import { Avatar, Page, SectionTitle, Skeleton, Tag, TopBar, cx } from '../ui/pri
 import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
 import { confirmSheet } from '../ui/Confirm'
-import { joinGroup, searchPeople, createList, listAction, listOf, myLists, person, personAction, ranking, social, type FeedItem, type PersonCard, type Rep } from '../mocks/remote'
+import { avatarUrl, joinGroup, searchPeople, createList, listAction, listOf, myLists, person, personAction, ranking, social, type FeedItem, type PersonCard, type Rep } from '../mocks/remote'
 import { fromSnap } from '../lib/places'
 import { VERDICT_LABEL, nicheLabel, timeAgo } from '../lib/labels'
 import { useProfile, useSync } from '../lib/api'
@@ -20,7 +20,7 @@ const levelTone = (r: Rep) => (r.level.startsWith('curador') ? 'accent' : 'defau
 const PersonRow = ({ p, right }: { p: PersonCard; right?: React.ReactNode }) => (
   <div className="flex items-center gap-3 px-4 py-3">
     <Link to={`/u/${p.pid}`} className="flex min-w-0 flex-1 items-center gap-3">
-      <Avatar name={p.name} hue={p.hue} size={36} />
+      <Avatar name={p.name} hue={p.hue} size={36} src={avatarUrl(p.pid, p.photo)} />
       <span className="min-w-0"><span className="block truncate text-[15px]">{p.name}</span><span className="text-[11px] text-mute">{p.handle ? `${p.handle} · ` : ''}{p.reputation.level} · {p.reputation.points} pts</span></span>
     </Link>
     {right}
@@ -97,7 +97,7 @@ export function SocialPage() {
 function FeedCard({ f }: { f: FeedItem }) {
   return (
     <div className="rounded-[20px] bg-surface p-4">
-      <Link to={`/u/${f.who.pid}`} className="flex items-center gap-2"><Avatar name={f.who.name} hue={f.who.hue} size={24} /><span className="text-[13px]">{f.who.name}</span><span className="ml-auto text-[11px] text-faint">{timeAgo(f.at)}</span></Link>
+      <Link to={`/u/${f.who.pid}`} className="flex items-center gap-2"><Avatar name={f.who.name} hue={f.who.hue} size={24} src={avatarUrl(f.who.pid, f.who.photo)} /><span className="text-[13px]">{f.who.name}</span><span className="ml-auto text-[11px] text-faint">{timeAgo(f.at)}</span></Link>
       {f.kind === 'review' && <p className="mt-2 text-[14px]">{VERDICT_LABEL[f.verdict as keyof typeof VERDICT_LABEL] ?? f.verdict} <Link to={`/lugar/${f.placeId}`} className="text-accent">{f.placeName ?? 'um lugar'}</Link>{f.note ? `: ${f.note}` : ''}</p>}
       {f.kind === 'decided' && <p className="mt-2 text-[14px]">Fechou rolê no <Link to={`/lugar/${f.placeId}`} className="text-accent">{f.placeName ?? 'lugar'}</Link></p>}
       {f.kind === 'list' && <p className="mt-2 text-[14px]">Atualizou a lista <Link to={`/lista/${f.listId}`} className="text-accent">{f.title}</Link> · {f.count} lugares</p>}
@@ -128,7 +128,7 @@ export function PersonPage() {
       {p && (
         <div className="px-5 pb-16">
           <div className="flex items-center gap-4">
-            <Avatar name={p.name} hue={p.hue} size={68} />
+            <Avatar name={p.name} hue={p.hue} size={68} src={avatarUrl(p.pid, p.photo)} />
             <div className="min-w-0">
               <h1 className="font-serif text-[36px] leading-none">{p.name}</h1>
               {p.handle && <p className="mt-1 text-[14px] text-accent">{p.handle}</p>}
@@ -156,6 +156,24 @@ export function PersonPage() {
                 {p.lists.map((l) => <Link key={l.id} to={`/lista/${l.id}`} className="flex items-center gap-3 rounded-[18px] border border-line px-4 py-3"><Bookmark size={15} className="text-accent" /><span className="flex-1 text-[14px]">{l.title}</span><span className="text-[12px] text-faint">{l.places.length}</span></Link>)}
               </div>
             </section>
+          )}
+          {!!p.requests?.length && (
+            <section className="mt-8">
+              <SectionTitle>{p.me ? 'Seus pedidos' : `Pedidos de ${p.name.split(' ')[0]}`}</SectionTitle>
+              <div className="grid gap-2">
+                {p.requests.map((r) => (
+                  <Link key={r.id} to={`/r/${r.id}`} className="flex items-center gap-3 rounded-[18px] border border-line px-4 py-3">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px]">“{r.text}”</span>
+                      <span className={cx('block text-[12px]', r.decided ? 'text-accent' : 'text-mute')}>{r.decided ? `fechado${r.place ? ` no ${r.place}` : ''}${r.time ? ` · ${r.time}` : ''}` : 'votação aberta · toque pra ver e votar'}</span>
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+          {p.relation !== 'amigos' && !p.me && (
+            <p className="mt-6 text-[12px] text-faint">Os pedidos e rolês de {p.name.split(' ')[0]} aparecem aqui quando vocês forem amigos.</p>
           )}
           {!!p.groups?.length && (
             <section className="mt-8">
@@ -228,11 +246,15 @@ export function SaveToList({ place }: { place: Place }) {
   const [title, setTitle] = useState('')
   const toast = useToast()
   const qc = useQueryClient()
-  const lists = useQuery({ queryKey: ['my-lists'], queryFn: myLists, enabled: open })
+  // sempre carregado: o botão mostra se o lugar já está salvo (antes só abria a folha e não dava sinal nenhum)
+  const lists = useQuery({ queryKey: ['my-lists'], queryFn: myLists, staleTime: 60_000 })
+  const savedIn = (lists.data ?? []).filter((l) => l.places.some((x) => (Array.isArray(x) ? x[0] : x) === place.id))
   const has = (l: { places: unknown[] }) => l.places.some((x) => (Array.isArray(x) ? x[0] : x) === place.id)
   return (
     <>
-      <button onClick={() => setOpen(true)} className="flex items-center gap-2 text-[13px] text-mute underline-offset-4 hover:underline"><ListPlus size={15} />Salvar em lista</button>
+      <button onClick={() => setOpen(true)} className={cx('hit flex items-center gap-2 text-[13px] underline-offset-4 hover:underline', savedIn.length ? 'text-accent' : 'text-mute')}>
+        {savedIn.length ? <><Bookmark size={15} className="fill-accent" />Salvo em {savedIn.length === 1 ? savedIn[0].title : `${savedIn.length} listas`}</> : <><ListPlus size={15} />Salvar em lista</>}
+      </button>
       <Sheet open={open} onClose={() => setOpen(false)}>
         <p className="font-serif text-[28px] leading-tight">Salvar {place.name}</p>
         <div className="mt-4 grid gap-2">
@@ -240,8 +262,9 @@ export function SaveToList({ place }: { place: Place }) {
           {lists.data?.map((l) => (
             <button key={l.id} onClick={async () => {
               const on = has(l)
-              await listAction(l.id, on ? 'remove' : 'add', place); track('list_' + (on ? 'remove' : 'add'), {})
-              qc.invalidateQueries({ queryKey: ['my-lists'] }); toast(on ? `Tirado de ${l.title}` : `Salvo em ${l.title}`)
+              const ok = await listAction(l.id, on ? 'remove' : 'add', place); track('list_' + (on ? 'remove' : 'add'), {})
+              if (!ok) { toast('Não deu pra salvar agora (sem conexão)'); return }
+              await qc.invalidateQueries({ queryKey: ['my-lists'] }); toast(on ? `Tirado de ${l.title}` : `Salvo em ${l.title} · veja no Perfil`)
             }} className="flex h-12 items-center gap-3 rounded-full border border-line px-5 text-left text-[14px]">
               <Bookmark size={15} className={has(l) ? 'fill-accent text-accent' : 'text-mute'} /><span className="flex-1">{l.title}</span><span className="text-[11px] text-faint">{l.places.length}</span>
             </button>
@@ -252,7 +275,7 @@ export function SaveToList({ place }: { place: Place }) {
           if (!title.trim()) return
           const r = await createList(title.trim())
           if (!r) { toast('Precisa de cadastro e conexão pra criar listas'); return }
-          await listAction(r.id, 'add', place); setTitle(''); qc.invalidateQueries({ queryKey: ['my-lists'] }); toast('Lista criada')
+          await listAction(r.id, 'add', place); setTitle(''); await qc.invalidateQueries({ queryKey: ['my-lists'] }); toast(`Salvo na lista nova “${title.trim()}” · veja no Perfil`)
         }}>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nova lista (ex.: botecos pra levar gringo)" className="h-12 min-w-0 flex-1 rounded-full border border-line bg-white/[0.03] px-4 text-[14px] outline-none focus:border-accent" />
           <button type="submit" className="h-12 rounded-full bg-accent px-4 text-[13px] font-medium text-accent-ink">Criar</button>
@@ -282,6 +305,23 @@ function FindPeople() {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/** listas de quem está logado (vai no Perfil): era impossível achar uma lista depois de salvar */
+export function MyLists() {
+  const lists = useQuery({ queryKey: ['my-lists'], queryFn: myLists, staleTime: 60_000 })
+  if (!lists.data?.length) return lists.isLoading ? <Skeleton className="mx-5 h-14" /> : <p className="px-5 text-[13px] text-faint">Nenhuma lista ainda. Na página de um lugar, toque em “Salvar em lista”.</p>
+  return (
+    <div className="mx-5 divide-y divide-line overflow-hidden rounded-[22px] border border-line">
+      {lists.data.map((l) => (
+        <Link key={l.id} to={`/lista/${l.id}`} className="flex items-center gap-3 px-4 py-3.5">
+          <Bookmark size={16} className="text-accent" />
+          <span className="flex-1 text-[14px]">{l.title}</span>
+          <span className="text-[12px] text-faint">{l.places.length} {l.places.length === 1 ? 'lugar' : 'lugares'}</span>
+        </Link>
+      ))}
     </div>
   )
 }

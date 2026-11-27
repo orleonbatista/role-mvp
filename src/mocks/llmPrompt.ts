@@ -4,7 +4,7 @@ import type { Niche, Occasion, Tag, Vibe } from '../lib/types'
    Compartilhado entre o app (modo dev, Ollama direto) e o gateway (llm-gateway/server.mjs),
    que monta a chamada no servidor e só aceita o texto do pedido. Sem dependências: o Node 22 importa direto. */
 
-export const NICHES: Niche[] = ['listening', 'eletronica', 'boteco', 'gastronomia', 'drinks', 'jazz', 'ao-ar-livre']
+export const NICHES: Niche[] = ['listening', 'eletronica', 'boteco', 'gastronomia', 'drinks', 'jazz', 'ao-ar-livre', 'cafe']
 export const VIBES: Vibe[] = ['tranquilo', 'animado', 'intimista', 'underground', 'descolado', 'raiz', 'sofisticado']
 export const OCCS: Occasion[] = ['aniversario', 'date', 'amigos', 'solo', 'trabalho', 'esquenta']
 export const TAGS: Tag[] = ['vegano', 'samba', 'pet', 'acessivel', 'karaoke', 'funk', 'sertanejo', 'open-bar']

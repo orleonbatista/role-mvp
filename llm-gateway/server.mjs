@@ -4,8 +4,9 @@ import { createReadStream } from 'node:fs'
 //  - Dados: /api/* (api.mjs, SQLite) com pedidos, votos, sugestões, curadoria e métricas compartilhados entre aparelhos.
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
+import { screen } from '../src/lib/guard.ts'
 import { DESTAQUES, askBody, moderateBody, moderationRules, ollamaBody, pickBody } from '../src/mocks/llmPrompt.ts'
-import { deviceForLogin, isAdminReq, resolveSession, checkDeadlines, ogPage, photoFile, placePhotoFile, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
+import { deviceForLogin, isAdminReq, resolveSession, checkDeadlines, ogPage, photoFile, placePhotoFile, avatarFile, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
 import { geoFromCep, geoReverse } from './geo.mjs'
 import { createLLM } from './providers.mjs'
 import { createPush } from './push.mjs'
@@ -71,6 +72,7 @@ const limited = (req, ip) => limitedKey(`ip:${ip}`, PER_MIN * 6, PER_DAY * 6) ||
 
 // limite separado pra API de dados (bem mais folgado que o do LLM)
 const apiHits = new Map()
+const strikes = new Map()
 function apiLimitedKey(key, max) {
   const now = Date.now()
   const arr = (apiHits.get(key) ?? []).filter((t) => now - t < 60_000)
@@ -120,6 +122,12 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' })
     return createReadStream(f).pipe(res)
   }
+  if (req.method === 'GET' && (mm = path.match(/^\/media\/a\/(u-[a-f0-9]{16})\.jpg$/))) {
+    const f = avatarFile(mm[1])
+    if (!f) return send(res, 404, { error: 'not_found' }, origin)
+    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*' })
+    return createReadStream(f).pipe(res)
+  }
   if (req.method === 'GET' && (mm = path.match(/^\/media\/p\/([A-Za-z0-9_-]{4,120})\/(pp-[a-f0-9]{12}\.jpg)$/))) {
     const f = placePhotoFile(mm[1], mm[2])
     if (!f) { res.writeHead(404); return res.end() }
@@ -148,7 +156,7 @@ const server = http.createServer(async (req, res) => {
     let body = {}
     if (write) {
       let raw = ''
-      const limit = /\/photos$/.test(path) ? 2_400_000 : 16_000 // foto (base64, já reduzida no celular) cabe; o resto é pequeno
+      const limit = /\/photos?$/.test(path) ? 2_400_000 : 16_000 // foto (base64, já reduzida no celular) cabe; o resto é pequeno
       for await (const chunk of req) { raw += chunk; if (raw.length > limit) return send(res, 413, { error: 'too_large' }, origin) }
       try { body = JSON.parse(raw || '{}') } catch { return send(res, 400, { error: 'bad_json' }, origin) }
     }
@@ -241,6 +249,24 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) { raw += chunk; if (raw.length > 12_000) return send(res, 413, { error: 'too_large' }, origin) }
   let body
   try { body = JSON.parse(raw) } catch { return send(res, 400, { error: 'bad_json' }, origin) }
+
+  // filtro antes da IA: tentativa de injeção ou assunto fora do rolê não chega no modelo (zero token gasto);
+  // quem insiste (3 em 10 min) fica 15 min sem IA
+  const key = who(req, ip)
+  if ((strikes.get(key)?.until ?? 0) > Date.now()) { stats.limited++; return send(res, 429, { error: 'guard_cooldown' }, origin) }
+  const userText = req.url === '/ask' ? body.question : req.url === '/pick' ? body.pedido : body.text
+  const g = screen(userText, req.url === '/ask' ? 200 : MAX_TEXT)
+  if (!g.ok) {
+    if (g.reason === 'injecao' || g.reason === 'fora') {
+      const st = strikes.get(key) ?? { at: [], until: 0 }
+      st.at = [...st.at.filter((t) => Date.now() - t < 600_000), Date.now()]
+      if (st.at.length >= 3) st.until = Date.now() + 15 * 60_000
+      strikes.set(key, st)
+      console.warn(`[guard] ${g.reason} ${key.slice(0, 14)} "${String(userText).slice(0, 60)}"`)
+    }
+    stats.guarded = (stats.guarded ?? 0) + 1
+    return send(res, 422, { error: 'guard', reason: g.reason }, origin)
+  }
 
   if (req.url === '/pick') {
     // curadoria da IA sobre os candidatos da busca: escolhe e justifica com os fatos recebidos

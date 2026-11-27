@@ -1,4 +1,4 @@
-export type Niche = 'listening' | 'eletronica' | 'boteco' | 'gastronomia' | 'drinks' | 'jazz' | 'ao-ar-livre'
+export type Niche = 'listening' | 'eletronica' | 'boteco' | 'gastronomia' | 'drinks' | 'jazz' | 'ao-ar-livre' | 'cafe'
 export type Vibe = 'tranquilo' | 'animado' | 'intimista' | 'underground' | 'descolado' | 'raiz' | 'sofisticado'
 export type Occasion = 'aniversario' | 'date' | 'amigos' | 'solo' | 'trabalho' | 'esquenta'
 export type PlaceKind = 'bar' | 'restaurante' | 'balada' | 'evento'
@@ -70,6 +70,9 @@ export interface Person {
 
 export interface Profile extends Person {
   id: 'me'
+  /** foto de perfil no servidor: versão (data) e apelido público */
+  photoAt?: number
+  pid?: string
   hood: string
   niches: Niche[]
   vibes: Vibe[]

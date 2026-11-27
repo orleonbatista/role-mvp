@@ -109,6 +109,14 @@ export function useDecide(requestId: string) {
   })
 }
 
+export function useReopen(requestId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => post(`/requests/${requestId}/reopen`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['request', requestId] }),
+  })
+}
+
 export function useHelpful(requestId: string) {
   const qc = useQueryClient()
   return useMutation({

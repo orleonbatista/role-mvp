@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { ArrowRight, LoaderCircle, LocateFixed, MapPin, Sparkles } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -46,7 +46,13 @@ export function Onboarding() {
   const qc = useQueryClient()
   const toast = useToast()
 
-  const go = (n: number) => { setDir(n > step ? 1 : -1); setStep(n) }
+  // quem já tem cadastro (veio do Perfil editar o gosto) nunca volta pra tela de entrar: o Voltar do 1º passo sai da edição
+  const editing = !!me?.onboarded
+  useEffect(() => { if (editing && step === 0) setStep(1) }, [editing]) // eslint-disable-line react-hooks/exhaustive-deps
+  const go = (n: number) => {
+    if (editing && n < 1) { if (history.length > 1) nav(-1); else nav('/perfil', { replace: true }); return }
+    setDir(n > step ? 1 : -1); setStep(n)
+  }
   // 2 passos: (1) nome + região, (2) estilos + vibes (opcionais) + aceite
   const LAST = 2
   const canNext = [true, name.trim().length > 1 && (!!home || hoodPicked), niches.length > 0 && consent][step]

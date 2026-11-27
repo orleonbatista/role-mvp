@@ -28,11 +28,17 @@ async function photoUrl(name: string, w: number): Promise<string | null> {
 }
 
 /** foto do card (enabled = só os primeiros cards de cada lista, pra caber na franquia) */
-export function usePlacePhoto(p: Place, enabled: boolean, w = 480, name = p.photo?.name) {
+// uma largura só pra miniatura e carrossel: a mesma foto vira o mesmo endereço guardado (antes a miniatura e o
+// carrossel pediam tamanhos diferentes, gastavam cota em dobro e um aparecia sem o outro)
+export const PHOTO_W = 720
+export function usePlacePhoto(p: Place, enabled: boolean, _w = PHOTO_W, name = p.photo?.name) {
+  return usePlacePhotoQuery(enabled, name).data ?? null
+}
+export function usePlacePhotoQuery(enabled: boolean, name?: string) {
   return useQuery({
-    queryKey: ['gphoto', name, w],
-    queryFn: () => photoUrl(name!, w),
+    queryKey: ['gphoto', name, PHOTO_W],
+    queryFn: () => photoUrl(name!, PHOTO_W),
     enabled: enabled && !!name,
     staleTime: Infinity, gcTime: 60 * 60_000, retry: false,
-  }).data ?? null
+  })
 }

@@ -43,7 +43,8 @@ test('ferramentas funcionam sem cadastro', async ({ page }) => {
   await page.goto('ferramentas')
   await page.getByRole('button', { name: /Dividir a conta/ }).click()
   await page.getByLabel('Total da conta').fill('100')
-  await page.getByLabel('Quantas pessoas').fill('4')
+  await page.getByRole('button', { name: 'Mais uma pessoa' }).click()
+  await page.getByRole('button', { name: 'Mais uma pessoa' }).click()
   await expect(page.getByText('R$ 25,00')).toBeVisible()
 })
 

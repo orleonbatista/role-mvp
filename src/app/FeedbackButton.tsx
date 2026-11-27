@@ -10,7 +10,7 @@ import { track } from '../lib/track'
 const SCALE = ['😖', '😕', '😐', '🙂', '🤩']
 
 /** Feedback de teste em 10 segundos, de qualquer tela. Guarda a tela de origem. */
-export function FeedbackButton({ path }: { path: string }) {
+export function FeedbackButton({ path, row }: { path: string; row?: boolean }) {
   const [open, setOpen] = useState(false)
   const [score, setScore] = useState<number>()
   const [text, setText] = useState('')
@@ -27,6 +27,12 @@ export function FeedbackButton({ path }: { path: string }) {
 
   return (
     <>
+      {row ? (
+        <button onClick={() => { setOpen(true); track('feedback_opened', { path }) }} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
+          <MessageSquareHeart size={16} className="text-accent" />
+          <span className="flex-1"><span className="block text-[14px]">Mandar feedback</span><span className="block text-xs text-mute">Vai direto pra quem faz o app</span></span>
+        </button>
+      ) : (
       <motion.button
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -37,6 +43,7 @@ export function FeedbackButton({ path }: { path: string }) {
       >
         <MessageSquareHeart size={16} />
       </motion.button>
+      )}
       <Sheet open={open} onClose={() => setOpen(false)}>
         <p className="font-serif text-[28px] leading-none">Como está sendo?</p>
         <p className="mt-2 text-sm text-mute">Vai direto pro painel de testes, junto com a tela em que você está.</p>

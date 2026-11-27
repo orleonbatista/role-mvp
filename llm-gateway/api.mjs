@@ -124,6 +124,7 @@ db.exec('CREATE INDEX IF NOT EXISTS ix_users_name ON users(name_norm)')
 // caixa de notificações: tudo que vira aviso no celular também fica aqui (dá pra ver depois, mesmo sem avisos ligados)
 db.exec(`CREATE TABLE IF NOT EXISTS inbox (id TEXT PRIMARY KEY, device TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, url TEXT NOT NULL, ref TEXT, actor TEXT, at INTEGER NOT NULL, read INTEGER NOT NULL DEFAULT 0);
   CREATE INDEX IF NOT EXISTS ix_inbox ON inbox(device, at);`)
+if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'reopened_at'").get()) db.exec('ALTER TABLE requests ADD COLUMN reopened_at INTEGER')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'voters'").get()) db.exec("ALTER TABLE requests ADD COLUMN voters TEXT NOT NULL DEFAULT 'link'")
 if (!db.prepare("SELECT 1 FROM pragma_table_info('groups') WHERE name = 'visibility'").get()) db.exec("ALTER TABLE groups ADD COLUMN visibility TEXT NOT NULL DEFAULT 'privada'")
 if (!db.prepare("SELECT 1 FROM pragma_table_info('group_messages') WHERE name = 'ref'").get()) db.exec('ALTER TABLE group_messages ADD COLUMN ref TEXT')
@@ -266,6 +267,7 @@ function requestState(id, viewer) {
     request: { ...parse(r.data), id: r.id, createdAt: r.created_at },
     authorDevice: pseudo(r.author_device), me: pseudo(viewer), groupId: r.group_id ?? undefined, voters: r.voters ?? 'link', canVote: !viewer || canVoteIn(r, viewer),
     decision: r.decided_place ? { placeId: r.decided_place, time: r.decided_time ?? undefined, at: r.decided_at } : null,
+    reopenedAt: r.reopened_at ?? null,
     votes: hide(q.votes.all(id)),
     slots: hide(db.prepare('SELECT device, slot, voter, at FROM slots WHERE request_id = ? ORDER BY at').all(id)),
     rsvps: hide(db.prepare('SELECT device, status, voter, at FROM rsvps WHERE request_id = ? ORDER BY at').all(id)),
@@ -277,7 +279,7 @@ function requestState(id, viewer) {
       if (!u) return null
       const p = parse(u.data) ?? {}
       const rep = reputationOf(d)
-      return { pid: pseudo(d), handle: handleOf(d), name: p.name ?? 'Alguém', hue: p.hue ?? 200, level: rep.level, points: rep.points, me: d === viewer, author: d === r.author_device }
+      return { pid: pseudo(d), handle: handleOf(d), photo: avatarVersion(d), name: p.name ?? 'Alguém', hue: p.hue ?? 200, level: rep.level, points: rep.points, me: d === viewer, author: d === r.author_device }
     }).filter(Boolean),
     photos: db.prepare("SELECT id, device, voter, at FROM photos WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'photo' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at").all(id).map((x) => ({ ...x, device: pseudo(x.device) })),
     suggestions: q.sugs.all(id).map((x) => ({ ...x, device: pseudo(x.device), place: x.place ? parse(x.place) : undefined })),
@@ -404,7 +406,7 @@ export function purgeGoogleSnaps() {
 }
 
 /* ---------- pessoas: perfil, avaliações, turmas ---------- */
-const NICHES = new Set(['jazz', 'listening', 'eletronica', 'drinks', 'boteco', 'gastronomia', 'ao-ar-livre', 'samba', 'rock', 'indie'])
+const NICHES = new Set(['jazz', 'listening', 'eletronica', 'drinks', 'boteco', 'gastronomia', 'ao-ar-livre', 'samba', 'rock', 'indie', 'cafe'])
 const VERDICT_SCORE = { amei: 10, ok: 7, 'nao-curti': 3 }
 const RE_GROUP = /^t-[a-z0-9]{10}$/
 const qp = {
@@ -477,7 +479,7 @@ export function insertReview(body, device, verdict) {
 function groupView(g, device) {
   return {
     id: g.id, name: g.name, mine: g.owner_device === device, updatedAt: g.updated_at, visibility: g.visibility ?? 'privada',
-    members: qp.members.all(g.id).map((m) => ({ name: m.name, hue: m.hue, me: m.device === device, pid: pseudo(m.device), handle: handleOf(m.device), level: reputationOf(m.device).level })),
+    members: qp.members.all(g.id).map((m) => ({ name: m.name, hue: m.hue, me: m.device === device, pid: pseudo(m.device), handle: handleOf(m.device), photo: avatarVersion(m.device), level: reputationOf(m.device).level })),
     requests: qp.groupRequests.all(g.id).map((r) => ({ id: r.id, text: parse(r.data)?.text ?? '', createdAt: r.created_at, decided: !!r.decided_place })),
   }
 }
@@ -693,6 +695,13 @@ function notify(e) {
   } catch { /* caixa nunca derruba a API */ }
   try { hooks.notify?.(e) } catch { /* aviso nunca derruba a API */ }
 }
+/** foto de perfil: versão (data do envio) ou null; o arquivo fica em data/avatars/<apelido>.jpg */
+const avatarVersion = (d) => { const v = parse(db.prepare('SELECT data FROM users WHERE device = ?').get(d)?.data ?? 'null')?.photoAt; return typeof v === 'number' ? v : null }
+export function avatarFile(pid) {
+  if (!/^u-[a-f0-9]{16}$/.test(pid)) return null
+  const f = join(DATA, 'avatars', `${pid}.jpg`)
+  return existsSync(f) ? f : null
+}
 const handleOf = (d) => { const h = db.prepare('SELECT handle FROM users WHERE device = ?').get(d)?.handle; return h ? `@${h}` : null }
 const slugHandle = (h) => String(h ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^@/, '').replace(/[^a-z0-9_.]/g, '').slice(0, 20)
 // nome normalizado indexado pra busca de pessoas (NF30)
@@ -709,7 +718,7 @@ function handlePeople(method, path, body, device, now) {
   let m
   if (method === 'GET' && path === '/api/me') {
     const u = qp.getUser.get(device)
-    return u ? ok({ profile: { ...parse(u.data), handle: u.handle ? `@${u.handle}` : parse(u.data)?.handle }, consentAt: u.consent_at, email: u.email ?? undefined, role: roleOf(device) }) : bad('not_found', 404)
+    return u ? ok({ profile: { ...parse(u.data), handle: u.handle ? `@${u.handle}` : parse(u.data)?.handle }, consentAt: u.consent_at, email: u.email ?? undefined, role: roleOf(device), pid: pseudo(device) }) : bad('not_found', 404)
   }
   if (method === 'POST' && path === '/api/me') {
     const consentAt = int(body.consentAt, 0)
@@ -717,6 +726,7 @@ function handlePeople(method, path, body, device, now) {
     const p = cleanProfile(body)
     if (p.name.length < 2) return bad('profile')
     const ex = qp.getUser.get(device)
+    { const old = parse(ex?.data ?? 'null'); if (old?.photoAt) p.photoAt = old.photoAt } // a foto de perfil não vem do celular nesse envio
     qp.putUser.run(device, JSON.stringify(p), p.hood, p.home?.lat ?? null, p.home?.lng ?? null, consentAt, ex?.created_at ?? now, now)
     db.prepare('UPDATE users SET name_norm = ? WHERE device = ?').run(normTxt(p.name), device)
     // @ único: mantém o que já tem; senão tenta o pedido e, se ocupado, acrescenta número
@@ -728,6 +738,24 @@ function handlePeople(method, path, body, device, now) {
       db.prepare('UPDATE users SET handle = ? WHERE device = ?').run(handle, device)
     }
     return ok({ ok: true, handle: `@${handle}` })
+  }
+  // foto de perfil (jpeg já reduzido no celular, até ~300 KB); data: null tira a foto
+  if (method === 'POST' && path === '/api/me/photo') {
+    const u = qp.getUser.get(device)
+    if (!u) return bad('perfil', 403)
+    const pid = pseudo(device)
+    const file = join(DATA, 'avatars', `${pid}.jpg`)
+    const d = parse(u.data) ?? {}
+    if (body.data == null) { try { rmSync(file, { force: true }) } catch { /* */ } delete d.photoAt }
+    else {
+      const buf = Buffer.from(String(body.data).replace(/^data:image\/jpeg;base64,/, ''), 'base64')
+      if (buf.length < 1000 || buf.length > 320_000 || buf[0] !== 0xff || buf[1] !== 0xd8) return bad('photo')
+      mkdirSync(join(DATA, 'avatars'), { recursive: true })
+      writeFileSync(file, buf)
+      d.photoAt = now
+    }
+    db.prepare('UPDATE users SET data = ? WHERE device = ?').run(JSON.stringify(d), device)
+    return ok({ ok: true, photo: d.photoAt ?? null, pid })
   }
   // trocar o @ (único; 3 a 20 letras, números, ponto ou _)
   if (method === 'POST' && path === '/api/me/handle') {
@@ -752,7 +780,7 @@ function handlePeople(method, path, body, device, now) {
       db.prepare('DELETE FROM leads WHERE device = ?').run(device)
       db.prepare('DELETE FROM events WHERE device = ?').run(device)
       for (const t of ['slots', 'rsvps', 'push_subs', 'sessions', 'blocks', 'lists']) db.prepare(`DELETE FROM ${t} WHERE device = ?`).run(device)
-      db.prepare('DELETE FROM friendships WHERE a = ? OR b = ?').run(device, device); db.prepare('DELETE FROM inbox WHERE device = ?').run(device); db.prepare("UPDATE group_messages SET name = 'Alguém' WHERE device = ?").run(device)
+      db.prepare('DELETE FROM friendships WHERE a = ? OR b = ?').run(device, device); db.prepare('DELETE FROM inbox WHERE device = ?').run(device); try { rmSync(join(DATA, 'avatars', `${pseudo(device)}.jpg`), { force: true }) } catch { /* */ } db.prepare("UPDATE group_messages SET name = 'Alguém' WHERE device = ?").run(device)
       db.prepare("UPDATE messages SET voter = 'Alguém' WHERE device = ?").run(device)
       db.exec('COMMIT')
     } catch (e) { db.exec('ROLLBACK'); throw e }
@@ -1097,9 +1125,23 @@ export function handleApi(method, path, req, body) {
     db.prepare('DELETE FROM requests WHERE id = ?').run(m[1])
     return ok({ ok: true })
   }
+  // reabrir a votação (só a autora, até o horário combinado): volta pra votação e avisa a turma
+  if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/reopen$/)) && write) {
+    const r = q.getReq.get(m[1])
+    if (!r) return bad('not_found', 404)
+    if (r.author_device !== device) return bad('not_author', 403)
+    if (!r.decided_place) return ok({ ok: true })
+    const at = slotAt(r.decided_time, r.decided_at)
+    if (at && at < now) return bad('ja_passou', 409)
+    db.prepare('UPDATE requests SET decided_place = NULL, decided_time = NULL, decided_at = NULL, review_notified = NULL, reopened_at = ? WHERE id = ?').run(now, m[1])
+    groupNote(r.group_id, 'Votação reaberta: dá pra votar de novo', m[1])
+    notify({ to: participantsOf(m[1]).filter((d) => d !== device), key: `reo-${m[1]}`, title: 'Votação reaberta', body: `${userName(device) ?? 'A organizadora'} reabriu o rolê: vote de novo se quiser`, url: `r/${m[1]}` })
+    return ok({ ok: true })
+  }
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/decide$/)) && write) {
     const placeId = str(body.placeId, 60)
     if (!RE.place.test(placeId)) return bad('place')
+    { const rr = q.getReq.get(m[1]); const times = parse(rr?.data)?.times ?? []; if (rr && times.length && !body.time) return bad('horario', 409) }
     const upd = q.decide.run(placeId, body.time ? str(body.time, 20) : null, now, m[1], device)
     if (upd.changes) {
       const r = q.getReq.get(m[1])
@@ -1175,7 +1217,7 @@ export function handleApi(method, path, req, body) {
       const p = parse(u.data) ?? {}
       if (u.device === device || (device && isBlocked(device, u.device))) continue
       const rep = reputationOf(u.device)
-      out.push({ pid: pseudo(u.device), handle: u.handle ? `@${u.handle}` : null, name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u.hood, reputation: rep, relation: device ? relation(device, u.device) : 'nenhuma' })
+      out.push({ pid: pseudo(u.device), handle: u.handle ? `@${u.handle}` : null, photo: avatarVersion(u.device), name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u.hood, reputation: rep, relation: device ? relation(device, u.device) : 'nenhuma' })
       if (out.length >= 20) break
     }
     return ok(out)
@@ -1196,6 +1238,13 @@ export function handleApi(method, path, req, body) {
         .map((l) => ({ id: l.id, title: l.title, places: parse(l.places) ?? [], updatedAt: l.updated_at })),
       groups: db.prepare("SELECT g.* FROM groups g JOIN group_members m ON m.group_id = g.id WHERE m.device = ? AND g.visibility = 'publica' ORDER BY g.updated_at DESC LIMIT 10").all(dev)
         .map((g) => { const ms = qp.members.all(g.id); return { id: g.id, name: g.name || ms.slice(0, 3).map((x) => x.name.split(' ')[0]).join(', '), members: ms.length, member: !!(device && qp.member.get(g.id, device)) } }).filter((g) => g.members >= 2),
+      // pedidos e rolês de quem é amigo (ou de mim): abre a votação pelo link, como qualquer convidado
+      requests: friends ? db.prepare('SELECT id, data, decided_place, decided_time, created_at FROM requests WHERE author_device = ? ORDER BY created_at DESC LIMIT 12').all(dev).map((x) => {
+        const d = parse(x.data) ?? {}
+        const place = x.decided_place ? (d.places ?? []).find((p) => Array.isArray(p) && p[0] === x.decided_place)?.[1] ?? null : null
+        return { id: x.id, text: str(d.text, 140), decided: !!x.decided_place, place, time: x.decided_time ?? null, at: x.created_at }
+      }).filter((x) => !/^\[E2E\]/.test(x.text)) : [],
+      photo: avatarVersion(dev),
       friendsCount: db.prepare("SELECT COUNT(*) n FROM friendships WHERE (a = ? OR b = ?) AND status = 'amigos'").get(dev, dev).n,
     })
   }
@@ -1232,7 +1281,7 @@ export function handleApi(method, path, req, body) {
   // amigos, pedidos recebidos e feed (avaliações, listas e rolês fechados dos amigos)
   if (method === 'GET' && path === '/api/social') {
     const rows = db.prepare('SELECT a, b, status, at FROM friendships WHERE a = ? OR b = ?').all(device, device)
-    const card = (d) => { const p = parse(qp.getUser.get(d)?.data ?? 'null') ?? {}; return { pid: pseudo(d), handle: handleOf(d), name: p.name ?? 'Alguém', hue: p.hue ?? 200, reputation: reputationOf(d) } }
+    const card = (d) => { const p = parse(qp.getUser.get(d)?.data ?? 'null') ?? {}; return { pid: pseudo(d), handle: handleOf(d), photo: avatarVersion(d), name: p.name ?? 'Alguém', hue: p.hue ?? 200, reputation: reputationOf(d) } }
     const other = (r) => (r.a === device ? r.b : r.a)
     const friends = rows.filter((r) => r.status === 'amigos').map(other)
     const incoming = rows.filter((r) => r.status.startsWith('pedido:') && r.status !== `pedido:${device}`).map(other)

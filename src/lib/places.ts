@@ -50,14 +50,15 @@ interface GPlace {
 
 const KIND_BY_TYPE: [RegExp, PlaceKind][] = [
   [/night_club|dance_hall/, 'balada'],
-  [/restaurant|food_court|steak_house|pizzeria|bistro|brunch|diner|deli/, 'restaurante'],
+  [/restaurant|food_court|steak_house|pizzeria|bistro|brunch|diner|deli|cafe|coffee|bakery|confectioner|dessert|ice_cream/, 'restaurante'],
   [/event_venue|concert_hall|amphitheatre|performing_arts|live_music|cultural_center/, 'evento'],
 ]
 const NICHE_BY_TYPE: [RegExp, Niche][] = [
   [/night_club|dance_hall/, 'eletronica'],
   [/cocktail_bar|wine_bar|lounge_bar|bar$|^bar_/, 'drinks'],
   [/pub|brewery|beer|botequim/, 'boteco'],
-  [/restaurant|food|bistro|pizzeria|steak|brunch/, 'gastronomia'],
+  [/cafe|coffee|bakery|confectioner|dessert|ice_cream|tea_house|breakfast|brunch/, 'cafe'],
+  [/restaurant|food|bistro|pizzeria|steak/, 'gastronomia'],
   [/live_music|concert|jazz/, 'jazz'],
   [/park|garden|rooftop|beach/, 'ao-ar-livre'],
 ]
@@ -87,6 +88,26 @@ export function ownType(name: string, types: string, googleLabel?: string): { la
   if (/bot[ei]co|buteco|botequim/.test(n)) return { label: 'Boteco', kind: 'bar' }
   if (/\bpub\b/.test(types) || /\bpub\b/.test(n)) return { label: 'Pub', kind: 'bar' }
   if (/\bbar\b|choperia|chopp|choperia/.test(n) || /(^| )bar( |$)/.test(types)) return { label: 'Bar', kind: 'bar' }
+  // categorias finas (antes um café virava "Restaurante"/gastronomia)
+  const FINE: [RegExp, RegExp | null, string, Place['kind']][] = [
+    [/karaoke/, /karaok[eê]/, 'Karaokê', 'bar'],
+    [/rooftop/, /rooftop/, 'Rooftop', 'bar'],
+    [/live_music_venue|concert_hall|performing_arts/, /casa de show/, 'Casa de show', 'evento'],
+    [/coffee_shop|cafe\b|^cafe|coffee/, /\bcaf[eé]s?\b|cafeteria|coffee/, 'Café', 'restaurante'],
+    [/bakery/, /padaria|panific/, 'Padaria', 'restaurante'],
+    [/confectionery|dessert_shop|candy|chocolate/, /confeitaria|doceria|doces/, 'Confeitaria', 'restaurante'],
+    [/ice_cream/, /sorvet|gelato/, 'Sorveteria', 'restaurante'],
+    [/pizza/, /pizza/, 'Pizzaria', 'restaurante'],
+    [/hamburger/, /burger|hamburg/, 'Hamburgueria', 'restaurante'],
+    [/japanese|sushi|ramen/, /sushi|japon|ramen|izakaya|temaki/, 'Japonês', 'restaurante'],
+    [/steak_house|barbecue/, /churrasc/, 'Churrascaria', 'restaurante'],
+    [/italian/, /cantina|trattoria|osteria|italian/, 'Italiano', 'restaurante'],
+    [/middle_eastern|lebanese|turkish/, /[aá]rabe|liban/, 'Árabe', 'restaurante'],
+    [/mexican/, /mexican|taco/, 'Mexicano', 'restaurante'],
+    [/vegan|vegetarian/, /vegan|vegetarian/, 'Vegetariano', 'restaurante'],
+    [/brunch|breakfast/, /brunch/, 'Brunch', 'restaurante'],
+  ]
+  for (const [t, nm, label, kind] of FINE) if (t.test(types) || (nm && nm.test(n))) return { label, kind }
   if (/restaurant/.test(types)) return { label: googleLabel && /restaurante/i.test(googleLabel) ? googleLabel : 'Restaurante', kind: 'restaurante' }
   return { label: googleLabel ?? 'Bar' }
 }

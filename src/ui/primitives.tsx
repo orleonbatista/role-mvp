@@ -125,7 +125,8 @@ export function Tag({ children, tone = 'default' }: { children: ReactNode; tone?
   )
 }
 
-export function Avatar({ name, hue, size = 32 }: { name: string; hue: number; size?: number }) {
+export function Avatar({ name, hue, size = 32, src }: { name: string; hue: number; size?: number; src?: string | null }) {
+  if (src) return <img src={src} alt="" width={size} height={size} loading="lazy" className="inline-block shrink-0 rounded-full object-cover ring-2 ring-bg" style={{ width: size, height: size }} />
   return (
     <span
       className="inline-grid shrink-0 place-items-center rounded-full font-medium text-black/80 ring-2 ring-bg"

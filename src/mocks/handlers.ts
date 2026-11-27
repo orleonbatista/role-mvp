@@ -591,11 +591,16 @@ export const handlers = [
     return HttpResponse.json({ ...vote, synced })
   }),
 
+  http.post('/api/requests/:id/reopen', async ({ params }) => {
+    // precisa do servidor (todo mundo tem que ver a votação aberta de novo)
+    if (!(await remote.pushReopen(params.id as string))) return HttpResponse.json({ error: 'offline' }, { status: 409 })
+    await db.requests.update(params.id as string, { status: 'aberto', decidedPlaceId: undefined, decidedTime: undefined })
+    return HttpResponse.json({ ok: true })
+  }),
   http.post('/api/requests/:id/decide', async ({ params, request }) => {
     const { placeId, time } = (await request.json()) as { placeId: string; time?: string }
     await db.requests.update(params.id as string, { status: 'decidido', decidedPlaceId: placeId, decidedTime: time })
     void remote.pushDecision(params.id as string, placeId, time)
-    await delay(500)
     return HttpResponse.json({ ok: true })
   }),
 

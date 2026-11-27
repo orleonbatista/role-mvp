@@ -69,9 +69,13 @@ body {
 @layer components {
   /* altura da tela: 100vh de reserva pra navegadores sem dvh (em layer, pra sm:h-[844px] ganhar no desktop) */
   .app-shell { height: 100vh; height: 100dvh; }
+  /* no celular a casca do app ocupa a tela por posição, não por altura: no iPhone instalado (barra de status
+     translúcida) 100% / 100dvh às vezes saem menores que a tela, o app subia pra baixo da barra de status e o menu
+     ficava longe do fundo */
+  @media (max-width: 639px) { .app-shell { position: fixed; inset: 0; height: auto; } }
   /* topo das telas: segue a área segura real do aparelho (iPhone com ilha/entalhe, Android, navegador) em vez de um
      valor fixo, que no iPhone instalado ficava alto demais */
-  .pt-safe { padding-top: max(calc(env(safe-area-inset-top) + 10px), 18px); }
+  .pt-safe { padding-top: max(calc(env(safe-area-inset-top) + 12px), 18px); }
   .pt-safe-lg { padding-top: max(calc(env(safe-area-inset-top) + 18px), 28px); }
   @media (min-width: 640px) { .pt-safe { padding-top: 48px; } .pt-safe-lg { padding-top: 56px; } }
   /* barra inferior: encosta no indicador de início do iPhone como as abas nativas (antes somava 34 px inteiros) */
