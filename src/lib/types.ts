@@ -43,6 +43,8 @@ export interface Place {
   eventDate?: string
   /** referência da 1ª foto no Google (só em memória; a imagem é buscada na hora, com crédito do autor) */
   photo?: { name: string; by?: string }
+  /** referências de fotos do Google (só memória; a imagem é buscada ao vivo quando aparece no carrossel) */
+  photos?: { name: string; by?: string }[]
   /** confirmado ao vivo no Google pra este pedido (só em memória, nunca salvo) */
   live?: { rating?: number; count?: number; outdoor?: boolean; beer?: boolean; groups?: boolean; music?: boolean; cocktails?: boolean; hours?: boolean }
   /** resumo pra quem vota (veio no link): motivo da IA e atributos confirmados no Google pelo autor */

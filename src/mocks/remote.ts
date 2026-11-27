@@ -323,15 +323,15 @@ export const pushKey = () => call<{ key: string }>('GET', '/api/push/key', undef
 export const pushSubscribe = (sub: PushSubscriptionJSON) => call<{ ok: boolean }>('POST', '/api/push/subscribe', sub)
 
 /* ---------- denúncias ---------- */
-export type ReportKind = 'review' | 'message' | 'suggestion' | 'photo'
+export type ReportKind = 'review' | 'message' | 'suggestion' | 'photo' | 'placephoto'
 export const report = (kind: ReportKind, id: string, reason: string) => call('POST', '/api/reports', { kind, id, reason }).then(Boolean)
 export interface OpenReport { kind: ReportKind; id: string; count: number; reasons: string[]; at: number; who: string; text: string }
 export const openReports = () => call<OpenReport[]>('GET', '/api/admin/reports', undefined, { admin: true, timeout: 5000 })
 export const resolveReport = (kind: ReportKind, id: string, action: 'remove' | 'keep') => call('POST', `/api/admin/reports/${kind}/${encodeURIComponent(id)}`, { action }, { admin: true }).then(Boolean)
 
 /* ---------- fotos do rolê (guardadas no servidor) ---------- */
-export const pushPhoto = (rid: string, dataUrl: string, voter: string) =>
-  call<{ ok: boolean; id: string }>('POST', `/api/requests/${encodeURIComponent(rid)}/photos`, { data: dataUrl, voter }, { timeout: 30_000 })
+export const pushPhoto = (rid: string, dataUrl: string, voter: string, toPlace = false) =>
+  call<{ ok: boolean; id: string }>('POST', `/api/requests/${encodeURIComponent(rid)}/photos`, { data: dataUrl, voter, toPlace }, { timeout: 30_000 })
 export const deletePhoto = (id: string) => call('POST', `/api/photos/${id}/delete`, {}).then(Boolean)
 export async function photoUrl(rid: string, id: string) { const b = await apiBase(); return b ? `${b}/media/${rid}/${id}.jpg` : null }
 
@@ -351,3 +351,15 @@ export async function loadVenuesActive() {
   venuesActive.clear()
   for (const v of r ?? []) venuesActive.set(v.placeId, { offer: v.offer, sponsored: v.sponsored })
 }
+
+/* ---------- fotos do lugar que são nossas (casa e comunidade, com nota da IA) ---------- */
+export interface OwnPhoto { id: string; source: 'casa' | 'comunidade'; score: number | null; url: string }
+export async function placePhotos(pid: string): Promise<OwnPhoto[]> {
+  const b = await apiBase()
+  if (!b) return []
+  const r = await call<{ id: string; source: 'casa' | 'comunidade'; score: number | null }[]>('GET', `/api/places/${encodeURIComponent(pid)}/photos`, undefined, { timeout: 4000 })
+  return (r ?? []).map((x) => ({ ...x, url: `${b}/media/p/${pid}/${x.id}.jpg` }))
+}
+export const uploadPlacePhoto = (pid: string, dataUrl: string) => call<{ ok: boolean; id: string }>('POST', `/api/places/${encodeURIComponent(pid)}/photos`, { data: dataUrl }, { timeout: 30_000 })
+export const allPlacePhotos = (pid: string) => call<{ id: string; source: string; score: number | null; reason: string | null; status: string }[]>('GET', `/api/places/${encodeURIComponent(pid)}/photos/all`)
+export const deletePlacePhoto = (id: string) => call('POST', `/api/place-photos/${id}/delete`, {}).then(Boolean)

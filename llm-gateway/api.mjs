@@ -96,6 +96,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS ix_msg_req ON messages(request_id, at);
   CREATE TABLE IF NOT EXISTS photos (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, device TEXT NOT NULL, voter TEXT NOT NULL, bytes INTEGER NOT NULL, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_photos_req ON photos(request_id, at);
+  -- fotos do lugar que são nossas (enviadas pela casa ou pela comunidade), com nota da IA pro carrossel
+  CREATE TABLE IF NOT EXISTS place_photos (id TEXT PRIMARY KEY, place_id TEXT NOT NULL, source TEXT NOT NULL, device TEXT NOT NULL, bytes INTEGER NOT NULL,
+    score REAL, reason TEXT, status TEXT NOT NULL DEFAULT 'avaliando', at INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS ix_pphotos ON place_photos(place_id, status, score);
   -- página da casa: quem reivindicou, dados que a casa edita, destaque pago e oferta pra grupos
   CREATE TABLE IF NOT EXISTS venues (
     place_id TEXT PRIMARY KEY, owner_device TEXT, status TEXT NOT NULL, claim TEXT, data TEXT NOT NULL DEFAULT '{}',
@@ -461,6 +465,36 @@ export function ogPage(id, search = '') {
 <meta http-equiv="refresh" content="0;url=${esc(to)}"><script>location.replace(${JSON.stringify(to)}+location.hash)</script></head><body></body></html>`
 }
 
+/** guarda foto do lugar e pede a nota da IA em segundo plano (sem IA de visão: entra com nota neutra) */
+function addPlacePhoto(placeId, source, device, buf) {
+  if ((db.prepare('SELECT SUM(bytes) b FROM photos').get().b ?? 0) + (db.prepare('SELECT SUM(bytes) b FROM place_photos').get().b ?? 0) + buf.length > PHOTO_CAP) return null
+  if (source === 'comunidade' && db.prepare("SELECT COUNT(*) n FROM place_photos WHERE place_id = ? AND source = 'comunidade'").get(placeId).n >= 30) return null
+  const id = `pp-${randomBytes(6).toString('hex')}`
+  const dir = join(DATA, 'placephotos', placeId)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, `${id}.jpg`), buf)
+  db.prepare('INSERT INTO place_photos (id, place_id, source, device, bytes, at) VALUES (?, ?, ?, ?, ?, ?)').run(id, placeId, source, device, buf.length, Date.now())
+  Promise.resolve(hooks.scorePhoto ? hooks.scorePhoto(`data:image/jpeg;base64,${buf.toString('base64')}`) : null)
+    .then((r) => {
+      const score = r && Number.isFinite(Number(r.nota)) ? Math.max(0, Math.min(10, Number(r.nota))) : 5
+      const okUse = r ? r.serve !== false && score >= 5 : true
+      db.prepare('UPDATE place_photos SET score = ?, reason = ?, status = ? WHERE id = ?').run(score, r ? String(r.motivo ?? '').slice(0, 120) : 'sem avaliação da IA', okUse ? 'ok' : 'recusada', id)
+    })
+    .catch(() => db.prepare("UPDATE place_photos SET score = 5, reason = 'IA indisponível', status = 'ok' WHERE id = ?").run(id))
+  return id
+}
+function removePlacePhoto(id) {
+  const p = db.prepare('SELECT place_id FROM place_photos WHERE id = ?').get(id)
+  if (!p) return
+  try { rmSync(join(DATA, 'placephotos', p.place_id, `${id}.jpg`), { force: true }) } catch { /* já foi */ }
+  db.prepare('DELETE FROM place_photos WHERE id = ?').run(id)
+}
+export function placePhotoFile(placeId, file) {
+  if (!/^[A-Za-z0-9_-]{4,120}$/.test(placeId) || !/^pp-[a-f0-9]{12}\.jpg$/.test(file)) return null
+  const f = join(DATA, 'placephotos', placeId, file)
+  return existsSync(f) ? f : null
+}
+
 /** arquivo de uma foto (pro server.mjs servir em /media/); null se não existe */
 export function photoFile(requestId, file) {
   if (!/^r-[a-z0-9-]{1,24}$/.test(requestId) || !/^ph-[a-f0-9]{12}\.jpg$/.test(file)) return null
@@ -504,7 +538,7 @@ export function similarExamples(text, k = 3) {
 }
 
 /* ---------- avisos (o server.mjs pluga o envio em hooks.notify) ---------- */
-export const hooks = { notify: null }
+export const hooks = { notify: null, scorePhoto: null }
 export const pushSubsOf = (devices) => devices.length ? db.prepare(`SELECT endpoint, p256dh, auth, device FROM push_subs WHERE device IN (${devices.map(() => '?').join(',')})`).all(...devices).map((r) => ({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth }, device: r.device })) : []
 export const dropPushSub = (endpoint) => db.prepare('DELETE FROM push_subs WHERE endpoint = ?').run(endpoint)
 const placeNameIn = (r, placeId) => (parse(r.data)?.places ?? []).find((p) => p[0] === placeId)?.[1]
@@ -736,6 +770,8 @@ export function handleApi(method, path, req, body) {
     writeFileSync(join(dir, `${id}.jpg`), buf)
     const voter = str(body.voter, 40) || 'Alguém'
     db.prepare('INSERT INTO photos (id, request_id, device, voter, bytes, at) VALUES (?, ?, ?, ?, ?, ?)').run(id, m[1], device, voter, buf.length, now)
+    // a pessoa autorizou mostrar na ficha do lugar escolhido: vira foto da comunidade (passa pela nota da IA)
+    if (body.toPlace === true && r.decided_place) addPlacePhoto(r.decided_place, 'comunidade', device, buf)
     notify({ to: participantsOf(m[1]).filter((d) => d !== device), key: `ph-${m[1]}`, title: `${voter} pôs fotos do rolê`, body: 'Veja o álbum da turma', url: `r/${m[1]}` })
     return ok({ ok: true, id })
   }
@@ -745,6 +781,34 @@ export function handleApi(method, path, req, body) {
     if (p.device !== device && !isCurator(req)) return bad('not_owner', 403)
     removePhoto(m[1])
     return ok({ ok: true })
+  }
+
+  // fotos do lugar: a casa verificada envia (até 10); a lista pública só traz as aprovadas pela IA, melhores primeiro
+  if ((m = path.match(/^\/api\/places\/([A-Za-z0-9_-]{4,120})\/photos$/)) && method === 'GET') {
+    return ok(db.prepare("SELECT id, source, score FROM place_photos WHERE place_id = ? AND status = 'ok' AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'placephoto' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY source = 'casa' DESC, score DESC, at DESC LIMIT 12").all(m[1]))
+  }
+  if ((m = path.match(/^\/api\/places\/([A-Za-z0-9_-]{4,120})\/photos$/)) && write) {
+    const v = db.prepare('SELECT owner_device, status FROM venues WHERE place_id = ?').get(m[1])
+    if (!(v && v.status === 'verificada' && v.owner_device === device) && !isAdmin(req)) return bad('not_owner', 403)
+    const buf = Buffer.from(String(body.data ?? '').replace(/^data:image\/jpeg;base64,/, ''), 'base64')
+    if (buf.length < 2000 || buf.length > 1_600_000 || buf[0] !== 0xff || buf[1] !== 0xd8) return bad('photo')
+    if (db.prepare("SELECT COUNT(*) n FROM place_photos WHERE place_id = ? AND source = 'casa'").get(m[1]).n >= 10) return bad('too_many')
+    const id = addPlacePhoto(m[1], 'casa', device, buf)
+    return id ? ok({ ok: true, id }) : bad('disk_full', 507)
+  }
+  if ((m = path.match(/^\/api\/place-photos\/(pp-[a-f0-9]{12})\/delete$/)) && write) {
+    const p = db.prepare('SELECT place_id, device FROM place_photos WHERE id = ?').get(m[1])
+    if (!p) return bad('not_found', 404)
+    const v = db.prepare('SELECT owner_device FROM venues WHERE place_id = ?').get(p.place_id)
+    if (p.device !== device && v?.owner_device !== device && !isCurator(req)) return bad('not_owner', 403)
+    removePlacePhoto(m[1])
+    return ok({ ok: true })
+  }
+  // fotos da casa na fila: dono vê as próprias com a nota e o motivo da IA
+  if ((m = path.match(/^\/api\/places\/([A-Za-z0-9_-]{4,120})\/photos\/all$/)) && method === 'GET') {
+    const v = db.prepare('SELECT owner_device FROM venues WHERE place_id = ?').get(m[1])
+    if (v?.owner_device !== device && !isAdmin(req)) return bad('not_owner', 403)
+    return ok(db.prepare('SELECT id, source, score, reason, status FROM place_photos WHERE place_id = ? ORDER BY at DESC').all(m[1]))
   }
 
   // prazo da votação (só o autor); quando vence, o autor recebe um aviso pra fechar
@@ -902,7 +966,7 @@ export function handleApi(method, path, req, body) {
   // e vai pra fila da curadoria, que remove ou mantém
   if (method === 'POST' && path === '/api/reports') {
     if (!RE.device.test(device)) return bad('device')
-    const kind = ['review', 'message', 'suggestion', 'photo'].includes(body.kind) ? body.kind : null
+    const kind = ['review', 'message', 'suggestion', 'photo', 'placephoto'].includes(body.kind) ? body.kind : null
     const target = str(body.id, 60)
     if (!kind || !target) return bad('report')
     const reason = ['ofensivo', 'spam', 'falso', 'outro'].includes(body.reason) ? body.reason : 'outro'
@@ -917,12 +981,13 @@ export function handleApi(method, path, req, body) {
     return ok(rows.map((r) => {
       const t = r.kind === 'review' ? db.prepare('SELECT name who, note text FROM reviews WHERE id = ?').get(r.target_id)
         : r.kind === 'message' ? db.prepare('SELECT voter who, text FROM messages WHERE id = ?').get(r.target_id)
+        : r.kind === 'placephoto' ? db.prepare("SELECT source who, 'p/' || place_id || '/' || id || '.jpg' text FROM place_photos WHERE id = ?").get(r.target_id)
         : r.kind === 'photo' ? db.prepare("SELECT voter who, request_id || '/' || id || '.jpg' text FROM photos WHERE id = ?").get(r.target_id)
         : db.prepare('SELECT by_name who, comment text FROM suggestions WHERE id = ?').get(r.target_id)
       return { kind: r.kind, id: r.target_id, count: r.n, reasons: [...new Set(String(r.reasons).split(','))], at: r.last, who: t?.who ?? '—', text: t?.text ?? '(já removido)' }
     }))
   }
-  if ((m = path.match(/^\/api\/admin\/reports\/(review|message|suggestion|photo)\/([A-Za-z0-9_-]{1,60})$/)) && write) {
+  if ((m = path.match(/^\/api\/admin\/reports\/(review|message|suggestion|photo|placephoto)\/([A-Za-z0-9_-]{1,60})$/)) && write) {
     if (!isCurator(req)) return bad('admin', 401)
     const [, kind, id] = m
     if (body.action === 'remove') {
@@ -930,6 +995,7 @@ export function handleApi(method, path, req, body) {
       if (kind === 'message') db.prepare('DELETE FROM messages WHERE id = ?').run(id)
       if (kind === 'suggestion') db.prepare('DELETE FROM suggestions WHERE id = ?').run(id)
       if (kind === 'photo') removePhoto(id)
+      if (kind === 'placephoto') removePlacePhoto(id)
     } else if (kind === 'review') db.prepare("UPDATE reviews SET status = 'ok', motivo = NULL WHERE id = ? AND status = 'oculta'").run(id)
     db.prepare("UPDATE reports SET status = ? WHERE kind = ? AND target_id = ?").run(body.action === 'remove' ? 'removida' : 'mantida', kind, id)
     return ok({ ok: true })

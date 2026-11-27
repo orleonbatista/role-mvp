@@ -1,3 +1,4 @@
+import { PlacePhoto } from '../ui/PlacePhoto'
 import { motion, useScroll, useTransform } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { StoryCard } from '../lib/storyCard'
@@ -81,7 +82,8 @@ export function PlacePage() {
     <Page scrollRef={scroller} chrome={chrome} footer={footer}>
         <motion.div style={{ scale: coverScale, y: coverY }} className="relative h-[380px] origin-top">
           <Cover hue={place.hue} icon={placeIcon(place)} iconSize={120} layoutId={`cover-${place.id}`} className="h-full w-full" rounded="rounded-none" />
-          <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/20 to-transparent" />
+          <PlacePhoto place={place} enabled rounded="rounded-none" w={800} credit="top" className="top-16" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-bg via-bg/20 to-transparent" />
         </motion.div>
 
         <div className="relative -mt-28 px-5">

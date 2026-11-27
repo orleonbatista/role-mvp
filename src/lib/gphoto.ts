@@ -28,11 +28,11 @@ async function photoUrl(name: string, w: number): Promise<string | null> {
 }
 
 /** foto do card (enabled = só os primeiros cards de cada lista, pra caber na franquia) */
-export function usePlacePhoto(p: Place, enabled: boolean, w = 480) {
+export function usePlacePhoto(p: Place, enabled: boolean, w = 480, name = p.photo?.name) {
   return useQuery({
-    queryKey: ['gphoto', p.photo?.name, w],
-    queryFn: () => photoUrl(p.photo!.name, w),
-    enabled: enabled && !!p.photo?.name,
+    queryKey: ['gphoto', name, w],
+    queryFn: () => photoUrl(name!, w),
+    enabled: enabled && !!name,
     staleTime: Infinity, gcTime: 60 * 60_000, retry: false,
   }).data ?? null
 }

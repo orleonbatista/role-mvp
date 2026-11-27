@@ -445,7 +445,7 @@ function FunnelCard({ f }: { f: { people: { label: string; n: number }[]; reques
 function ReportsCard() {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['reports'], queryFn: openReports, staleTime: 15_000 })
-  const KIND = { review: 'avaliação', message: 'recado', suggestion: 'sugestão', photo: 'foto' } as const
+  const KIND = { review: 'avaliação', message: 'recado', suggestion: 'sugestão', photo: 'foto', placephoto: 'foto do lugar' } as const
   return (
     <section className="mt-7">
       <SectionTitle aside={<span className="text-xs text-faint">{q.data?.length ?? 0} abertas</span>}>Denúncias</SectionTitle>

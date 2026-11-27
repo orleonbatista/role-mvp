@@ -98,5 +98,15 @@ export function createLLM({ dataDir, ollamaModel }) {
       coolingDown: (cooldown.get(p) ?? 0) > Date.now(), ...(stats[p] ?? { ok: 0, fail: 0 }),
     }))
   }
-  return { chat, status }
+  /** visão (só Gemini, que aceita imagem pela API compatível com OpenAI): nota de foto de lugar */
+  async function vision(system, dataUrl, schema, timeout = 20_000) {
+    if (!keyOf('gemini')) throw new Error('sem provedor com visão')
+    const out = await cloud('gemini', {
+      format: schema, options: { temperature: 0, num_predict: 120 },
+      messages: [{ role: 'system', content: system }, { role: 'user', content: [{ type: 'text', text: 'Avalie esta foto.' }, { type: 'image_url', image_url: { url: dataUrl } }] }],
+    }, timeout)
+    return JSON.parse(out.content)
+  }
+
+  return { chat, status, vision }
 }

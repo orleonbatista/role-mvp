@@ -158,7 +158,7 @@ export function DecidedExtras({ place, time, createdAt, text }: { place: Place; 
 }
 
 /** foto reduzida no celular (até 1280 px, JPEG): sobe leve pro servidor */
-async function shrink(file: File): Promise<string> {
+export async function shrink(file: File): Promise<string> {
   const bmp = await createImageBitmap(file)
   const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height))
   const c = document.createElement('canvas')
@@ -172,6 +172,7 @@ export function PhotoAlbum({ d, voter }: { d: RequestDetail; voter: string }) {
   const qc = useQueryClient()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
+  const [toPlace, setToPlace] = useState(true)
   const base = useQuery({ queryKey: ['api-base'], queryFn: () => apiBase(), staleTime: 60_000 })
   const ex = d.extra
   if (!ex?.online || d.request.status !== 'decidido') return null
@@ -196,7 +197,7 @@ export function PhotoAlbum({ d, voter }: { d: RequestDetail; voter: string }) {
             if (!voter.trim()) { toast('Escreva seu nome lá em cima antes'); return }
             setBusy(true)
             let n = 0
-            for (const f of files) { try { if (await pushPhoto(d.request.id, await shrink(f), voter.trim())) n++ } catch { /* foto ilegível */ } }
+            for (const f of files) { try { if (await pushPhoto(d.request.id, await shrink(f), voter.trim(), toPlace)) n++ } catch { /* foto ilegível */ } }
             setBusy(false); e.target.value = ''
             track('photos_uploaded', { n })
             toast(n ? `${n} ${n === 1 ? 'foto enviada' : 'fotos enviadas'}` : 'Não deu pra enviar (só quem participou do rolê pode pôr fotos)')
@@ -204,6 +205,10 @@ export function PhotoAlbum({ d, voter }: { d: RequestDetail; voter: string }) {
           }} />
         </label>
       </div>
+      <label className="mt-2 flex items-center gap-2 text-[12px] text-mute">
+        <input type="checkbox" checked={toPlace} onChange={(e) => setToPlace(e.target.checked)} className="size-4 accent-[#c6ff3d]" />
+        Mostrar minhas fotos na ficha do lugar (a IA escolhe as melhores; sem rostos em destaque)
+      </label>
     </section>
   )
 }

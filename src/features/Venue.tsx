@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AtSign, BadgeCheck, Gift, Store, Users } from 'lucide-react'
-import { claimVenue, saveVenue, venueOf, venueReport, type Venue } from '../mocks/remote'
+import { allPlacePhotos, claimVenue, deletePlacePhoto, saveVenue, uploadPlacePhoto, venueOf, venueReport, type Venue } from '../mocks/remote'
+import { shrink } from './GroupPanel'
+import { Camera, Trash2 } from 'lucide-react'
 import type { Place } from '../lib/types'
 import { Sheet } from '../ui/Sheet'
 import { Button } from '../ui/primitives'
@@ -81,6 +83,7 @@ function EditSheet({ open, onClose, place, v, onDone }: { open: boolean; onClose
         </div>
       )}
       <p className="mt-1 text-[11px] text-faint">Últimos 30 dias.</p>
+      <OwnerPhotos place={place} />
       <div className="mt-4 grid gap-2">
         <textarea className={`${input} h-24 py-3`} maxLength={300} placeholder="Sobre a casa (até 300 caracteres)" value={f.bio} onChange={(e) => setF({ ...f, bio: e.target.value })} />
         <input className={input} placeholder="Instagram (sem @)" value={f.instagram} onChange={(e) => setF({ ...f, instagram: e.target.value })} />
@@ -93,5 +96,41 @@ function EditSheet({ open, onClose, place, v, onDone }: { open: boolean; onClose
         }}>Salvar</Button>
       </div>
     </Sheet>
+  )
+}
+
+/** fotos da casa (até 10): a IA dá nota e as melhores abrem o carrossel; recusadas mostram o motivo */
+function OwnerPhotos({ place }: { place: Place }) {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const q = useQuery({ queryKey: ['owner-photos', place.id], queryFn: () => allPlacePhotos(place.id), refetchInterval: (x) => (x.state.data?.some((p) => p.status === 'avaliando') ? 3000 : false) })
+  const mine = (q.data ?? []).filter((p) => p.source === 'casa')
+  return (
+    <div className="mt-4">
+      <p className="mb-2 text-[13px] text-mute">Fotos da casa ({mine.length}/10)</p>
+      <div className="grid gap-1.5">
+        {mine.map((p) => (
+          <div key={p.id} className="flex items-center gap-2 text-[12px]">
+            <span className="flex-1 truncate">{p.status === 'avaliando' ? 'IA avaliando…' : p.status === 'ok' ? `nota ${p.score?.toFixed(0)} · ${p.reason ?? ''}` : `recusada: ${p.reason ?? ''}`}</span>
+            <button aria-label="Apagar foto" onClick={async () => { await deletePlacePhoto(p.id); qc.invalidateQueries({ queryKey: ['owner-photos', place.id] }); qc.invalidateQueries({ queryKey: ['place-photos', place.id] }) }}><Trash2 size={14} /></button>
+          </div>
+        ))}
+      </div>
+      {mine.length < 10 && (
+        <label className="mt-2 flex h-11 cursor-pointer items-center justify-center gap-2 rounded-full border border-dashed border-white/20 text-[13px]">
+          <Camera size={15} className="text-accent" />{busy ? 'Enviando…' : 'Enviar fotos'}
+          <input type="file" accept="image/*" multiple className="hidden" disabled={busy} onChange={async (e) => {
+            const files = [...(e.target.files ?? [])].slice(0, 10 - mine.length)
+            setBusy(true)
+            let n = 0
+            for (const f of files) { try { if (await uploadPlacePhoto(place.id, await shrink(f))) n++ } catch { /* ilegível */ } }
+            setBusy(false); e.target.value = ''
+            toast(n ? `${n} enviada(s); a IA está avaliando` : 'Não deu pra enviar')
+            qc.invalidateQueries({ queryKey: ['owner-photos', place.id] }); qc.invalidateQueries({ queryKey: ['place-photos', place.id] })
+          }} />
+        </label>
+      )}
+    </div>
   )
 }

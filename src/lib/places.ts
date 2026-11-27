@@ -120,7 +120,7 @@ export function toPlace(g: GPlace, query = ''): Place {
     address: g.shortFormattedAddress ?? g.formattedAddress ?? '', hours: 'Ver horário no Google Maps', tags: [], privateSpace: false,
     periods: [{ days: [0, 1, 2, 3, 4, 5, 6], open: 0, close: 24 }],
     source: 'google', mapsUrl: mapsUrlOf(g.id), lat: g.location?.latitude, lng: g.location?.longitude,
-    ...(g.photos?.[0] ? { photo: { name: g.photos[0].name, by: g.photos[0].authorAttributions?.[0]?.displayName } } : {}),
+    ...(g.photos?.[0] ? { photo: { name: g.photos[0].name, by: g.photos[0].authorAttributions?.[0]?.displayName }, photos: g.photos.slice(0, 6).map((x) => ({ name: x.name, by: x.authorAttributions?.[0]?.displayName })) } : {}),
   }
 }
 

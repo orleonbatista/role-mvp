@@ -5,7 +5,7 @@ import { createReadStream } from 'node:fs'
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { DESTAQUES, askBody, moderateBody, moderationRules, ollamaBody, pickBody } from '../src/mocks/llmPrompt.ts'
-import { checkDeadlines, ogPage, photoFile, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
+import { checkDeadlines, ogPage, photoFile, placePhotoFile, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
 import { geoFromCep, geoReverse } from './geo.mjs'
 import { createLLM } from './providers.mjs'
 import { createPush } from './push.mjs'
@@ -25,6 +25,13 @@ const llm = createLLM({ dataDir, ollamaModel: MODEL })
 const push = createPush(dataDir)
 // avisos: no máximo 1 por pedido e tipo a cada 2 min por aparelho (votos em sequência viram 1 aviso)
 const lastPush = new Map()
+// nota de foto de lugar pela IA de visão (Gemini): o que vale mostrar no carrossel
+const PHOTO_SYSTEM = `Você avalia fotos enviadas para a ficha de um bar/restaurante/balada no app rolê.
+Dê "nota" de 0 a 10 para o quanto a foto ajuda alguém a decidir ir: ambiente, fachada, mesas, balcão, drinks e pratos bem fotografados valem mais;
+nitidez e luz contam. "serve"=false se for cardápio/print/meme/documento, se não for de um lugar, se tiver conteúdo impróprio,
+ou se o foco for o rosto de pessoas identificáveis. "motivo": até 8 palavras em português.`
+const PHOTO_SCHEMA = { type: 'object', properties: { nota: { type: 'number' }, serve: { type: 'boolean' }, motivo: { type: 'string' } }, required: ['nota', 'serve', 'motivo'] }
+hooks.scorePhoto = (dataUrl) => llm.vision(PHOTO_SYSTEM, dataUrl, PHOTO_SCHEMA, 25_000)
 hooks.notify = (e) => {
   const now = Date.now()
   for (const s of pushSubsOf(e.to)) {
@@ -98,6 +105,12 @@ const server = http.createServer(async (req, res) => {
   let mm
   if (req.method === 'GET' && (mm = path.match(/^\/media\/(r-[a-z0-9-]{1,24})\/(ph-[a-f0-9]{12}\.jpg)$/))) {
     const f = photoFile(mm[1], mm[2])
+    if (!f) { res.writeHead(404); return res.end() }
+    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' })
+    return createReadStream(f).pipe(res)
+  }
+  if (req.method === 'GET' && (mm = path.match(/^\/media\/p\/([A-Za-z0-9_-]{4,120})\/(pp-[a-f0-9]{12}\.jpg)$/))) {
+    const f = placePhotoFile(mm[1], mm[2])
     if (!f) { res.writeHead(404); return res.end() }
     res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' })
     return createReadStream(f).pipe(res)
