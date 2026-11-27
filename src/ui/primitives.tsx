@@ -203,9 +203,9 @@ export function StreamText({ text, className, speed = 28, onDone }: { text: stri
 
 export function Skeleton({ className }: { className?: string }) {
   return (
-    <div className={cx('relative overflow-hidden rounded-2xl bg-white/[0.08]', className)}>
+    <div className={cx('relative overflow-hidden rounded-2xl bg-white/[0.11] ring-1 ring-white/[0.04]', className)}>
       <motion.div
-        className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/[0.12] to-transparent"
+        className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-accent/[0.16] to-transparent"
         animate={{ x: ['-100%', '250%'] }}
         transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}
       />

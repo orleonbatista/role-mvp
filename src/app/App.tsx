@@ -1,6 +1,6 @@
 import { ConfirmHost } from '../ui/Confirm'
 import { AnimatePresence, LayoutGroup, MotionConfig } from 'motion/react'
-import { Component, lazy, Suspense, useEffect, type ReactNode } from 'react'
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 
 /* App instalado na tela de início fica aberto por dias com a versão antiga na memória; depois de um deploy,
    as partes carregadas sob demanda (Perfil, Turmas…) mudam de nome e a importação falha — antes isso deixava
@@ -66,6 +66,15 @@ const TestesPage = lazy(() => retryImport(() => import('../features/Testes').the
 
 const TAB_ROUTES = ['/', '/amigos', '/turmas', '/perfil']
 
+/** barra fina no topo a cada troca de tela: deixa claro que o app reagiu, mesmo quando a tela abre rápido */
+function RouteProgress() {
+  const { pathname } = useLocation()
+  const [k, setK] = useState(0)
+  useEffect(() => { setK((x) => x + 1) }, [pathname])
+  if (!k) return null
+  return <div key={k} aria-hidden className="route-progress pointer-events-none fixed inset-x-0 top-0 z-[60] h-[3px]" />
+}
+
 function Fallback() {
   return (
     <div className="absolute inset-0 grid content-start gap-3 bg-bg px-5 pt-safe-lg" role="status" aria-label="Carregando">
@@ -78,6 +87,9 @@ function Fallback() {
 export function App() {
   const location = useLocation()
   const { data: profile, isLoading } = useProfile()
+  // a abertura mostra a marca por pelo menos ~0,5 s: sem isso a tela de carregamento piscava e parecia não existir
+  const [booted, setBooted] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setBooted(true), 500); return () => clearTimeout(t) }, [])
   const isPublic = ['/u/', '/lista/', '/ferramentas', '/r/', '/s/', '/e/', '/p/', '/lugar/', '/avaliar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
   const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !isPublic
   // /perfil/ (com barra no fim, como o GitHub Pages serve as rotas fixas) vira /perfil: antes a barra inferior sumia
@@ -96,9 +108,10 @@ export function App() {
     <MotionConfig reducedMotion="user">
       <PhoneFrame>
         <ToastHost>
+          <RouteProgress />
           <LayoutGroup>
             <AnimatePresence initial={false}>
-              {isLoading && !isPublic ? (
+              {(isLoading || !booted) && !isPublic ? (
                 <Fallback key="boot" />
               ) : needsOnboarding ? (
                 <Navigate key="redirect" to="/onboarding" replace />
