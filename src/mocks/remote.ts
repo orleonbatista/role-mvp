@@ -274,6 +274,7 @@ export interface GlobalStats {
   totals: { requests: number; votes: number; suggestions: number; decided: number }
   base?: { places: number; areas: number }
   apis?: { month: Record<string, number>; today: Record<string, number> }
+  funnel?: { people: { label: string; n: number }[]; requests: { label: string; n: number }[] }
   people?: { users: number; withGoogle: number; byHood: Record<string, number>; byNiche: Record<string, number>; reviews: number; groups: number; activeGroups: number; examples?: number; corrected?: number; unmet?: [string, number][] }
 }
 

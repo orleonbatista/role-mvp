@@ -234,6 +234,21 @@ function apiStats(events) {
   return { month, today }
 }
 
+/** funil dos últimos 30 dias: pessoas (aparelhos distintos por etapa) e pedidos (do criado ao avaliado) */
+function funnelStats(events) {
+  const since = Date.now() - 30 * 86_400_000
+  const steps = [['abriu o app', 'app_open'], ['fez o cadastro', 'onboarding_done'], ['criou pedido', 'request_created'], ['mandou pro grupo', 'share_sent'], ['votou', 'vote_cast'], ['fechou rolê', 'decided'], ['avaliou', 'review_saved']]
+  const people = steps.map(([label, name]) => ({ label, n: new Set(events.filter((e) => e.at >= since && e.name === name).map((e) => e.device)).size }))
+  const one = (sql) => db.prepare(sql).get(since).n
+  const requests = [
+    { label: 'pedidos criados', n: one('SELECT COUNT(*) n FROM requests WHERE created_at >= ?') },
+    { label: 'com voto de outra pessoa', n: one('SELECT COUNT(DISTINCT r.id) n FROM requests r JOIN votes v ON v.request_id = r.id AND v.device != r.author_device WHERE r.created_at >= ?') },
+    { label: 'fechados', n: one('SELECT COUNT(*) n FROM requests WHERE created_at >= ? AND decided_place IS NOT NULL') },
+    { label: 'avaliados depois', n: one("SELECT COUNT(DISTINCT r.id) n FROM requests r JOIN reviews v ON v.request_id = r.id WHERE r.created_at >= ?") },
+  ]
+  return { people, requests }
+}
+
 function stats() {
   const events = db.prepare('SELECT device, name, src, path, props, at FROM events ORDER BY at').all()
   const counts = {}
@@ -245,7 +260,7 @@ function stats() {
   }
   const devices = new Set(events.map((e) => e.device)).size
   return {
-    counts, total: events.length, devices, bySrc, people: peopleStats(), apis: apiStats(events),
+    counts, total: events.length, devices, bySrc, people: peopleStats(), apis: apiStats(events), funnel: funnelStats(events),
     firstAt: events[0]?.at, lastAt: events[events.length - 1]?.at,
     recent: events.slice(-30).reverse().map((e) => ({ ...e, props: parse(e.props) ?? {} })),
     feedback: db.prepare('SELECT data, at FROM feedback ORDER BY at DESC LIMIT 100').all().map((f) => ({ ...parse(f.data), at: f.at })),

@@ -195,6 +195,7 @@ export function TestesPage() {
       </p>
 
       {canGlobal && <UsersCard />}
+      {canGlobal && global?.funnel && <FunnelCard f={global.funnel} />}
       {canGlobal && global?.apis && <ApisCard apis={global.apis} />}
       <BackendCard />
       <LLMCard />
@@ -407,6 +408,33 @@ function UsersCard() {
         ))}
       </div>
       <p className="mx-5 mt-2 text-[11px] text-faint">Papel só pra quem entrou com Google. Pra adicionar outro admin, inclua o e-mail em llm-gateway/data/admins.json no PC.</p>
+    </section>
+  )
+}
+
+/* admin: funil dos últimos 30 dias — onde as pessoas e os pedidos param */
+function FunnelCard({ f }: { f: { people: { label: string; n: number }[]; requests: { label: string; n: number }[] } }) {
+  const block = (title: string, rows: { label: string; n: number }[]) => {
+    const top = Math.max(1, rows[0]?.n ?? 1)
+    return (
+      <div className="mt-3">
+        <p className="mb-1.5 text-[12px] text-faint">{title}</p>
+        {rows.map((r, i) => (
+          <div key={r.label} className="mb-1.5">
+            <div className="flex justify-between text-[12px]"><span>{r.label}</span><span className="text-mute">{r.n}{i > 0 && rows[i - 1].n ? ` · ${Math.round((r.n / rows[i - 1].n) * 100)}%` : ''}</span></div>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-accent" style={{ width: `${(r.n / top) * 100}%` }} /></div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  return (
+    <section className="mt-7">
+      <SectionTitle aside={<span className="text-xs text-faint">30 dias</span>}>Funil</SectionTitle>
+      <div className="mx-5 rounded-[20px] border border-line p-4">
+        {block('Pessoas (aparelhos) por etapa · % sobre a etapa anterior', f.people)}
+        {block('Pedidos', f.requests)}
+      </div>
     </section>
   )
 }
