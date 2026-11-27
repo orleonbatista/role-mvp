@@ -164,3 +164,15 @@ export const turmaInviteUrl = (token: string) => `${location.origin}${import.met
 
 /** convite pessoal pro app (Amigos → Convidar): abre a página do convite e, depois do cadastro, vira amizade */
 export const appInviteUrl = (token: string) => `${location.origin}${import.meta.env.BASE_URL}v/?to=a&id=${encodeURIComponent(token)}`
+
+/** compartilhar um link: folha nativa do celular (zap, Instagram, Telegram…); sem ela, copia e oferece o zap */
+export async function shareLink(opts: { text: string; url: string; title?: string }, toast?: (m: string) => void): Promise<'native' | 'copy' | 'zap' | 'cancel'> {
+  try {
+    if (navigator.share) { await navigator.share({ title: opts.title ?? 'rolê.', text: opts.text, url: opts.url }); return 'native' }
+  } catch (e) { if ((e as Error)?.name === 'AbortError') return 'cancel' }
+  const full = `${opts.text}\n${opts.url}`
+  try { await navigator.clipboard.writeText(full); toast?.('Link copiado'); return 'copy' } catch { /* */ }
+  window.open(`https://wa.me/?text=${encodeURIComponent(full)}`, '_blank')
+  return 'zap'
+}
+export const bringUrl = (id: string) => `${location.origin}${import.meta.env.BASE_URL}v/?to=l&id=${encodeURIComponent(id)}`

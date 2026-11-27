@@ -111,6 +111,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS ix_sess_dev ON sessions(device);
   -- rede social: amizades (pedido → aceite), bloqueios, listas de curadoria e chat da turma
   CREATE TABLE IF NOT EXISTS friendships (a TEXT NOT NULL, b TEXT NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
+  CREATE TABLE IF NOT EXISTS bring (id TEXT PRIMARY KEY, device TEXT NOT NULL, title TEXT NOT NULL, items TEXT NOT NULL, at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS invites (token TEXT PRIMARY KEY, device TEXT NOT NULL UNIQUE, at INTEGER NOT NULL, uses INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS blocks (device TEXT NOT NULL, blocked TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (device, blocked));
   CREATE TABLE IF NOT EXISTS lists (id TEXT PRIMARY KEY, device TEXT NOT NULL, title TEXT NOT NULL, places TEXT NOT NULL DEFAULT '[]', public INTEGER NOT NULL DEFAULT 1, at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -1298,6 +1299,47 @@ export function handleApi(method, path, req, body) {
       notify({ to: [other], from: device, key: `fra-${device}`, title: `${userName(device) ?? 'Alguém'} aceitou sua amizade`, body: 'Agora vocês veem as curadorias um do outro', url: 'amigos' })
       return ok({ ok: true })
     }
+  }
+  // "quem leva o quê" compartilhado: a lista vive no servidor e quem abre o link marca o que leva (com cadastro)
+  if (write && path === '/api/bring') {
+    if (!qp.getUser.get(device)) return bad('perfil', 403)
+    if (db.prepare('SELECT COUNT(*) n FROM bring WHERE device = ? AND at > ?').get(device, now - 86_400_000).n >= 20) return bad('rate_limited', 429)
+    const items = (Array.isArray(body.items) ? body.items : []).map((x) => str(x, 40).trim()).filter(Boolean).slice(0, 40).map((what) => ({ what, who: null, pid: null, dev: null }))
+    const id = `l-${randomBytes(6).toString('hex')}`
+    db.prepare('INSERT INTO bring (id, device, title, items, at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, device, str(body.title, 40).trim() || 'Rolê', JSON.stringify(items), now, now)
+    return ok({ ok: true, id })
+  }
+  if ((m = path.match(/^\/api\/bring\/(l-[a-f0-9]{12})(?:\/(claim|add|remove|title))?$/))) {
+    const b = db.prepare('SELECT * FROM bring WHERE id = ?').get(m[1])
+    if (!b) return bad('not_found', 404)
+    const items = parse(b.items) ?? []
+    const view = () => ok({ id: b.id, title: b.title, mine: b.device === device, owner: { name: userName(b.device) ?? 'Alguém', pid: pseudo(b.device) }, updatedAt: b.updated_at,
+      items: items.map((x, i) => ({ i, what: x.what, who: x.who, pid: x.pid, me: x.dev === device })) })
+    if (method === 'GET' && !m[2]) return view()
+    if (!write || !m[2]) return bad('method', 405)
+    if (!qp.getUser.get(device)) return bad('perfil', 403)
+    const i = int(body.i, -1)
+    if (m[2] === 'claim') {
+      const it = items[i]
+      if (!it) return bad('item')
+      if (it.dev === device) Object.assign(it, { who: null, pid: null, dev: null }) // desmarcar
+      else if (it.dev) return bad('ja_tem', 409)
+      else { Object.assign(it, { who: userName(device) ?? 'Alguém', pid: pseudo(device), dev: device }); if (b.device !== device) notify({ to: [b.device], from: device, key: `bring-${b.id}`, title: `${userName(device) ?? 'Alguém'} vai levar ${it.what}`, body: b.title, url: `l/${b.id}` }) }
+    } else if (m[2] === 'add') {
+      const what = str(body.what, 40).trim()
+      if (!what || items.length >= 40) return bad('item')
+      items.push({ what, who: null, pid: null, dev: null })
+    } else if (m[2] === 'remove') {
+      if (b.device !== device || !items[i]) return bad('not_owner', 403)
+      items.splice(i, 1)
+    } else if (m[2] === 'title') {
+      if (b.device !== device) return bad('not_owner', 403)
+      b.title = str(body.title, 40).trim() || b.title
+      db.prepare('UPDATE bring SET title = ? WHERE id = ?').run(b.title, b.id)
+    }
+    db.prepare('UPDATE bring SET items = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(items), now, b.id)
+    b.updated_at = now
+    return view()
   }
   // convite pro app: link pessoal; quem entra por ele vira amigo de quem convidou
   if (write && path === '/api/invites') {

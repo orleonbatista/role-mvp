@@ -1,3 +1,4 @@
+import { canGoBack } from '../lib/nav'
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type HTMLMotionProps } from 'motion/react'
 import { useEffect, useState, type ReactNode, type Ref } from 'react'
 import { createPortal } from 'react-dom'
@@ -31,7 +32,7 @@ export function Page({ children, className, tabbed, footer, chrome, scrollRef }:
   }
   return (
     <motion.main variants={page} initial="initial" animate="animate" exit="exit" className="absolute inset-0 flex flex-col overflow-hidden bg-bg">
-      <div ref={scrollRef} className={cx('no-scrollbar relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden', tabbed ? 'pb-28' : 'pb-8', className)}>
+      <div ref={scrollRef} className={cx('no-scrollbar relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden', tabbed && !footer ? 'pb-28' : 'pb-8', className)}>
         {children}
       </div>
       {chrome}
@@ -45,7 +46,8 @@ export function Page({ children, className, tabbed, footer, chrome, scrollRef }:
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             className="relative z-20 shrink-0 overflow-hidden border-t border-white/[0.06] bg-bg/90 backdrop-blur-xl"
           >
-            <div className="px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3">{footer}</div>
+            {/* com a barra de abas embaixo, o rodapé de ações sobe acima dela */}
+            <div className={cx('px-5 pt-3', tabbed ? 'pb-[calc(env(safe-area-inset-bottom)+5.25rem)]' : 'pb-[max(1.5rem,env(safe-area-inset-bottom))]')}>{footer}</div>
           </motion.footer>
         ) : null}
       </AnimatePresence>
@@ -60,7 +62,7 @@ export function TopBar({ title, right, back = true }: { title?: ReactNode; right
       {back && (
         <motion.button
           whileTap={{ scale: 0.9 }}
-          onClick={() => (history.length > 1 ? nav(-1) : nav('/'))}
+          onClick={() => (canGoBack() ? nav(-1) : nav('/'))}
           className="grid size-9 place-items-center rounded-full bg-white/[0.06] text-ink"
           aria-label="Voltar"
         >

@@ -495,6 +495,11 @@ export type FeedItem = { kind: 'review'; who: PersonCard; placeId: string; place
   | { kind: 'list'; who: PersonCard; listId: string; title: string; count: number; at: number }
   | { kind: 'decided'; who: PersonCard; placeId: string; placeName: string | null; at: number }
   | { kind: 'request' | 'voted'; who: PersonCard; requestId: string; text: string; at: number }
+/** "quem leva o quê" compartilhado por link */
+export interface BringList { id: string; title: string; mine: boolean; owner: { name: string; pid: string }; updatedAt: number; items: { i: number; what: string; who: string | null; pid: string | null; me: boolean }[] }
+export const createBring = (title: string, items: string[]) => call<{ ok: boolean; id: string }>('POST', '/api/bring', { title, items })
+export const getBring = (id: string) => call<BringList>('GET', `/api/bring/${id}`, undefined, { timeout: 6000 })
+export const bringAction = (id: string, a: 'claim' | 'add' | 'remove' | 'title', body: { i?: number; what?: string; title?: string }) => call<BringList>('POST', `/api/bring/${id}/${a}`, body)
 /** convite pessoal pro app: quem entra pelo link vira amigo de quem convidou */
 export const myInvite = () => call<{ ok: boolean; token: string }>('POST', '/api/invites', {}).then((r) => r?.token ?? null)
 export const inviteInfo = (token: string) => call<{ name: string; hue: number; pid: string; handle: string | null; photo: number | null; me: boolean; relation: string }>('GET', `/api/invites/${encodeURIComponent(token)}`, undefined, { timeout: 6000 })

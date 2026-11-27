@@ -1,8 +1,9 @@
+import { canGoBack } from '../lib/nav'
 import { AnimatePresence, motion, useAnimationControls } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router'
-import { ArrowRight, CalendarCheck, CalendarPlus, ChevronRight, Clock, Crown, Info, MapPinPlus, Radio, Send, Sparkles, Star, X } from 'lucide-react'
+import { ArrowRight, CalendarCheck, CalendarPlus, ChevronRight, Clock, Crown, Info, MapPinPlus, Radio, Send, Share2, Sparkles, Star, X } from 'lucide-react'
 import { slotDate, slotLabel } from '../lib/slot'
 import { Link } from 'react-router'
 import { Avatar, AnimatedNumber, Button, Cover, EmptyState, Overlay, Page, Skeleton, cx } from '../ui/primitives'
@@ -15,7 +16,7 @@ import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
 import { confirmSheet } from '../ui/Confirm'
 import { priceLabel } from '../lib/labels'
-import { currentVoteLink, readPayload } from '../lib/share'
+import { currentVoteLink, readPayload, shareLink } from '../lib/share'
 import { track } from '../lib/track'
 import type { Place, VoteTally } from '../lib/types'
 import { StorySheet } from './StorySheet'
@@ -134,10 +135,15 @@ export function VotePage() {
   ) : null
 
   return (
-    <Page className="pb-8" footer={footer}>
-      <div className="flex items-center justify-between px-5 pt-safe-lg">
-        <span className="font-serif text-xl italic">rolê<span className="text-accent">.</span></span>
-        <button onClick={() => (history.length > 1 ? nav(-1) : nav('/'))} className="grid size-9 place-items-center rounded-full bg-white/[0.06]" aria-label="Fechar"><X size={16} /></button>
+    <Page footer={footer} tabbed={!!me?.onboarded}>
+      <div className="flex items-center gap-2 px-5 pt-safe-lg">
+        <button onClick={() => nav('/')} className="font-serif text-xl italic" aria-label="Ir pro início">rolê<span className="text-accent">.</span></button>
+        {/* qualquer pessoa manda a votação adiante (antes só dava depois de votar, e só pelo zap) */}
+        {data && (
+          <button onClick={async () => { const via = await shareLink({ text: `Vota no rolê: “${data.request.text}” 👇`, url: currentVoteLink() }, toast); track('vote_reshared', { id, via }) }}
+            className="ml-auto flex h-9 items-center gap-1.5 rounded-full bg-white/[0.06] px-3.5 text-[13px]" aria-label="Compartilhar votação"><Share2 size={15} />Compartilhar</button>
+        )}
+        <button onClick={() => (canGoBack() ? nav(-1) : nav('/'))} className={cx('grid size-9 place-items-center rounded-full bg-white/[0.06]', !data && 'ml-auto')} aria-label="Fechar"><X size={16} /></button>
       </div>
 
       {!data ? (

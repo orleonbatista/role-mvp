@@ -1,3 +1,4 @@
+import { canGoBack } from '../lib/nav'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
@@ -50,7 +51,7 @@ export function Onboarding() {
   const editing = !!me?.onboarded
   useEffect(() => { if (editing && step === 0) setStep(1) }, [editing]) // eslint-disable-line react-hooks/exhaustive-deps
   const go = (n: number) => {
-    if (editing && n < 1) { if (history.length > 1) nav(-1); else nav('/perfil', { replace: true }); return }
+    if (editing && n < 1) { if (canGoBack()) nav(-1); else nav('/perfil', { replace: true }); return }
     setDir(n > step ? 1 : -1); setStep(n)
   }
   // 2 passos: (1) nome + região, (2) estilos + vibes (opcionais) + aceite

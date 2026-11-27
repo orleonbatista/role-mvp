@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
 import { Check, ClipboardList, Copy, Dices, Image, LocateFixed, MessageCircle, Receipt, Share2, Sparkles, Vote } from 'lucide-react'
-import { Page, TopBar, cx } from '../ui/primitives'
+import { EmptyState, Page, Skeleton, TopBar, cx } from '../ui/primitives'
 import { Sheet } from '../ui/Sheet'
 import { Button } from '../ui/primitives'
 import { useToast } from '../ui/Toast'
@@ -10,6 +10,9 @@ import { StorySheet } from './StorySheet'
 import { useProfile } from '../lib/api'
 import { track } from '../lib/track'
 import type { ConviteCard } from '../lib/storyCard'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { bringAction, createBring, getBring, myInvite } from '../mocks/remote'
+import { appInviteUrl, bringUrl, shareLink } from '../lib/share'
 
 /* Caixa de ferramentas do rolê: tudo que ajuda a sair com a galera, sem precisar criar votação nem turma. */
 
@@ -88,6 +91,12 @@ function FlyerTool({ open, onClose, format }: { open: boolean; onClose: () => vo
 
 function ZapTool({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [text, setText] = useState('Bora num rolê? ')
+  // a mensagem já vai com o seu convite pro app (quem entrar por ele vira seu amigo); sem conexão, o endereço do app
+  useEffect(() => {
+    if (!open) return
+    const base = `${location.origin}${import.meta.env.BASE_URL}`
+    void myInvite().then((t) => setText((cur) => (/https?:\/\//.test(cur) ? cur : `${cur.trim()} Decide com a gente pelo rolê.: ${t ? appInviteUrl(t) : base}`)))
+  }, [open])
   const [copied, setCopied] = useState(false)
   const link = wa(text.trim())
   return (
@@ -137,32 +146,94 @@ function EncontroTool({ open, onClose }: { open: boolean; onClose: () => void })
 
 function LevaTool({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [title, setTitle] = useState('Churrasco')
-  const [items, setItems] = useState<{ what: string; who: string }[]>(() => {
-    try { return JSON.parse(localStorage.getItem('role.leva') ?? '') } catch { return [{ what: 'carne', who: '' }, { what: 'carvão', who: '' }, { what: 'gelo', who: '' }, { what: 'bebida', who: '' }] }
-  })
+  const [items, setItems] = useState<string[]>(['carne', 'carvão', 'gelo', 'bebida'])
   const [nw, setNw] = useState('')
-  const save = (x: typeof items) => { setItems(x); try { localStorage.setItem('role.leva', JSON.stringify(x)) } catch { /* */ } }
-  const msg = `${title.trim() || 'Rolê'}: quem leva o quê\n${items.map((i) => `• ${i.what}: ${i.who.trim() || '(alguém?)'}`).join('\n')}\n\nResponde com o que você leva 🙌`
+  const [busy, setBusy] = useState(false)
+  const nav = useNavigate()
+  const toast = useToast()
+  // a lista vai pro servidor e vira um link: quem abre marca o que leva no app (e entra no rolê. pra isso)
+  const create = async () => {
+    setBusy(true)
+    const r = await createBring(title.trim() || 'Rolê', items)
+    setBusy(false)
+    track('tool_leva', { n: items.length, ok: !!r?.ok })
+    if (!r?.ok) { toast('Precisa de cadastro e conexão pra criar a lista'); return }
+    onClose()
+    await shareLink({ text: `${title.trim() || 'Rolê'}: quem leva o quê? Marca o que você leva aqui 👇`, url: bringUrl(r.id) }, toast)
+    nav(`/l/${r.id}`)
+  }
   return (
     <Sheet open={open} onClose={onClose}>
       <p className="font-serif text-[28px] leading-tight">Quem leva o quê</p>
+      <p className="mt-1 text-[13px] text-mute">Vira um link: cada um abre e marca o que vai levar. Você acompanha tudo no app.</p>
       <input className={cx(fi, 'mt-3')} aria-label="Nome do rolê" value={title} maxLength={40} onChange={(e) => setTitle(e.target.value)} />
-      <ul className="mt-3 grid max-h-[38vh] gap-1.5 overflow-y-auto">
+      <ul className="mt-3 grid max-h-[34vh] gap-1.5 overflow-y-auto">
         {items.map((it, i) => (
-          <li key={i} className="flex items-center gap-2">
-            <span className="w-[42%] truncate text-[14px]">{it.what}</span>
-            <input value={it.who} placeholder="quem?" aria-label={`Quem leva ${it.what}`} onChange={(e) => save(items.map((x, j) => (j === i ? { ...x, who: e.target.value.slice(0, 30) } : x)))}
-              className="h-10 min-w-0 flex-1 rounded-full border border-line bg-white/[0.03] px-3 text-[13px] outline-none focus:border-accent" />
-            <button onClick={() => save(items.filter((_, j) => j !== i))} aria-label={`Tirar ${it.what}`} className="grid size-9 place-items-center text-mute">×</button>
+          <li key={i} className="flex items-center gap-2 rounded-full bg-white/[0.04] pl-4">
+            <span className="flex-1 truncate text-[14px]">{it}</span>
+            <button onClick={() => setItems(items.filter((_, j) => j !== i))} aria-label={`Tirar ${it}`} className="grid size-9 place-items-center text-mute">×</button>
           </li>
         ))}
       </ul>
-      <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (nw.trim()) { save([...items, { what: nw.trim().slice(0, 30), who: '' }]); setNw('') } }}>
+      <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (nw.trim()) { setItems([...items, nw.trim().slice(0, 40)]); setNw('') } }}>
         <input value={nw} onChange={(e) => setNw(e.target.value)} placeholder="Adicionar item" aria-label="Adicionar item" className="h-10 min-w-0 flex-1 rounded-full border border-line bg-white/[0.03] px-4 text-[13px] outline-none focus:border-accent" />
         <button type="submit" className="h-10 rounded-full border border-line px-4 text-[13px]">+</button>
       </form>
-      <a href={wa(msg)} target="_blank" rel="noreferrer" onClick={() => track('tool_leva', { n: items.length })} className="mt-4 flex h-12 items-center justify-center gap-2 rounded-full bg-[#25d366] text-[14px] font-medium text-black"><Share2 size={16} />Mandar a lista no zap</a>
+      <Button size="lg" className="mt-4 w-full" icon={<Share2 size={16} />} disabled={busy || !items.length} onClick={create}>{busy ? 'Criando…' : 'Criar lista e mandar o link'}</Button>
     </Sheet>
+  )
+}
+
+/** /l/:id — lista "quem leva o quê": marca/desmarca o que leva; o dono adiciona e tira itens */
+export function BringPage() {
+  const { id = '' } = useParams()
+  const nav = useNavigate()
+  const toast = useToast()
+  const qc = useQueryClient()
+  const me = useProfile().data
+  const q = useQuery({ queryKey: ['bring', id], queryFn: () => getBring(id), refetchInterval: 8000 })
+  const [nw, setNw] = useState('')
+  const l = q.data
+  const act = async (a: 'claim' | 'add' | 'remove', body: { i?: number; what?: string }) => {
+    if (!me?.onboarded) { try { localStorage.setItem('role.next', `/l/${id}`) } catch { /* */ } nav('/onboarding'); return }
+    const r = await bringAction(id, a, body)
+    track('bring_' + a, { ok: !!r })
+    if (!r) { toast(a === 'claim' ? 'Alguém já pegou esse item' : 'Não deu agora'); qc.invalidateQueries({ queryKey: ['bring', id] }); return }
+    qc.setQueryData(['bring', id], r)
+  }
+  return (
+    <Page>
+      <TopBar title="Quem leva o quê" right={l && <button onClick={() => shareLink({ text: `${l.title}: quem leva o quê? Marca o que você leva aqui 👇`, url: bringUrl(id) }, toast)} aria-label="Compartilhar" className="grid size-9 place-items-center rounded-full bg-white/[0.06]"><Share2 size={16} /></button>} />
+      <div className="px-5 pb-12">
+        {q.isLoading && <><Skeleton className="h-10 w-2/3" /><Skeleton className="mt-4 h-40" /></>}
+        {q.isFetched && !l && <EmptyState title="Lista não encontrada" text="O link pode estar errado ou a lista foi apagada." />}
+        {l && (
+          <>
+            <h1 className="font-serif text-[40px] leading-[0.95]">{l.title}</h1>
+            <p className="mt-2 text-[13px] text-mute">Lista de {l.mine ? 'você' : <Link to={`/u/${l.owner.pid}`} className="text-accent">{l.owner.name}</Link>} · {l.items.filter((x) => x.who).length} de {l.items.length} já têm dono</p>
+            {!me?.onboarded && <p className="mt-3 rounded-[16px] bg-accent/10 p-3 text-[13px] text-accent">Pra marcar o que você leva, crie seu perfil no rolê. (leva 1 minuto).</p>}
+            <ul className="mt-5 grid gap-2">
+              {l.items.map((it) => (
+                <li key={it.i} className="flex items-center gap-3 rounded-[18px] border border-line px-4 py-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px]">{it.what}</span>
+                    <span className={cx('block text-[12px]', it.who ? 'text-accent' : 'text-faint')}>{it.who ? (it.me ? 'você leva' : `${it.who} leva`) : 'ninguém ainda'}</span>
+                  </span>
+                  {(!it.who || it.me) && (
+                    <button onClick={() => act('claim', { i: it.i })} className={cx('h-9 shrink-0 rounded-full px-3.5 text-[13px] font-medium', it.me ? 'border border-line text-mute' : 'bg-accent text-accent-ink')}>{it.me ? 'Desmarcar' : 'Eu levo'}</button>
+                  )}
+                  {l.mine && <button onClick={() => act('remove', { i: it.i })} aria-label={`Tirar ${it.what}`} className="grid size-8 shrink-0 place-items-center text-mute">×</button>}
+                </li>
+              ))}
+            </ul>
+            <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (nw.trim()) { void act('add', { what: nw.trim() }); setNw('') } }}>
+              <input value={nw} onChange={(e) => setNw(e.target.value.slice(0, 40))} placeholder="Faltou algo? Adicione" aria-label="Adicionar item" className="h-11 min-w-0 flex-1 rounded-full border border-line bg-white/[0.03] px-4 text-[14px] outline-none focus:border-accent" />
+              <button type="submit" className="h-11 rounded-full border border-line px-4 text-[14px]">+</button>
+            </form>
+          </>
+        )}
+      </div>
+    </Page>
   )
 }
 

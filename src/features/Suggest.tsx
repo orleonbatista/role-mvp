@@ -1,3 +1,4 @@
+import { canGoBack } from '../lib/nav'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -195,7 +196,7 @@ export function SuggestPage() {
     ) : null}>
       <div className="flex items-center justify-between px-5 pt-safe-lg">
         <span className="font-serif text-xl italic">rolê<span className="text-accent">.</span></span>
-        <button onClick={() => (history.length > 1 ? nav(-1) : nav('/'))} className="grid size-9 place-items-center rounded-full bg-white/[0.06]" aria-label="Fechar"><X size={16} /></button>
+        <button onClick={() => (canGoBack() ? nav(-1) : nav(location.pathname.replace('/s/', '/r/') + location.search + location.hash))} className="grid size-9 place-items-center rounded-full bg-white/[0.06]" aria-label="Fechar"><X size={16} /></button>
       </div>
 
       {!data || !c ? (
