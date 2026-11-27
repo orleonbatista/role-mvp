@@ -106,8 +106,10 @@ export let sessionLost = false
 async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opts: { admin?: boolean; timeout?: number } = {}, retried = false): Promise<T | null> {
   const base = await apiBase()
   if (!base) return null
-  // leitura não espera a sessão nascer (aparelho novo ainda não tem uma e o servidor aceita); escrita espera
-  if (!getSession() && path !== '/api/auth/google') { if (method === 'GET') void ensureSession(); else await ensureSession() }
+  // toda chamada espera a sessão: deixar leitura ir sem ela criava corrida (a leitura sem token voltava 401 depois que
+  // a sessão nascia e o app jogava fora o token válido; o aparelho ficava sem sessão de vez)
+  if (!getSession() && path !== '/api/auth/google') await ensureSession()
+  const sentWith = getSession()
   try {
     const r = await fetch(base + path, {
       method,
@@ -124,7 +126,11 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opt
     })
     if (r.status === 401 && !retried && !opts.admin) {
       const j = await r.clone().json().catch(() => null)
-      if (j?.error === 'session') { setSession(null); if (await ensureSession()) return call<T>(method, path, body, opts, true) }
+      // só descarta o token se foi ele que o servidor recusou; sem token, só tenta de novo com o atual
+      if (j?.error === 'session') {
+        if (sentWith && getSession() === sentWith) setSession(null)
+        if (getSession() || (await ensureSession())) return call<T>(method, path, body, opts, true)
+      }
     }
     if (!r.ok) return null
     return (await r.json()) as T
