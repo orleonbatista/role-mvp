@@ -732,7 +732,8 @@ function handlePeople(method, path, body, device, now) {
     // @ único: mantém o que já tem; senão tenta o pedido e, se ocupado, acrescenta número
     let handle = ex?.handle ?? null
     if (!handle) {
-      const want = slugHandle(p.handle || p.name) || 'role'
+      const fromHandle = slugHandle(p.handle)
+      const want = (fromHandle.length >= 3 ? fromHandle : slugHandle(p.name)) || 'role'
       handle = want
       for (let i = 2; db.prepare('SELECT 1 FROM users WHERE handle = ? AND device != ?').get(handle, device); i++) handle = `${want}${i}`
       db.prepare('UPDATE users SET handle = ? WHERE device = ?').run(handle, device)
