@@ -22,6 +22,7 @@ import { snapOf } from '../lib/places'
 const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`
 // a API roda dentro do app: sem atraso artificial (era resto da fase de protótipo e somava ~0,3 s em cada tela)
 const latency = () => Promise.resolve()
+const syncedOnce = new Set<string>()
 const notFound = () => HttpResponse.json({ error: 'not_found' }, { status: 404 })
 
 const getProfile = () => db.profile.get('me')
@@ -544,7 +545,15 @@ export const handlers = [
     const local = await db.requests.get(id)
     // pedido meu criado antes do backend existir (ou com ele fora do ar): publica agora
     if (local?.authorId === 'me' && !remote.wasPushed(id)) await remote.pushRequest(local, await authorInfo())
-    await remote.syncRequest(id)
+    // já tem cópia local: mostra na hora e sincroniza por trás na primeira abertura (antes a tela esperava o servidor,
+    // até 2,5 s a mais); dali em diante cada atualização (a cada 4 s) espera a sincronização como antes
+    if (local && !syncedOnce.has(id)) {
+      syncedOnce.add(id)
+      void remote.syncRequest(id).then(() => window.dispatchEvent(new CustomEvent('role:request-synced', { detail: id }))).catch(() => {})
+    } else {
+      syncedOnce.add(id)
+      await remote.syncRequest(id)
+    }
     const detail = await buildDetail(id)
     await latency()
     return detail ? HttpResponse.json(detail) : notFound()

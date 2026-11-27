@@ -71,6 +71,7 @@ async function boot() {
     if (cur && res?.handle && res.handle !== cur.handle) { await db.profile.put({ ...cur, handle: res.handle }); qc.invalidateQueries({ queryKey: ['me'] }) }
   }
   void reconcile().catch(() => {})
+  window.addEventListener('role:request-synced', (e) => qc.invalidateQueries({ queryKey: ['request', (e as CustomEvent<string>).detail] }))
   const timer = setInterval(() => { if (synced) clearInterval(timer); else void reconcile().catch(() => {}) }, 45_000)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void reconcile().catch(() => {}) })
   window.addEventListener('online', () => void reconcile().catch(() => {}))

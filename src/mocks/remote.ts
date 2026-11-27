@@ -45,7 +45,9 @@ export async function apiBase(force = false): Promise<string | null> {
   // abertura a frio: usa o último endereço bom (até 6 h) na hora e confere em segundo plano. Antes eram 3 idas e
   // voltas em série (llm.json → /health → sessão) antes da primeira chamada; a votação levava ~7 s pra abrir
   if (!force && !health) {
-    const last = lastGood()
+    // primeira visita (quem chega pelo link do zap): só lê o endereço no llm.json e já chama; o teste de saúde
+    // corre em paralelo em vez de ficar na frente
+    const last = lastGood() ?? (await configBase())
     if (last) { if (!probing) probing = probe().finally(() => { probing = null }); return last }
   }
   // várias telas perguntando ao mesmo tempo: um teste só
@@ -53,9 +55,12 @@ export async function apiBase(force = false): Promise<string | null> {
   probing = probe().finally(() => { probing = null })
   return probing
 }
-async function probe(): Promise<string | null> {
+async function configBase(): Promise<string | null> {
   const cfg = API_URL ? { enabled: true, url: API_URL } : await gatewayConfig()
-  const base = cfg?.enabled && cfg.url ? cfg.url.replace(/\/$/, '') : null
+  return cfg?.enabled && cfg.url ? cfg.url.replace(/\/$/, '') : null
+}
+async function probe(): Promise<string | null> {
+  const base = await configBase()
   if (!base) { health = { at: Date.now(), base: null }; return null }
   try {
     const r = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(6000) })
@@ -101,7 +106,8 @@ export let sessionLost = false
 async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opts: { admin?: boolean; timeout?: number } = {}, retried = false): Promise<T | null> {
   const base = await apiBase()
   if (!base) return null
-  if (!getSession() && path !== '/api/auth/google') await ensureSession()
+  // leitura não espera a sessão nascer (aparelho novo ainda não tem uma e o servidor aceita); escrita espera
+  if (!getSession() && path !== '/api/auth/google') { if (method === 'GET') void ensureSession(); else await ensureSession() }
   try {
     const r = await fetch(base + path, {
       method,
