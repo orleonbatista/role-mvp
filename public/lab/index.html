@@ -53,6 +53,7 @@ section[hidden]{display:none}
 .detail .hero{position:relative;height:300px;overflow:hidden}
 .detail .hero .t{position:absolute;left:18px;bottom:16px}
 .detail .n{font:400 46px/1 "Instrument Serif",serif}
+.detail .k{font:600 11px Geist;letter-spacing:.12em;text-transform:uppercase;opacity:.85}
 .back{position:absolute;top:14px;left:14px;z-index:3;width:38px;height:38px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:20px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .body{padding:18px}
 .vote{display:flex;align-items:center;gap:12px;margin-top:14px;padding:14px;border-radius:20px;border:1px solid var(--line);background:var(--surface)}
@@ -326,7 +327,9 @@ addEventListener('resize', () => r?.resizeDrawingSurfaceToCanvas?.())
 
 /* ---------- 4. 3D ---------- */
 function startThree() {
-  const s = document.createElement('script'); s.type = 'module'; s.src = 'three-demo.js'
+  // erro do módulo 3D aparece na própria tela (sem WebGL, sem rede…)
+  addEventListener('error', (e) => { if (String(e.filename || '').includes('three')) $('#threeStatus').textContent = 'Erro no 3D: ' + e.message })
+  const s = document.createElement('script'); s.type = 'module'; s.src = 'three-demo.js?v=2'
   s.onerror = () => { $('#threeStatus').textContent = 'Não carregou o 3D' }
   document.body.appendChild(s)
 }

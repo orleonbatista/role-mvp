@@ -1,10 +1,12 @@
+const __st = document.getElementById('threeStatus'); __st.textContent = 'montando a cena…'
 // 3D: duas canecas de vidro com chope, brindando em loop. three.js + ambiente de estúdio pra reflexo.
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 
 const cv = document.getElementById('three')
 const status = document.getElementById('threeStatus')
-const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true })
+let renderer
+try { renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true }) } catch (e) { status.textContent = 'Este navegador não liberou o 3D (WebGL): ' + e.message; throw e }
 renderer.setPixelRatio(Math.min(2, devicePixelRatio))
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 const scene = new THREE.Scene()
