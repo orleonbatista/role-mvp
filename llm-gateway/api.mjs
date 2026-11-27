@@ -94,6 +94,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS rsvps (request_id TEXT NOT NULL, device TEXT NOT NULL, status TEXT NOT NULL, voter TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (request_id, device));
   CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, device TEXT NOT NULL, voter TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_msg_req ON messages(request_id, at);
+  CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, kind TEXT NOT NULL, target_id TEXT NOT NULL, device TEXT NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'aberta', UNIQUE (kind, target_id, device));
 `)
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'closes_at'").get()) { db.exec('ALTER TABLE requests ADD COLUMN closes_at INTEGER'); db.exec('ALTER TABLE requests ADD COLUMN close_notified INTEGER') }
 if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'role'").get()) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'usuario'")
@@ -196,7 +197,7 @@ function requestState(id) {
     votes: q.votes.all(id),
     slots: db.prepare('SELECT device, slot, voter, at FROM slots WHERE request_id = ? ORDER BY at').all(id),
     rsvps: db.prepare('SELECT device, status, voter, at FROM rsvps WHERE request_id = ? ORDER BY at').all(id),
-    messages: db.prepare('SELECT id, device, voter, text, at FROM messages WHERE request_id = ? ORDER BY at DESC LIMIT 30').all(id).reverse(),
+    messages: db.prepare("SELECT id, device, voter, text, at FROM messages WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'message' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at DESC LIMIT 30").all(id).reverse(),
     closesAt: r.closes_at ?? null,
     suggestions: q.sugs.all(id).map((x) => ({ ...x, place: x.place ? parse(x.place) : undefined })),
   }
@@ -602,6 +603,19 @@ export function handleApi(method, path, req, body) {
     return ok({ ok: true, groupId })
   }
 
+  // votações de outras pessoas em que este aparelho (ou a conta Google dele) participou: segue a pessoa de celular em celular
+  if (method === 'GET' && path === '/api/invites') {
+    const ids = db.prepare(`SELECT DISTINCT request_id id FROM (
+        SELECT request_id FROM votes WHERE device = ? UNION SELECT request_id FROM slots WHERE device = ?
+        UNION SELECT request_id FROM rsvps WHERE device = ? UNION SELECT request_id FROM messages WHERE device = ?)`).all(device, device, device, device).map((x) => x.id)
+    const out = []
+    for (const id of ids) {
+      const r = q.getReq.get(id)
+      if (r && r.author_device !== device) out.push({ id, createdAt: r.created_at })
+    }
+    return ok(out.sort((a, b) => b.createdAt - a.createdAt).slice(0, 30))
+  }
+
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})$/)) && method === 'GET') {
     const s = requestState(m[1])
     return s ? ok(s) : bad('not_found', 404)
@@ -741,6 +755,40 @@ export function handleApi(method, path, req, body) {
     if (!status) return bad('status')
     const upd = q.setSub.run(status, now, m[1])
     return upd.changes ? ok({ ok: true }) : bad('not_found', 404)
+  }
+  // denúncia: qualquer pessoa denuncia avaliação, recado ou sugestão; com 3 denúncias de aparelhos diferentes some na hora
+  // e vai pra fila da curadoria, que remove ou mantém
+  if (method === 'POST' && path === '/api/reports') {
+    if (!RE.device.test(device)) return bad('device')
+    const kind = ['review', 'message', 'suggestion'].includes(body.kind) ? body.kind : null
+    const target = str(body.id, 60)
+    if (!kind || !target) return bad('report')
+    const reason = ['ofensivo', 'spam', 'falso', 'outro'].includes(body.reason) ? body.reason : 'outro'
+    db.prepare('INSERT OR IGNORE INTO reports (id, kind, target_id, device, reason, at) VALUES (?, ?, ?, ?, ?, ?)').run(`rp-${randomBytes(6).toString('hex')}`, kind, target, device, reason, now)
+    const n = db.prepare("SELECT COUNT(*) n FROM reports WHERE kind = ? AND target_id = ? AND status = 'aberta'").get(kind, target).n
+    if (n >= 3 && kind === 'review') db.prepare("UPDATE reviews SET status = 'oculta', motivo = 'denúncias' WHERE id = ?").run(target)
+    return ok({ ok: true })
+  }
+  if (method === 'GET' && path === '/api/admin/reports') {
+    if (!isCurator(req)) return bad('admin', 401)
+    const rows = db.prepare(`SELECT kind, target_id, COUNT(*) n, GROUP_CONCAT(reason) reasons, MAX(at) last FROM reports WHERE status = 'aberta' GROUP BY kind, target_id ORDER BY n DESC, last DESC LIMIT 50`).all()
+    return ok(rows.map((r) => {
+      const t = r.kind === 'review' ? db.prepare('SELECT name who, note text FROM reviews WHERE id = ?').get(r.target_id)
+        : r.kind === 'message' ? db.prepare('SELECT voter who, text FROM messages WHERE id = ?').get(r.target_id)
+        : db.prepare('SELECT by_name who, comment text FROM suggestions WHERE id = ?').get(r.target_id)
+      return { kind: r.kind, id: r.target_id, count: r.n, reasons: [...new Set(String(r.reasons).split(','))], at: r.last, who: t?.who ?? '—', text: t?.text ?? '(já removido)' }
+    }))
+  }
+  if ((m = path.match(/^\/api\/admin\/reports\/(review|message|suggestion)\/([A-Za-z0-9_-]{1,60})$/)) && write) {
+    if (!isCurator(req)) return bad('admin', 401)
+    const [, kind, id] = m
+    if (body.action === 'remove') {
+      if (kind === 'review') db.prepare("UPDATE reviews SET status = 'removida', motivo = 'curadoria' WHERE id = ?").run(id)
+      if (kind === 'message') db.prepare('DELETE FROM messages WHERE id = ?').run(id)
+      if (kind === 'suggestion') db.prepare('DELETE FROM suggestions WHERE id = ?').run(id)
+    } else if (kind === 'review') db.prepare("UPDATE reviews SET status = 'ok', motivo = NULL WHERE id = ? AND status = 'oculta'").run(id)
+    db.prepare("UPDATE reports SET status = ? WHERE kind = ? AND target_id = ?").run(body.action === 'remove' ? 'removida' : 'mantida', kind, id)
+    return ok({ ok: true })
   }
   if (method === 'GET' && path === '/api/admin/check') {
     const role = keyOk(req) ? 'admin' : roleOf(devOf(req))

@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { Cpu, Database, Download, MessageSquareHeart, Store } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { adminUsers, checkAdmin, getAdminKey, setAdminKey, setUserRole } from '../mocks/remote'
+import { adminUsers, openReports, resolveReport, checkAdmin, getAdminKey, setAdminKey, setUserRole } from '../mocks/remote'
 import { useToast } from '../ui/Toast'
 import { cx } from '../ui/primitives'
 import { getLLMOverride, llmStatus, setLLMOverride } from '../mocks/llm'
@@ -195,6 +195,7 @@ export function TestesPage() {
       </p>
 
       {canGlobal && <UsersCard />}
+      {sync?.curator && <ReportsCard />}
       {canGlobal && global?.funnel && <FunnelCard f={global.funnel} />}
       {canGlobal && global?.apis && <ApisCard apis={global.apis} />}
       <BackendCard />
@@ -434,6 +435,31 @@ function FunnelCard({ f }: { f: { people: { label: string; n: number }[]; reques
       <div className="mx-5 rounded-[20px] border border-line p-4">
         {block('Pessoas (aparelhos) por etapa · % sobre a etapa anterior', f.people)}
         {block('Pedidos', f.requests)}
+      </div>
+    </section>
+  )
+}
+
+/* curadoria: fila de denúncias (avaliações, recados, sugestões) */
+function ReportsCard() {
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['reports'], queryFn: openReports, staleTime: 15_000 })
+  const KIND = { review: 'avaliação', message: 'recado', suggestion: 'sugestão' } as const
+  return (
+    <section className="mt-7">
+      <SectionTitle aside={<span className="text-xs text-faint">{q.data?.length ?? 0} abertas</span>}>Denúncias</SectionTitle>
+      <div className="mx-5 grid gap-2">
+        {q.data?.length === 0 && <p className="rounded-[20px] border border-dashed border-line p-4 text-[13px] text-faint">Nenhuma denúncia aberta.</p>}
+        {q.data?.map((r) => (
+          <div key={r.kind + r.id} className="rounded-[20px] border border-line p-4">
+            <p className="text-[11px] text-faint">{KIND[r.kind]} de {r.who} · {r.count} {r.count === 1 ? 'denúncia' : 'denúncias'} · {r.reasons.join(', ')}</p>
+            <p className="mt-1.5 text-[14px]">{r.text}</p>
+            <div className="mt-3 flex gap-2">
+              <button className="h-9 rounded-full bg-[#ff6b6b] px-4 text-[12px] font-medium text-black" onClick={async () => { await resolveReport(r.kind, r.id, 'remove'); qc.invalidateQueries({ queryKey: ['reports'] }) }}>Remover</button>
+              <button className="h-9 rounded-full border border-line px-4 text-[12px]" onClick={async () => { await resolveReport(r.kind, r.id, 'keep'); qc.invalidateQueries({ queryKey: ['reports'] }) }}>Manter</button>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   )

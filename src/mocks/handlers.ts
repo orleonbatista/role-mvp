@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw'
-import { db } from '../db/db'
+import { db, demoOn } from '../db/db'
 import type {
   Answer, AnswerDTO, Criteria, Ranked, DiaryEntry, EventSubmission, Feedback, FeedItem, Lead, Person, Place, PlaceDetail, Profile, RequestDetail, Review,
   RoleRequest, Verdict, Vote, VoteTally,
@@ -344,7 +344,8 @@ export const handlers = [
     const place = placeById.get(params.id as string)
     if (!place) return notFound()
     const verdicts: Verdict[] = ['amei', 'amei', 'ok']
-    const reviews = people
+    // avaliações de curadores fictícios: só no modo demonstração (fora dele, só aparecem avaliações reais)
+    const reviews = !(await demoOn()) ? [] : people
       .filter((u) => u.curatorOf.some((n) => place.niches.includes(n)))
       .slice(0, 3)
       .map((user, i) => ({
@@ -360,6 +361,9 @@ export const handlers = [
   /** votações que chegaram por link (rolê de outra pessoa): convidado e/ou já votou */
   http.get('/api/invites', async () => {
     const me = (() => { try { return localStorage.getItem('role.voter') ?? '' } catch { return '' } })().trim()
+    // as que este aparelho/conta participou em outro celular: puxa do servidor as que ainda não estão aqui
+    const remoteIds = (await remote.myInvites()) ?? []
+    for (const x of remoteIds) if (!(await db.requests.get(x.id))) await remote.syncRequest(x.id).catch(() => false)
     const reqs = await db.requests.filter((r) => !!r.externalAuthor).toArray()
     const items = await Promise.all(reqs.map(async (r) => {
       const votes = await db.votes.where('requestId').equals(r.id).toArray()

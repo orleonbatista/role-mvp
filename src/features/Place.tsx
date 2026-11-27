@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { StoryCard } from '../lib/storyCard'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { GoogleLive } from './GoogleLive'
+import { ReportButton } from './Report'
 import { useQuery } from '@tanstack/react-query'
 import { placeReviews } from '../mocks/remote'
 import { ChevronLeft, Clock, MapPin, Megaphone, MessageCircle, Phone, Share2, Star, Ticket, Users } from 'lucide-react'
@@ -197,6 +198,7 @@ export function PlacePage() {
                   <Avatar name={r.name} hue={r.hue ?? 200} size={24} />
                   <span className="text-[13px]">{r.name}</span>
                   <span className="ml-auto text-xs text-mute">{VERDICT_LABEL[r.verdict]} · {timeAgo(r.at)}</span>
+                  {r.note && <ReportButton kind="review" id={r.id} />}
                 </div>
                 {r.note && <p className="mt-2 text-[14px] text-ink/85">{r.note}</p>}
               </motion.div>

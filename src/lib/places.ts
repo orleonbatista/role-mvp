@@ -76,17 +76,33 @@ function hoodOf(g: GPlace) {
 }
 
 
+/** taxonomia do rolê: o tipo do Google ("Lanchonete", "Restaurante") nem sempre diz o que o lugar é pra quem sai.
+ *  O nome manda quando é claro (Boteco Augusta é boteco, mesmo cadastrado como restaurante). */
+export function ownType(name: string, types: string, googleLabel?: string): { label: string; kind?: Place['kind'] } {
+  const n = name.toLowerCase()
+  if (/night_club/.test(types)) return { label: 'Balada', kind: 'balada' }
+  if (/cocktail_bar/.test(types) || /coquetel|cocktail|drinks?\b/.test(n)) return { label: 'Coquetelaria', kind: 'bar' }
+  if (/wine_bar/.test(types) || /\bvinhos?\b|wine/.test(n)) return { label: 'Bar de vinhos', kind: 'bar' }
+  if (/brewery|brewpub|beer_hall/.test(types) || /cervejaria|brew/.test(n)) return { label: 'Cervejaria', kind: 'bar' }
+  if (/bot[ei]co|buteco|botequim/.test(n)) return { label: 'Boteco', kind: 'bar' }
+  if (/\bpub\b/.test(types) || /\bpub\b/.test(n)) return { label: 'Pub', kind: 'bar' }
+  if (/\bbar\b|choperia|chopp|choperia/.test(n) || /(^| )bar( |$)/.test(types)) return { label: 'Bar', kind: 'bar' }
+  if (/restaurant/.test(types)) return { label: googleLabel && /restaurante/i.test(googleLabel) ? googleLabel : 'Restaurante', kind: 'restaurante' }
+  return { label: googleLabel ?? 'Bar' }
+}
+
 /** query ajuda a estimar estilo/vibe: quem buscou "listening bar" quer um listening bar */
 export function toPlace(g: GPlace, query = ''): Place {
   const types = [g.primaryType ?? '', ...(g.types ?? [])].join(' ')
-  const kind = KIND_BY_TYPE.find(([re]) => re.test(types))?.[1] ?? 'bar'
+  const own = ownType(g.displayName?.text ?? '', types, g.primaryTypeDisplayName?.text)
+  const kind = own.kind ?? KIND_BY_TYPE.find(([re]) => re.test(types))?.[1] ?? 'bar'
   const fromQuery = query ? parseRequest(query) : null
   const niches = [...new Set([...(fromQuery?.niches ?? []), ...NICHE_BY_TYPE.filter(([re]) => re.test(types)).map(([, n]) => n)])].slice(0, 3) as Niche[]
   const vibes = (fromQuery?.vibes ?? []).slice(0, 2) as Vibe[]
   const occasions: Occasion[] = kind === 'restaurante' ? ['date', 'amigos', 'aniversario'] : kind === 'balada' ? ['amigos', 'solo', 'aniversario'] : ['amigos', 'date', 'aniversario']
   const range = g.priceRange ? [Number(g.priceRange.startPrice?.units), Number(g.priceRange.endPrice?.units)].filter((x) => x > 0) : []
   const price = range.length ? Math.round(range.reduce((a, b) => a + b, 0) / range.length) : kind === 'restaurante' ? 90 : 70
-  const typeLabel = g.primaryTypeDisplayName?.text ?? (kind === 'balada' ? 'Balada' : kind === 'restaurante' ? 'Restaurante' : 'Bar')
+  const typeLabel = own.label
   return {
     id: `g-${g.id}`, name: g.displayName?.text ?? 'Lugar', kind, hood: hoodOf(g), niches: niches.length ? niches : ['drinks'], vibes, occasions,
     price, capacity: kind === 'balada' ? 300 : 40,

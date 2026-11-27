@@ -1,3 +1,4 @@
+import { ReportButton } from './Report'
 import { DeadlinePicker } from './GroupPanel'
 import { confirmSheet } from '../ui/Confirm'
 import { AnimatePresence, motion } from 'motion/react'
@@ -254,6 +255,7 @@ function Community({ data }: { data: RequestDetail }) {
                   </p>
                 </div>
                 <span className={cx('shrink-0 rounded-full px-2 py-0.5 text-[11px]', a.fit.match >= 70 ? 'bg-accent/15 text-accent' : 'bg-amber-400/15 text-amber-300')}>{fitLabel(a.fit.match)}</span>
+                {a.kind === 'sugestao' && <ReportButton kind="suggestion" id={a.id} />}
               </div>
               <p className="mt-3 text-[14px] leading-relaxed text-ink/90">{a.comment}</p>
               {a.fit.warnings[0] && <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-amber-300/90"><AlertTriangle size={12} />{a.fit.warnings[0]}</p>}

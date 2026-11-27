@@ -182,6 +182,7 @@ export async function syncRequest(id: string): Promise<boolean> {
 
 export const pushVote = (rid: string, kind: 'place' | 'time', value: string, voter: string) =>
   call('POST', `/api/requests/${encodeURIComponent(rid)}/votes`, { kind, value, voter }).then(Boolean)
+export const myInvites = () => call<{ id: string; createdAt: number }[]>('GET', '/api/invites', undefined, { timeout: 4000 })
 export const pushSlot = (rid: string, slot: string, on: boolean, voter: string) =>
   call('POST', `/api/requests/${encodeURIComponent(rid)}/slots`, { slot, on, voter }).then(Boolean)
 export const pushRsvp = (rid: string, status: Rsvp, voter: string) =>
@@ -318,3 +319,10 @@ export const deleteRequestRemote = (id: string) => call('POST', `/api/requests/$
 /* ---------- avisos (Web Push) ---------- */
 export const pushKey = () => call<{ key: string }>('GET', '/api/push/key', undefined, { timeout: 4000 })
 export const pushSubscribe = (sub: PushSubscriptionJSON) => call<{ ok: boolean }>('POST', '/api/push/subscribe', sub)
+
+/* ---------- denúncias ---------- */
+export type ReportKind = 'review' | 'message' | 'suggestion'
+export const report = (kind: ReportKind, id: string, reason: string) => call('POST', '/api/reports', { kind, id, reason }).then(Boolean)
+export interface OpenReport { kind: ReportKind; id: string; count: number; reasons: string[]; at: number; who: string; text: string }
+export const openReports = () => call<OpenReport[]>('GET', '/api/admin/reports', undefined, { admin: true, timeout: 5000 })
+export const resolveReport = (kind: ReportKind, id: string, action: 'remove' | 'keep') => call('POST', `/api/admin/reports/${kind}/${encodeURIComponent(id)}`, { action }, { admin: true }).then(Boolean)

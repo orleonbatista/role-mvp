@@ -6,6 +6,7 @@ import type { Place, RequestDetail } from '../lib/types'
 import { slotDate } from '../lib/slot'
 import { track } from '../lib/track'
 import { cx } from '../ui/primitives'
+import { ReportButton } from './Report'
 
 /* Decisão em grupo: prazo da votação, presença ("vou / talvez"), recados pra turma e o card do rolê fechado
    (rota, clima, agenda). Presença, recados e prazo vivem no servidor; sem conexão, esses blocos não aparecem. */
@@ -94,9 +95,12 @@ export function Messages({ d, voter }: { d: RequestDetail; voter: string }) {
       <div className="grid gap-1.5">
         {ex.messages.length === 0 && <p className="text-[12px] text-faint">Combine aqui: ponto de encontro, quem leva o quê. Todo mundo que votou recebe.</p>}
         {ex.messages.map((m) => (
-          <p key={m.id} className={cx('w-fit max-w-[85%] rounded-2xl px-3 py-2 text-[13px]', m.mine ? 'ml-auto bg-accent/15' : 'bg-white/[0.05]')}>
-            {!m.mine && <b className="mr-1 font-medium text-accent">{m.voter}</b>}{m.text}
-          </p>
+          <div key={m.id} className={cx('flex items-center gap-1', m.mine && 'justify-end')}>
+            <p className={cx('w-fit max-w-[85%] rounded-2xl px-3 py-2 text-[13px]', m.mine ? 'bg-accent/15' : 'bg-white/[0.05]')}>
+              {!m.mine && <b className="mr-1 font-medium text-accent">{m.voter}</b>}{m.text}
+            </p>
+            {!m.mine && <ReportButton kind="message" id={m.id} />}
+          </div>
         ))}
       </div>
       <form className="mt-2 flex gap-2" onSubmit={async (e) => {
