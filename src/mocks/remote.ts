@@ -90,6 +90,8 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opt
 interface RemoteState {
   request: { id: string; text: string; criteria: RoleRequest['criteria']; optionIds: string[]; times: string[]; author: { name: string; hue: number }; createdAt: number; eventId?: string; places?: unknown[] }
   authorDevice: string
+  /** apelido deste aparelho no servidor (os ids reais não saem de lá) */
+  me?: string
   decision: { placeId: string; time?: string; at: number } | null
   votes: { device: string; kind: 'place' | 'time'; value: string; voter: string; at: number }[]
   suggestions: { id: string; placeId: string; byName: string; comment: string; hue: number; device: string; at: number; place?: unknown }[]
@@ -127,7 +129,7 @@ export const wasPushed = (id: string) => pushed.has(id)
 export async function syncRequest(id: string): Promise<boolean> {
   const s = await call<RemoteState>('GET', `/api/requests/${encodeURIComponent(id)}`, undefined, { timeout: 2500 })
   if (!s) return false
-  const me = deviceId()
+  const me = s.me ?? deviceId()
   const mine = s.authorDevice === me
   // lugares do Google que este aparelho ainda não conhece
   adoptSnaps([...(s.request.places ?? []), ...s.suggestions.map((x) => x.place).filter(Boolean)])
@@ -153,6 +155,8 @@ export async function syncRequest(id: string): Promise<boolean> {
   }
   // votos de lugar de OUTROS aparelhos (os meus já estão no local); id estável = um voto por aparelho
   const remoteVotes = s.votes.filter((v) => v.device !== me && v.kind === 'place')
+  // o retrato do servidor substitui o anterior (e limpa ids antigos, de antes dos apelidos)
+  await db.votes.bulkDelete(await db.votes.where('requestId').equals(id).filter((v) => v.id.startsWith('rv-') && (v.kind ?? 'place') === 'place').primaryKeys())
   if (remoteVotes.length) {
     await db.votes.bulkPut(remoteVotes.map((v) => ({ id: `rv-${v.device}-${v.kind}-${id}`, requestId: id, kind: v.kind, placeId: v.value, voter: v.voter, createdAt: v.at })))
   }

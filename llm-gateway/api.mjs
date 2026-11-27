@@ -3,7 +3,7 @@
 // aparelhos: pedidos, votos, sugestões, decisão, eventos enviados/curadoria, métricas, feedback e leads.
 // Catálogo, ranking e perfil continuam no aparelho (o app funciona sem backend e sincroniza quando ele está no ar).
 import { DatabaseSync } from 'node:sqlite'
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -198,20 +198,28 @@ const q = {
   insLead: db.prepare('INSERT OR IGNORE INTO leads (id, device, data, at) VALUES (?, ?, ?, ?)'),
 }
 
-function requestState(id) {
+// o id do aparelho é a credencial de quem usa: nunca sai do servidor pra terceiros. Fora daqui vai um apelido estável
+// (hash com sal secreto), suficiente pro app saber "esse voto é meu?" sem permitir se passar por outra pessoa
+const SALT_FILE = join(DATA, 'pseudo-salt.txt')
+if (!existsSync(SALT_FILE)) writeFileSync(SALT_FILE, randomBytes(24).toString('hex'))
+const SALT = readFileSync(SALT_FILE, 'utf8').trim()
+const pseudo = (device) => (device ? `u-${createHash('sha256').update(SALT + device).digest('hex').slice(0, 16)}` : device)
+const hide = (rows) => rows.map((x) => ({ ...x, device: pseudo(x.device) }))
+
+function requestState(id, viewer) {
   const r = q.getReq.get(id)
   if (!r) return null
   return {
     request: { ...parse(r.data), id: r.id, createdAt: r.created_at },
-    authorDevice: r.author_device, groupId: r.group_id ?? undefined,
+    authorDevice: pseudo(r.author_device), me: pseudo(viewer), groupId: r.group_id ?? undefined,
     decision: r.decided_place ? { placeId: r.decided_place, time: r.decided_time ?? undefined, at: r.decided_at } : null,
-    votes: q.votes.all(id),
-    slots: db.prepare('SELECT device, slot, voter, at FROM slots WHERE request_id = ? ORDER BY at').all(id),
-    rsvps: db.prepare('SELECT device, status, voter, at FROM rsvps WHERE request_id = ? ORDER BY at').all(id),
-    messages: db.prepare("SELECT id, device, voter, text, at FROM messages WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'message' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at DESC LIMIT 30").all(id).reverse(),
+    votes: hide(q.votes.all(id)),
+    slots: hide(db.prepare('SELECT device, slot, voter, at FROM slots WHERE request_id = ? ORDER BY at').all(id)),
+    rsvps: hide(db.prepare('SELECT device, status, voter, at FROM rsvps WHERE request_id = ? ORDER BY at').all(id)),
+    messages: db.prepare("SELECT id, device, voter, text, at FROM messages WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'message' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at DESC LIMIT 30").all(id).reverse().map((x) => ({ ...x, device: pseudo(x.device) })),
     closesAt: r.closes_at ?? null,
-    photos: db.prepare("SELECT id, device, voter, at FROM photos WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'photo' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at").all(id),
-    suggestions: q.sugs.all(id).map((x) => ({ ...x, place: x.place ? parse(x.place) : undefined })),
+    photos: db.prepare("SELECT id, device, voter, at FROM photos WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'photo' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at").all(id).map((x) => ({ ...x, device: pseudo(x.device) })),
+    suggestions: q.sugs.all(id).map((x) => ({ ...x, device: pseudo(x.device), place: x.place ? parse(x.place) : undefined })),
   }
 }
 
@@ -695,7 +703,7 @@ export function handleApi(method, path, req, body) {
   }
 
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})$/)) && method === 'GET') {
-    const s = requestState(m[1])
+    const s = requestState(m[1], device)
     return s ? ok(s) : bad('not_found', 404)
   }
 
