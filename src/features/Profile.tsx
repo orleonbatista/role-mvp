@@ -10,7 +10,7 @@ import { MyLists } from './Social'
 import { useState } from 'react'
 import { Sheet } from '../ui/Sheet'
 import { AvatarCrop } from './AvatarCrop'
-import { screenMetrics } from '../lib/screen'
+import { healViewport, screenMetrics } from '../lib/screen'
 import { Smartphone } from 'lucide-react'
 import { useToast } from '../ui/Toast'
 import { AnimatedNumber, Avatar, Button, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
@@ -290,7 +290,10 @@ function ScreenDiag() {
         <p className="font-serif text-[26px] leading-none">Diagnóstico da tela</p>
         <p className="mt-1 text-[13px] text-mute">Tire um print ou copie e mande pra gente: é assim que o celular informa o tamanho da tela pro app.</p>
         <pre className="mt-3 max-h-[45vh] overflow-auto whitespace-pre-wrap rounded-[14px] bg-white/[0.05] p-3 text-[12px] leading-relaxed">{text}</pre>
-        <Button className="mt-3 w-full" variant="soft" onClick={async () => { try { await navigator.clipboard.writeText(text); toast('Copiado') } catch { toast('Não deu pra copiar; tire um print') } }}>Copiar</Button>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Button variant="soft" onClick={async () => { try { await navigator.clipboard.writeText(text); toast('Copiado') } catch { toast('Não deu pra copiar; tire um print') } }}>Copiar</Button>
+          <Button variant="soft" onClick={() => { healViewport(); setTimeout(() => setM(screenMetrics()), 300) }}>Destravar tela</Button>
+        </div>
       </Sheet>
     </>
   )

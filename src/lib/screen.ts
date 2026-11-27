@@ -26,22 +26,46 @@ export function screenMetrics() {
     vh: probe('100vh'), lvh: probe('100lvh'), dvh: probe('100dvh'), svh: probe('100svh'), pct: document.documentElement.clientHeight,
     top: inset('top'), bottom: inset('bottom'),
     shellTop: Math.round(shell?.top ?? -1), shellBottom: Math.round(shell?.bottom ?? -1),
-    appH: getComputedStyle(document.documentElement).getPropertyValue('--app-h') || '(não usada)',
+    travada: document.documentElement.classList.contains('vp-stuck') ? 'sim' : 'não', maxInner,
     ua: navigator.userAgent.replace(/^Mozilla\/5\.0 /, ''),
   }
 }
-function fixAppHeight() {
-  const root = document.documentElement
+/* Bug do iOS no app instalado (tela de início): depois que o teclado abre pela primeira vez (e às vezes já ao abrir),
+   a janela encolhe (innerHeight 894 em vez de 956 no 17 Pro Max) e não volta até fechar o app; o iOS pinta uma faixa
+   preta embaixo e nada desenhado ali aparece. Medição do aparelho do Orleon em 27/11: inner 894, vh 956, topo 62.
+   Correção conhecida (dev.to/cederhook): esconder e mostrar de novo o contêiner de altura total força o WebKit a
+   recalcular a janela. Feito só no app instalado, só com a janela presa e sem teclado aberto. */
+let maxInner = 0
+function stuck() {
+  const full = Math.max(screen.width, screen.height)
+  maxInner = Math.max(maxInner, innerHeight)
+  return full - innerHeight > 4 && innerHeight > innerWidth
+}
+function typing() {
+  const a = document.activeElement as HTMLElement | null
+  return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)
+}
+export function healViewport() {
   const nav = navigator as Navigator & { standalone?: boolean }
   const standalone = nav.standalone === true || matchMedia('(display-mode: standalone)').matches
-  const portrait = innerHeight >= innerWidth
-  if (!standalone || !portrait) { root.style.removeProperty('--app-h'); return }
-  const m = screenMetrics()
-  const full = Math.max(screen.width, screen.height)
-  // teclado aberto encurta a janela: aí segue a janela (não estica pra baixo do teclado)
-  const keyboard = (visualViewport?.height ?? innerHeight) < innerHeight - 120
-  const h = keyboard ? innerHeight : Math.min(full, Math.max(m.vh, m.lvh, innerHeight))
-  root.style.setProperty('--app-h', `${h}px`)
+  const root = document.documentElement
+  if (!standalone) { root.classList.remove('vp-stuck'); return }
+  if (!stuck() || typing()) { if (!stuck()) root.classList.remove('vp-stuck'); return }
+  const el = document.getElementById('root')
+  if (el) {
+    const prev = el.style.display
+    el.style.display = 'none'
+    void el.offsetHeight // reflow síncrono, sem pintar
+    el.style.display = prev
+  }
+  // se não destravou, ajusta a barra de baixo pra área que sobrou
+  setTimeout(() => root.classList.toggle('vp-stuck', stuck()), 120)
+}
+function scheduleHeal(ms: number) { setTimeout(healViewport, ms) }
+
+function fixAppHeight() {
+  document.documentElement.style.removeProperty('--app-h')
+  scheduleHeal(0)
 }
 export function installScreenFix() {
   requestAnimationFrame(() => setTimeout(fixAppHeight, 30))
@@ -49,4 +73,7 @@ export function installScreenFix() {
   visualViewport?.addEventListener('resize', fixAppHeight)
   addEventListener('orientationchange', () => setTimeout(fixAppHeight, 300))
   document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(fixAppHeight, 50) })
+  // teclado fechou: espera ele sumir e destrava a janela
+  document.addEventListener('focusout', () => scheduleHeal(160))
+  addEventListener('pageshow', () => scheduleHeal(50))
 }
