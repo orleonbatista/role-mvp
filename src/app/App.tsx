@@ -57,6 +57,7 @@ const FundadorPage = lazy(() => retryImport(() => import('../features/Fundador')
 const PrivacidadePage = lazy(() => retryImport(() => import('../features/Privacidade').then((m) => ({ default: m.PrivacidadePage }))))
 const TurmasPage = lazy(() => retryImport(() => import('../features/Turmas').then((m) => ({ default: m.TurmasPage }))))
 const JoinTurmaPage = lazy(() => retryImport(() => import('../features/Turmas').then((m) => ({ default: m.JoinTurmaPage }))))
+const AppInvitePage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.AppInvitePage }))))
 const SocialPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.SocialPage }))))
 const PersonPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.PersonPage }))))
 const InboxPage = lazy(() => retryImport(() => import('../features/Inbox').then((m) => ({ default: m.InboxPage }))))
@@ -91,7 +92,7 @@ export function App() {
   // a abertura mostra a marca por pelo menos ~0,5 s: sem isso a tela de carregamento piscava e parecia não existir
   const [booted, setBooted] = useState(false)
   useEffect(() => { const t = setTimeout(() => setBooted(true), 500); return () => clearTimeout(t) }, [])
-  const isPublic = ['/t/', '/u/', '/lista/', '/ferramentas', '/r/', '/s/', '/e/', '/p/', '/lugar/', '/avaliar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
+  const isPublic = ['/a/', '/t/', '/u/', '/lista/', '/ferramentas', '/r/', '/s/', '/e/', '/p/', '/lugar/', '/avaliar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
   const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !isPublic
   // /perfil/ (com barra no fim, como o GitHub Pages serve as rotas fixas) vira /perfil: antes a barra inferior sumia
   // nessas telas porque a rota não batia
@@ -123,7 +124,7 @@ export function App() {
                     ['/onboarding', <Onboarding />], ['/novo', <NewRequest />], ['/pedido/:id', <Results />], ['/r/:id', <VotePage />],
                     ['/lugar/:id', <PlacePage />], ['/avaliar/:id', <ReviewPage />], ['/perfil', <ProfilePage />], ['/testes', <TestesPage />],
                     ['/s/:id', <SuggestPage />], ['/i/:id', <ImportSuggestion />],
-                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />], ['/t/:token', <JoinTurmaPage />], ['/buscar', <QuickSearch />], ['/amigos', <SocialPage />], ['/u/:pid', <PersonPage />], ['/lista/:id', <ListPage />], ['/notificacoes', <InboxPage />], ['/ferramentas', <FerramentasPage />],
+                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />], ['/t/:token', <JoinTurmaPage />], ['/a/:token', <AppInvitePage />], ['/buscar', <QuickSearch />], ['/amigos', <SocialPage />], ['/u/:pid', <PersonPage />], ['/lista/:id', <ListPage />], ['/notificacoes', <InboxPage />], ['/ferramentas', <FerramentasPage />],
                   ].map(([path, el]) => (
                     <Route key={path as string} path={path as string} element={<RouteError><Suspense fallback={<Fallback />}>{el}</Suspense></RouteError>} />
                   ))}

@@ -111,6 +111,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS ix_sess_dev ON sessions(device);
   -- rede social: amizades (pedido → aceite), bloqueios, listas de curadoria e chat da turma
   CREATE TABLE IF NOT EXISTS friendships (a TEXT NOT NULL, b TEXT NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
+  CREATE TABLE IF NOT EXISTS invites (token TEXT PRIMARY KEY, device TEXT NOT NULL UNIQUE, at INTEGER NOT NULL, uses INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS blocks (device TEXT NOT NULL, blocked TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (device, blocked));
   CREATE TABLE IF NOT EXISTS lists (id TEXT PRIMARY KEY, device TEXT NOT NULL, title TEXT NOT NULL, places TEXT NOT NULL DEFAULT '[]', public INTEGER NOT NULL DEFAULT 1, at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS group_messages (id TEXT PRIMARY KEY, group_id TEXT NOT NULL, device TEXT NOT NULL, name TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL);
@@ -1295,6 +1296,30 @@ export function handleApi(method, path, req, body) {
       if (cur?.status !== `pedido:${other}`) return bad('sem_pedido', 409)
       db.prepare("UPDATE friendships SET status = 'amigos', at = ? WHERE a = ? AND b = ?").run(now, a, b)
       notify({ to: [other], from: device, key: `fra-${device}`, title: `${userName(device) ?? 'Alguém'} aceitou sua amizade`, body: 'Agora vocês veem as curadorias um do outro', url: 'amigos' })
+      return ok({ ok: true })
+    }
+  }
+  // convite pro app: link pessoal; quem entra por ele vira amigo de quem convidou
+  if (write && path === '/api/invites') {
+    if (!qp.getUser.get(device)) return bad('perfil', 403)
+    let inv = db.prepare('SELECT token FROM invites WHERE device = ?').get(device)
+    if (!inv) { inv = { token: randomBytes(8).toString('base64url') }; db.prepare('INSERT INTO invites (token, device, at) VALUES (?, ?, ?)').run(inv.token, device, now) }
+    return ok({ ok: true, token: inv.token })
+  }
+  if ((m = path.match(/^\/api\/invites\/([A-Za-z0-9_-]{8,16})(\/accept)?$/))) {
+    const inv = db.prepare('SELECT * FROM invites WHERE token = ?').get(m[1])
+    if (!inv || isBlocked(inv.device, device)) return bad('not_found', 404)
+    const p = parse(qp.getUser.get(inv.device)?.data ?? 'null') ?? {}
+    if (method === 'GET') return ok({ name: p.name ?? 'Alguém', hue: p.hue ?? 200, pid: pseudo(inv.device), handle: handleOf(inv.device), photo: avatarVersion(inv.device), me: inv.device === device, relation: inv.device === device ? 'eu' : relation(device, inv.device) })
+    if (write && m[2]) {
+      if (!qp.getUser.get(device)) return bad('perfil', 403)
+      if (inv.device === device) return ok({ ok: true, self: true })
+      const [a, b] = [device, inv.device].sort()
+      const cur = db.prepare('SELECT status FROM friendships WHERE a = ? AND b = ?').get(a, b)
+      if (cur?.status === 'amigos') return ok({ ok: true, already: true })
+      db.prepare("INSERT INTO friendships (a, b, status, at) VALUES (?, ?, 'amigos', ?) ON CONFLICT(a, b) DO UPDATE SET status = 'amigos', at = excluded.at").run(a, b, now)
+      db.prepare('UPDATE invites SET uses = uses + 1 WHERE token = ?').run(m[1])
+      notify({ to: [inv.device], from: device, key: `inv-${device}`, title: `${userName(device) ?? 'Alguém'} entrou pelo seu convite`, body: 'Agora vocês são amigos no rolê', url: 'amigos' })
       return ok({ ok: true })
     }
   }

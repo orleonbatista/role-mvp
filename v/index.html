@@ -31,7 +31,7 @@
           try { var m = location.hash.match(/p=([A-Za-z0-9_-]+)/); id = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))))).id } catch (e) {}
         }
         var t = q.get('to')
-        var to = { s: 's/', i: 'i/', e: 'e/', c: 'c/', p: 'p/', t: 't/' }[t] || 'r/'
+        var to = { s: 's/', i: 'i/', e: 'e/', c: 'c/', p: 'p/', t: 't/', a: 'a/' }[t] || 'r/'
         q.delete('id'); q.delete('to')
         if (t === 'f') { id = null } // convite de curador fundador: /fundador
         var base = location.pathname.replace(/v\/?(index\.html)?$/, '')

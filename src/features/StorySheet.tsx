@@ -5,7 +5,7 @@ import { Sheet } from '../ui/Sheet'
 import { Button, Skeleton, cx } from '../ui/primitives'
 import { useToast } from '../ui/Toast'
 import { ease } from '../ui/motion'
-import { renderStory, type StoryCard } from '../lib/storyCard'
+import { STORY_THEMES, renderStory, type StoryCard, type StoryTheme } from '../lib/storyCard'
 import { track } from '../lib/track'
 
 const IgGlyph = ({ size = 17 }: { size?: number }) => (
@@ -21,20 +21,23 @@ export function StorySheet({ open, onClose, card, link, context }: { open: boole
   const [preview, setPreview] = useState<string>()
   const [copied, setCopied] = useState(false)
   const [posted, setPosted] = useState(false)
+  // estilo da arte (lembra a última escolha neste aparelho)
+  const [theme, setThemeState] = useState<StoryTheme>(() => { try { return (localStorage.getItem('role.storyTheme') as StoryTheme) || 'noite' } catch { return 'noite' } })
+  const setTheme = (t: StoryTheme) => { setThemeState(t); try { localStorage.setItem('role.storyTheme', t) } catch { /* */ } track('story_theme', { t, context }) }
 
   // gera a arte ao abrir: o clique em "Postar" precisa chamar share() direto, sem esperar render
   useEffect(() => {
     if (!open || !card) return
     let url: string | undefined
     setFile(null); setPreview(undefined); setPosted(false)
-    renderStory(card).then((b) => {
+    renderStory(card, theme).then((b) => {
       const f = new File([b], `role-${card.kind}.png`, { type: 'image/png' })
       url = URL.createObjectURL(b)
       setFile(f); setPreview(url)
     })
-    track('story_opened', { context, kind: card.kind })
     return () => { if (url) URL.revokeObjectURL(url) }
-  }, [open, card, context])
+  }, [open, card, context, theme])
+  useEffect(() => { if (open && card) track('story_opened', { context, kind: card.kind }) }, [open, card, context])
 
   const feed = card?.kind === 'convite' && card.format === 'feed'
   async function copyLink() {
@@ -96,6 +99,19 @@ export function StorySheet({ open, onClose, card, link, context }: { open: boole
             </li>
           ))}
         </ol>
+      </div>
+
+      <p className="mb-2 mt-5 text-[11px] uppercase tracking-[0.14em] text-mute">Estilo da arte</p>
+      <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5" role="radiogroup" aria-label="Estilo da arte">
+        {STORY_THEMES.map((t) => (
+          <button key={t.id} role="radio" aria-checked={theme === t.id} onClick={() => setTheme(t.id)}
+            className={cx('flex shrink-0 items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 text-[13px]', theme === t.id ? 'border-accent text-ink' : 'border-line text-mute')}>
+            <span className="relative size-6 overflow-hidden rounded-full border border-white/20" style={{ background: t.swatch[0] }}>
+              <span className="absolute bottom-0 right-0 size-3 rounded-tl-full" style={{ background: t.swatch[1] }} />
+            </span>
+            {t.label}
+          </button>
+        ))}
       </div>
 
       <div className="mt-5 grid gap-2">

@@ -71,6 +71,8 @@ async function boot() {
     if (cur && res?.handle && res.handle !== cur.handle) { await db.profile.put({ ...cur, handle: res.handle }); qc.invalidateQueries({ queryKey: ['me'] }) }
   }
   void reconcile().catch(() => {})
+  // servidor voltou (ou o app acordou e conseguiu falar com ele): recarrega tudo que estava como "sem conexão"
+  window.addEventListener('role:online', () => void qc.invalidateQueries())
   window.addEventListener('role:request-synced', (e) => qc.invalidateQueries({ queryKey: ['request', (e as CustomEvent<string>).detail] }))
   const timer = setInterval(() => { if (synced) clearInterval(timer); else void reconcile().catch(() => {}) }, 45_000)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void reconcile().catch(() => {}) })
@@ -88,23 +90,5 @@ async function boot() {
 
 boot()
 
-/* iPhone instalado: estica a casca até o fim real da tela quando o iOS entrega uma área de layout mais curta
-   (falta a altura da barra de status). Só em retrato, só no app instalado, só quando a diferença é pequena
-   (teclado aberto também encurta a tela e aí não mexe). */
-function fixAppGap() {
-  const nav = navigator as Navigator & { standalone?: boolean }
-  const standalone = nav.standalone === true || matchMedia('(display-mode: standalone)').matches
-  const root = document.documentElement
-  const portrait = innerHeight > innerWidth
-  const full = Math.max(screen.width, screen.height)
-  root.style.removeProperty('--app-gap')
-  const shell = document.querySelector('.app-shell')
-  // o que o app realmente ocupa: o menor entre a janela informada e o fim da casca
-  const bottom = Math.min(innerHeight, shell ? shell.getBoundingClientRect().bottom : innerHeight)
-  const gap = Math.round(full - bottom)
-  if (standalone && portrait && /iPhone|iPad/.test(navigator.userAgent) && gap > 0 && gap <= 100) root.style.setProperty('--app-gap', `${-gap}px`)
-  else root.style.removeProperty('--app-gap')
-}
-requestAnimationFrame(() => setTimeout(fixAppGap, 50))
-addEventListener('resize', fixAppGap)
-addEventListener('orientationchange', () => setTimeout(fixAppGap, 300))
+import { installScreenFix } from './lib/screen'
+installScreenFix()

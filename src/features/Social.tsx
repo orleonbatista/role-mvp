@@ -1,17 +1,19 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Award, Ban, Bookmark, Check, ListPlus, UserPlus } from 'lucide-react'
-import { Avatar, Page, SectionTitle, Skeleton, Tag, TopBar, cx } from '../ui/primitives'
+import { Award, Ban, Bookmark, Check, ListPlus, Send, UserPlus } from 'lucide-react'
+import { Avatar, Button, EmptyState, Page, SectionTitle, Skeleton, Tag, TopBar, cx } from '../ui/primitives'
 import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
 import { confirmSheet } from '../ui/Confirm'
-import { avatarUrl, joinGroup, searchPeople, createList, listAction, listOf, myLists, person, personAction, ranking, social, type FeedItem, type PersonCard, type Rep } from '../mocks/remote'
+import { acceptInvite, avatarUrl, inviteInfo, joinGroup, myInvite, searchPeople, createList, listAction, listOf, myLists, person, personAction, ranking, social, type FeedItem, type PersonCard, type Rep } from '../mocks/remote'
 import { fromSnap } from '../lib/places'
 import { VERDICT_LABEL, nicheLabel, timeAgo } from '../lib/labels'
 import { useProfile, useSync } from '../lib/api'
 import { track } from '../lib/track'
 import type { Place } from '../lib/types'
+import { appInviteUrl } from '../lib/share'
+import { useEffect } from 'react'
 
 /* Rede social do rolê: amigos (pedido → aceite), feed com o que os amigos avaliaram/fecharam/listaram,
    perfil público, listas de curadoria e ranking de curadores. Tudo no servidor; sem conexão, a tela avisa. */
@@ -49,6 +51,7 @@ export function SocialPage() {
           ))}
         </section>
       )}
+      <InviteButton />
       <div className="mx-5 mb-4 flex gap-1 rounded-full bg-white/[0.05] p-1" role="tablist">
         {(['feed', 'amigos', 'ranking'] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cx('h-9 flex-1 rounded-full text-[13px] capitalize', tab === t ? 'bg-surface text-ink' : 'text-mute')}>{t}</button>
@@ -330,5 +333,77 @@ export function MyLists() {
         </Link>
       ))}
     </div>
+  )
+}
+
+/** convidar alguém pro app (sem precisar já estar no rolê): link pessoal; quem entra vira seu amigo */
+function InviteButton() {
+  const toast = useToast()
+  const me = useProfile().data
+  const [busy, setBusy] = useState(false)
+  const go = async () => {
+    setBusy(true)
+    const token = await myInvite()
+    setBusy(false)
+    if (!token) { toast('Sem conexão agora'); return }
+    const url = appInviteUrl(token)
+    const text = `${me?.name?.split(' ')[0] ?? 'Eu'} te chamou pro rolê., o app pra decidir o rolê com a galera sem 200 mensagens no zap. Entra por aqui que a gente já vira amigo: ${url}`
+    track('app_invite', {})
+    try { if (navigator.share) { await navigator.share({ title: 'rolê.', text, url }); return } } catch { return }
+    try { await navigator.clipboard.writeText(text); toast('Convite copiado') } catch { window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank') }
+  }
+  return (
+    <button onClick={go} disabled={busy} className="mx-5 mb-4 flex w-[calc(100%-2.5rem)] items-center gap-3 rounded-[20px] border border-dashed border-accent/40 px-4 py-3 text-left">
+      <Send size={17} className="shrink-0 text-accent" />
+      <span className="min-w-0 flex-1"><span className="block text-[14px]">{busy ? 'Gerando convite…' : 'Convidar alguém pro rolê'}</span><span className="block text-[12px] text-mute">Quem entrar pelo seu link já vira seu amigo</span></span>
+    </button>
+  )
+}
+
+/** /a/:token — convite pessoal: mostra quem chamou; sem cadastro → cadastro e volta; com cadastro → vira amigo */
+export function AppInvitePage() {
+  const { token = '' } = useParams()
+  const nav = useNavigate()
+  const toast = useToast()
+  const qc = useQueryClient()
+  const me = useProfile().data
+  const q = useQuery({ queryKey: ['invite', token], queryFn: () => inviteInfo(token) })
+  const [busy, setBusy] = useState(false)
+  const auto = new URLSearchParams(location.search).get('auto') === '1'
+  const accept = async () => {
+    setBusy(true)
+    // logo depois do cadastro o perfil ainda pode estar subindo: tenta algumas vezes
+    let ok = false
+    for (let i = 0; i < 5 && !ok; i++) { ok = !!(await acceptInvite(token))?.ok; if (!ok) await new Promise((r) => setTimeout(r, 1500)) }
+    setBusy(false)
+    track('app_invite_accept', { ok })
+    if (!ok) { toast('Não deu agora; tente de novo daqui a pouco'); return }
+    toast(`Agora você e ${q.data?.name.split(' ')[0] ?? 'quem te chamou'} são amigos`)
+    qc.invalidateQueries({ queryKey: ['social'] })
+    nav('/amigos', { replace: true })
+  }
+  useEffect(() => { if (auto && me?.onboarded && q.data && !q.data.me && q.data.relation !== 'amigos') void accept() }, [auto, me?.onboarded, q.data]) // eslint-disable-line react-hooks/exhaustive-deps
+  const p = q.data
+  return (
+    <Page>
+      <TopBar title="Convite" />
+      <div className="px-5 pb-10">
+        {q.isLoading && <><Skeleton className="h-16 w-16 rounded-full" /><Skeleton className="mt-4 h-12 w-2/3" /></>}
+        {q.isFetched && !p && <EmptyState title="Convite inválido" text="Esse link não existe mais. Peça outro pra quem te chamou." />}
+        {p && (
+          <>
+            <Avatar name={p.name} hue={p.hue} size={72} src={avatarUrl(p.pid, p.photo)} />
+            <h1 className="mt-4 font-serif text-[42px] leading-[0.95]">{p.name.split(' ')[0]} te chamou<br /><em className="text-accent">pro rolê.</em></h1>
+            <p className="mt-3 text-[15px] text-mute">Aqui a galera descreve o rolê, a IA acha os lugares e todo mundo vota pelo link. Entrando, vocês já viram amigos e veem os rolês um do outro.</p>
+            <div className="mt-6">
+              {p.me ? <p className="text-[13px] text-faint">Esse é o seu próprio convite. Mande pra alguém!</p>
+                : p.relation === 'amigos' ? <Link to="/amigos"><Button size="lg" className="w-full">Vocês já são amigos · abrir</Button></Link>
+                : me?.onboarded ? <Button size="lg" className="w-full" disabled={busy} onClick={accept}>{busy ? 'Entrando…' : `Virar amigo de ${p.name.split(' ')[0]}`}</Button>
+                : <Button size="lg" className="w-full" onClick={() => { try { localStorage.setItem('role.next', `/a/${token}?auto=1`) } catch { /* */ } nav('/onboarding') }}>Criar meu perfil</Button>}
+            </div>
+          </>
+        )}
+      </div>
+    </Page>
   )
 }

@@ -95,7 +95,10 @@ body {
 
 /* fora de layer e com !important: a classe utilitária 'relative' da casca vencia o 'fixed' e o app ficava com altura 0
    no celular (quebrou os cliques no E2E de 27/11, corrigido no mesmo deploy seguinte) */
-@media (max-width: 639px) { .app-shell { position: fixed !important; inset: 0; bottom: var(--app-gap, 0px); height: auto !important; } }
-/* --app-gap (main.tsx): no iPhone instalado na tela de início o iOS às vezes entrega uma área de layout mais curta
-   que a tela, faltando exatamente a altura da barra de status (62 pt no Pro Max). A casca é esticada até o fim real
-   da tela; sem isso o menu inferior ficava 62 pt acima do fundo (print de 27/11) */
+@media (max-width: 639px) { .app-shell { position: fixed !important; inset: 0; height: auto !important; } }
+/* app instalado na tela de início (iPhone): a área de layout que o iOS entrega pode sair mais curta que a tela
+   (WebKit 254868/316008: svh/dvh/innerHeight descontam a área segura no modo instalado; 100vh não). A casca fica
+   presa no topo com a altura da tela inteira (--app-h, medida em main.tsx), em vez de inset:0 */
+@media (max-width: 639px) and (display-mode: standalone) {
+  .app-shell { top: 0 !important; bottom: auto !important; height: var(--app-h, 100vh) !important; }
+}

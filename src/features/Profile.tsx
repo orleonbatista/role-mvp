@@ -10,8 +10,10 @@ import { MyLists } from './Social'
 import { useState } from 'react'
 import { Sheet } from '../ui/Sheet'
 import { AvatarCrop } from './AvatarCrop'
+import { screenMetrics } from '../lib/screen'
+import { Smartphone } from 'lucide-react'
 import { useToast } from '../ui/Toast'
-import { AnimatedNumber, Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
+import { AnimatedNumber, Avatar, Button, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
 import { useDiary, useProfile, useSaveProfile, useSync } from '../lib/api'
 import { placeIcon } from '../ui/placeIcon'
@@ -189,6 +191,7 @@ export function ProfilePage() {
             <ArrowUpRight size={14} className="text-mute" />
           </Link>
           <FeedbackButton path="/perfil" row />
+          <ScreenDiag />
           {sync?.curator && <Link to="/testes" className="flex items-center gap-3 px-4 py-3.5">
             <BarChart3 size={16} className="text-mute" />
             <span className="flex-1 text-[14px]">{sync.admin ? 'Painel do admin' : 'Painel da curadoria'}</span>
@@ -268,6 +271,27 @@ function AvatarEditor({ name, hue, pid, photoAt }: { name: string; hue: number; 
       <input type="file" accept="image/*" className="sr-only" onChange={(e) => { setFile(e.target.files?.[0] ?? null); e.target.value = '' }} />
     </label>
     <AvatarCrop file={file} onCancel={() => setFile(null)} onDone={send} />
+    </>
+  )
+}
+
+/** diagnóstico da tela: mostra como o celular informa altura e áreas seguras (pra acertar o layout em qualquer aparelho) */
+function ScreenDiag() {
+  const [m, setM] = useState<ReturnType<typeof screenMetrics> | null>(null)
+  const toast = useToast()
+  const text = m ? Object.entries(m).map(([k, v]) => `${k}: ${v}`).join('\n') : ''
+  return (
+    <>
+      <button onClick={() => setM(screenMetrics())} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
+        <Smartphone size={16} className="text-mute" />
+        <span className="flex-1 text-[14px]">Diagnóstico da tela</span>
+      </button>
+      <Sheet open={!!m} onClose={() => setM(null)}>
+        <p className="font-serif text-[26px] leading-none">Diagnóstico da tela</p>
+        <p className="mt-1 text-[13px] text-mute">Tire um print ou copie e mande pra gente: é assim que o celular informa o tamanho da tela pro app.</p>
+        <pre className="mt-3 max-h-[45vh] overflow-auto whitespace-pre-wrap rounded-[14px] bg-white/[0.05] p-3 text-[12px] leading-relaxed">{text}</pre>
+        <Button className="mt-3 w-full" variant="soft" onClick={async () => { try { await navigator.clipboard.writeText(text); toast('Copiado') } catch { toast('Não deu pra copiar; tire um print') } }}>Copiar</Button>
+      </Sheet>
     </>
   )
 }

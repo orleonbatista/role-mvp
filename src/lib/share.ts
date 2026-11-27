@@ -161,3 +161,6 @@ export const bioUrl = (handle: string) => {
 
 /** convite da turma (sem votação): passa pela página v/ (funciona no GitHub Pages e abre o app instalado) */
 export const turmaInviteUrl = (token: string) => `${location.origin}${import.meta.env.BASE_URL}v/?to=t&id=${encodeURIComponent(token)}`
+
+/** convite pessoal pro app (Amigos → Convidar): abre a página do convite e, depois do cadastro, vira amizade */
+export const appInviteUrl = (token: string) => `${location.origin}${import.meta.env.BASE_URL}v/?to=a&id=${encodeURIComponent(token)}`

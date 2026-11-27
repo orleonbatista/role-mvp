@@ -32,6 +32,25 @@ let health: { at: number; base: string | null } | null = null
 /** época dos perfis no servidor (reset geral → cada aparelho refaz o cadastro) */
 export let serverEpoch = 0
 let downUntil = 0
+/* fora do ar → de volta: antes ficava 30 s "fora" a cada falha e as telas guardavam o "sem conexão" até reabrir o app
+   (no iPhone, ao voltar do segundo plano, a primeira chamada costuma falhar porque a rede ainda está acordando).
+   Agora a pausa é curta, o app reconfere sozinho a cada poucos segundos e, quando volta, avisa as telas (role:online). */
+let wasDown = false
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+function markDown() {
+  downUntil = Date.now() + 5_000
+  wasDown = true
+  if (!retryTimer && typeof window !== 'undefined') retryTimer = setTimeout(() => { retryTimer = null; if (!document.hidden) void apiBase(true) }, 5_500)
+}
+function markUp() {
+  if (wasDown) { wasDown = false; try { window.dispatchEvent(new Event('role:online')) } catch { /* */ } }
+}
+if (typeof window !== 'undefined') {
+  const wake = () => { if (document.hidden) return; downUntil = 0; if (health && !health.base) health = null; void apiBase(true) }
+  document.addEventListener('visibilitychange', wake)
+  window.addEventListener('online', wake)
+  window.addEventListener('pageshow', wake)
+}
 
 /** URL do backend se ele estiver no ar (cache de 60s; 30s de pausa depois de uma falha) */
 let probing: Promise<string | null> | null = null
@@ -68,11 +87,12 @@ async function probe(): Promise<string | null> {
     const ok = j?.db === true
     if (ok) serverEpoch = Number(j.profileEpoch ?? 0)
     health = { at: Date.now(), base: ok ? base : null }
-    if (!ok) downUntil = Date.now() + 30_000
+    if (!ok) markDown()
+    else markUp()
     try { ok ? localStorage.setItem(LAST_KEY, JSON.stringify({ base, at: Date.now() })) : localStorage.removeItem(LAST_KEY) } catch { /* */ }
   } catch {
     health = { at: Date.now(), base: null }
-    downUntil = Date.now() + 30_000
+    markDown()
   }
   return health.base
 }
@@ -137,7 +157,7 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opt
   } catch {
     // o endereço guardado pode ter mudado (túnel novo): confere de novo uma vez antes de desistir
     if (!retried) { const b = await apiBase(true); if (b && b !== base) return call<T>(method, path, body, opts, true) }
-    downUntil = Date.now() + 30_000
+    markDown()
     health = { at: Date.now(), base: null }
     return null
   }
@@ -475,6 +495,10 @@ export type FeedItem = { kind: 'review'; who: PersonCard; placeId: string; place
   | { kind: 'list'; who: PersonCard; listId: string; title: string; count: number; at: number }
   | { kind: 'decided'; who: PersonCard; placeId: string; placeName: string | null; at: number }
   | { kind: 'request' | 'voted'; who: PersonCard; requestId: string; text: string; at: number }
+/** convite pessoal pro app: quem entra pelo link vira amigo de quem convidou */
+export const myInvite = () => call<{ ok: boolean; token: string }>('POST', '/api/invites', {}).then((r) => r?.token ?? null)
+export const inviteInfo = (token: string) => call<{ name: string; hue: number; pid: string; handle: string | null; photo: number | null; me: boolean; relation: string }>('GET', `/api/invites/${encodeURIComponent(token)}`, undefined, { timeout: 6000 })
+export const acceptInvite = (token: string) => call<{ ok: boolean }>('POST', `/api/invites/${encodeURIComponent(token)}/accept`, {})
 export const person = (pid: string) => call<PersonPage>('GET', `/api/people/${pid}`, undefined, { timeout: 5000 })
 export const personAction = (pid: string, a: 'add' | 'accept' | 'remove' | 'block' | 'unblock') => call<{ ok: boolean }>('POST', `/api/people/${pid}/${a}`, {}).then(Boolean)
 export const searchPeople = (q: string) => call<(PersonCard & { hood: string | null; relation: string })[]>('GET', `/api/people?q=${encodeURIComponent(q)}`, undefined, { timeout: 5000 })

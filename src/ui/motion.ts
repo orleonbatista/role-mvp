@@ -10,9 +10,10 @@ export const sharedSpring: Transition = { type: 'spring', stiffness: 300, dampin
 /* transitionEnd tira o filtro no fim: no Safari do iPhone, um 'blur(0px)' que fica aplicado na tela deixa borrado o que
    tem desfoque de fundo dentro dela (o topo das telas saía embaçado) */
 export const page: Variants = {
-  initial: { opacity: 0, y: 18, filter: 'blur(10px)' },
-  animate: { opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' }, transition: { duration: 0.55, ease } },
-  exit: { opacity: 0, y: -10, filter: 'blur(8px)', transition: { duration: 0.28, ease } },
+  // sem desfoque na tela inteira: no Safari do iPhone o filtro deixava o topo das telas embaçado
+  initial: { opacity: 0, y: 18 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease } },
+  exit: { opacity: 0, y: -10, transition: { duration: 0.25, ease } },
 }
 
 export const list: Variants = {
