@@ -109,6 +109,12 @@ db.exec(`
   -- o id dele sozinho não vale mais como credencial
   CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, device TEXT NOT NULL, at INTEGER NOT NULL, last_at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_sess_dev ON sessions(device);
+  -- rede social: amizades (pedido → aceite), bloqueios, listas de curadoria e chat da turma
+  CREATE TABLE IF NOT EXISTS friendships (a TEXT NOT NULL, b TEXT NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
+  CREATE TABLE IF NOT EXISTS blocks (device TEXT NOT NULL, blocked TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (device, blocked));
+  CREATE TABLE IF NOT EXISTS lists (id TEXT PRIMARY KEY, device TEXT NOT NULL, title TEXT NOT NULL, places TEXT NOT NULL DEFAULT '[]', public INTEGER NOT NULL DEFAULT 1, at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS group_messages (id TEXT PRIMARY KEY, group_id TEXT NOT NULL, device TEXT NOT NULL, name TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS ix_gmsg ON group_messages(group_id, at);
   CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, kind TEXT NOT NULL, target_id TEXT NOT NULL, device TEXT NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'aberta', UNIQUE (kind, target_id, device));
 `)
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'closes_at'").get()) { db.exec('ALTER TABLE requests ADD COLUMN closes_at INTEGER'); db.exec('ALTER TABLE requests ADD COLUMN close_notified INTEGER') }
@@ -545,6 +551,33 @@ export function photoFile(requestId, file) {
   return existsSync(f) ? f : null
 }
 
+/* ---------- rede social: apoio ---------- */
+// pseudo → aparelho (o apelido não se inverte; procura entre quem tem perfil, com cache)
+const pseudoCache = new Map()
+function deviceOfPseudo(p) {
+  if (pseudoCache.has(p)) return pseudoCache.get(p)
+  for (const u of db.prepare('SELECT device FROM users').all()) pseudoCache.set(pseudo(u.device), u.device)
+  return pseudoCache.get(p) ?? null
+}
+const isBlocked = (owner, other) => !!db.prepare('SELECT 1 FROM blocks WHERE (device = ? AND blocked = ?) OR (device = ? AND blocked = ?)').get(owner, other, other, owner)
+function relation(me, other) {
+  const [a, b] = [me, other].sort()
+  const r = db.prepare('SELECT status FROM friendships WHERE a = ? AND b = ?').get(a, b)
+  if (!r) return 'nenhuma'
+  if (r.status === 'amigos') return 'amigos'
+  return r.status === `pedido:${me}` ? 'enviado' : 'recebido'
+}
+/** reputação só com o que é verificável: avaliação de rolê real, lugar indicado aceito, foto aprovada pela IA, rolê fechado */
+function reputationOf(dev) {
+  const reviews = db.prepare("SELECT COUNT(*) n FROM reviews WHERE device = ? AND status = 'ok'").get(dev).n
+  const fromRole = db.prepare("SELECT COUNT(*) n FROM reviews WHERE device = ? AND status = 'ok' AND request_id IS NOT NULL").get(dev).n
+  const photos = db.prepare("SELECT COUNT(*) n FROM place_photos WHERE device = ? AND status = 'ok'").get(dev).n
+  const closed = db.prepare('SELECT COUNT(*) n FROM requests WHERE author_device = ? AND decided_place IS NOT NULL').get(dev).n
+  const points = reviews * 10 + fromRole * 5 + photos * 3 + closed * 4
+  const level = points >= 300 ? 'curador ouro' : points >= 120 ? 'curador prata' : points >= 40 ? 'curador bronze' : points > 0 ? 'iniciante' : 'novo'
+  return { points, level, reviews, photos, closed }
+}
+
 /** quem participa de um pedido: autor + quem votou, marcou horário, confirmou presença ou mandou recado */
 function participantsOf(requestId) {
   const r = q.getReq.get(requestId)
@@ -613,7 +646,8 @@ function handlePeople(method, path, body, device, now) {
       db.prepare('DELETE FROM feedback WHERE device = ?').run(device)
       db.prepare('DELETE FROM leads WHERE device = ?').run(device)
       db.prepare('DELETE FROM events WHERE device = ?').run(device)
-      for (const t of ['slots', 'rsvps', 'push_subs', 'sessions']) db.prepare(`DELETE FROM ${t} WHERE device = ?`).run(device)
+      for (const t of ['slots', 'rsvps', 'push_subs', 'sessions', 'blocks', 'lists']) db.prepare(`DELETE FROM ${t} WHERE device = ?`).run(device)
+      db.prepare('DELETE FROM friendships WHERE a = ? OR b = ?').run(device, device); db.prepare("UPDATE group_messages SET name = 'Alguém' WHERE device = ?").run(device)
       db.prepare("UPDATE messages SET voter = 'Alguém' WHERE device = ?").run(device)
       db.exec('COMMIT')
     } catch (e) { db.exec('ROLLBACK'); throw e }
@@ -625,7 +659,7 @@ function handlePeople(method, path, body, device, now) {
     const rows = qp.placeReviews.all(m[1], device)
     const okRows = rows.filter((r) => r.status === 'ok')
     const score = okRows.length ? Math.round((okRows.reduce((a, r) => a + VERDICT_SCORE[r.verdict], 0) / okRows.length) * 10) / 10 : null
-    return ok({ score, count: okRows.length, items: rows.map((r) => ({ id: r.id, name: r.name, hue: r.hue, verdict: r.verdict, note: r.note, at: r.at, mine: r.device === device, pending: r.status !== 'ok' })) })
+    return ok({ score, count: okRows.length, items: rows.map((r) => ({ id: r.id, name: r.name, hue: r.hue, verdict: r.verdict, note: r.note, at: r.at, mine: r.device === device, pending: r.status !== 'ok', pid: pseudo(r.device) })) })
   }
   if (method === 'GET' && path === '/api/ratings') {
     const acc = {}
@@ -945,6 +979,133 @@ export function handleApi(method, path, req, body) {
     const upd = q.setSub.run(status, now, m[1])
     return upd.changes ? ok({ ok: true }) : bad('not_found', 404)
   }
+  /* ---------- rede social ---------- */
+  if ((m = path.match(/^\/api\/people\/(u-[a-f0-9]{16})$/)) && method === 'GET') {
+    const dev = deviceOfPseudo(m[1])
+    if (!dev || isBlocked(dev, device)) return bad('not_found', 404)
+    const u = qp.getUser.get(dev)
+    const p = parse(u?.data ?? 'null') ?? {}
+    const rel = device ? relation(device, dev) : 'nenhuma'
+    const friends = rel === 'amigos' || dev === device
+    return ok({
+      pid: m[1], name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u?.hood ?? null, niches: p.niches ?? [], me: dev === device, relation: rel,
+      reputation: reputationOf(dev),
+      reviews: db.prepare("SELECT place_id, verdict, note, place, at FROM reviews WHERE device = ? AND status = 'ok' ORDER BY at DESC LIMIT 12").all(dev)
+        .map((r) => ({ placeId: r.place_id, verdict: r.verdict, note: r.note, name: parse(r.place ?? 'null')?.[1] ?? null, at: r.at })),
+      lists: db.prepare('SELECT id, title, places, updated_at FROM lists WHERE device = ? AND (public = 1 OR ?) ORDER BY updated_at DESC').all(dev, friends ? 1 : 0)
+        .map((l) => ({ id: l.id, title: l.title, places: parse(l.places) ?? [], updatedAt: l.updated_at })),
+      friendsCount: db.prepare("SELECT COUNT(*) n FROM friendships WHERE (a = ? OR b = ?) AND status = 'amigos'").get(dev, dev).n,
+    })
+  }
+  if ((m = path.match(/^\/api\/people\/(u-[a-f0-9]{16})\/(add|accept|remove|block|unblock)$/)) && write) {
+    if (!qp.getUser.get(device)) return bad('perfil', 403) // precisa de cadastro pra fazer amizade
+    const other = deviceOfPseudo(m[1])
+    if (!other || other === device) return bad('not_found', 404)
+    const [a, b] = [device, other].sort()
+    const cur = db.prepare('SELECT status FROM friendships WHERE a = ? AND b = ?').get(a, b)
+    if (m[2] === 'block') { db.prepare('INSERT OR REPLACE INTO blocks (device, blocked, at) VALUES (?, ?, ?)').run(device, other, now); db.prepare('DELETE FROM friendships WHERE a = ? AND b = ?').run(a, b); return ok({ ok: true }) }
+    if (m[2] === 'unblock') { db.prepare('DELETE FROM blocks WHERE device = ? AND blocked = ?').run(device, other); return ok({ ok: true }) }
+    if (m[2] === 'remove') { db.prepare('DELETE FROM friendships WHERE a = ? AND b = ?').run(a, b); return ok({ ok: true }) }
+    if (isBlocked(other, device)) return bad('not_found', 404)
+    if (m[2] === 'add') {
+      if (cur) return ok({ ok: true, status: relation(device, other) })
+      if (db.prepare("SELECT COUNT(*) n FROM friendships WHERE status LIKE 'pedido:%' AND status = ? AND at > ?").get(`pedido:${device}`, now - 86_400_000).n >= 30) return bad('rate_limited', 429)
+      db.prepare('INSERT INTO friendships (a, b, status, at) VALUES (?, ?, ?, ?)').run(a, b, `pedido:${device}`, now)
+      notify({ to: [other], key: `fr-${device}`, title: `${userName(device) ?? 'Alguém'} quer ser seu amigo no rolê`, body: 'Aceite pra ver as curadorias e os rolês um do outro', url: 'amigos' })
+      return ok({ ok: true, status: 'enviado' })
+    }
+    if (m[2] === 'accept') {
+      if (cur?.status !== `pedido:${other}`) return bad('sem_pedido', 409)
+      db.prepare("UPDATE friendships SET status = 'amigos', at = ? WHERE a = ? AND b = ?").run(now, a, b)
+      notify({ to: [other], key: `fra-${device}`, title: `${userName(device) ?? 'Alguém'} aceitou sua amizade`, body: 'Agora vocês veem as curadorias um do outro', url: 'amigos' })
+      return ok({ ok: true })
+    }
+  }
+  // amigos, pedidos recebidos e feed (avaliações, listas e rolês fechados dos amigos)
+  if (method === 'GET' && path === '/api/social') {
+    const rows = db.prepare('SELECT a, b, status, at FROM friendships WHERE a = ? OR b = ?').all(device, device)
+    const card = (d) => { const p = parse(qp.getUser.get(d)?.data ?? 'null') ?? {}; return { pid: pseudo(d), name: p.name ?? 'Alguém', hue: p.hue ?? 200, reputation: reputationOf(d) } }
+    const other = (r) => (r.a === device ? r.b : r.a)
+    const friends = rows.filter((r) => r.status === 'amigos').map(other)
+    const incoming = rows.filter((r) => r.status.startsWith('pedido:') && r.status !== `pedido:${device}`).map(other)
+    const sent = rows.filter((r) => r.status === `pedido:${device}`).map(other)
+    const feed = []
+    if (friends.length) {
+      const ph = friends.map(() => '?').join(',')
+      for (const r of db.prepare(`SELECT device, place_id, verdict, note, place, at FROM reviews WHERE status = 'ok' AND device IN (${ph}) ORDER BY at DESC LIMIT 30`).all(...friends))
+        feed.push({ kind: 'review', who: card(r.device), placeId: r.place_id, placeName: parse(r.place ?? 'null')?.[1] ?? null, verdict: r.verdict, note: r.note, at: r.at })
+      for (const l of db.prepare(`SELECT id, device, title, places, updated_at FROM lists WHERE device IN (${ph}) ORDER BY updated_at DESC LIMIT 15`).all(...friends))
+        feed.push({ kind: 'list', who: card(l.device), listId: l.id, title: l.title, count: (parse(l.places) ?? []).length, at: l.updated_at })
+      for (const r of db.prepare(`SELECT author_device, decided_place, decided_at, data FROM requests WHERE decided_place IS NOT NULL AND author_device IN (${ph}) ORDER BY decided_at DESC LIMIT 15`).all(...friends)) {
+        const d = parse(r.data) ?? {}
+        const p = (d.places ?? []).find((x) => Array.isArray(x) && x[0] === r.decided_place)
+        feed.push({ kind: 'decided', who: card(r.author_device), placeId: r.decided_place, placeName: p?.[1] ?? null, at: r.decided_at })
+      }
+    }
+    return ok({ friends: friends.map(card), incoming: incoming.map(card), sent: sent.map(card), feed: feed.sort((x, y) => y.at - x.at).slice(0, 40) })
+  }
+  // listas de curadoria
+  if (method === 'POST' && path === '/api/lists') {
+    if (!qp.getUser.get(device)) return bad('perfil', 403)
+    const title = str(body.title, 60).trim()
+    if (!title) return bad('title')
+    if (db.prepare('SELECT COUNT(*) n FROM lists WHERE device = ?').get(device).n >= 30) return bad('too_many')
+    const id = `ls-${randomBytes(6).toString('hex')}`
+    db.prepare('INSERT INTO lists (id, device, title, places, public, at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, device, title, '[]', body.public === false ? 0 : 1, now, now)
+    return ok({ ok: true, id })
+  }
+  if (method === 'GET' && path === '/api/lists/mine') {
+    return ok(db.prepare('SELECT id, title, places, public, updated_at FROM lists WHERE device = ? ORDER BY updated_at DESC').all(device).map((l) => ({ id: l.id, title: l.title, places: parse(l.places) ?? [], public: !!l.public, updatedAt: l.updated_at })))
+  }
+  if ((m = path.match(/^\/api\/lists\/(ls-[a-f0-9]{12})$/)) && method === 'GET') {
+    const l = db.prepare('SELECT * FROM lists WHERE id = ?').get(m[1])
+    if (!l || (!l.public && l.device !== device && relation(device, l.device) !== 'amigos')) return bad('not_found', 404)
+    const p = parse(qp.getUser.get(l.device)?.data ?? 'null') ?? {}
+    return ok({ id: l.id, title: l.title, places: parse(l.places) ?? [], public: !!l.public, mine: l.device === device, owner: { pid: pseudo(l.device), name: p.name ?? 'Alguém', hue: p.hue ?? 200 }, updatedAt: l.updated_at })
+  }
+  if ((m = path.match(/^\/api\/lists\/(ls-[a-f0-9]{12})\/(add|remove|delete)$/)) && write) {
+    const l = db.prepare('SELECT * FROM lists WHERE id = ?').get(m[1])
+    if (!l || l.device !== device) return bad('not_owner', 403)
+    if (m[2] === 'delete') { db.prepare('DELETE FROM lists WHERE id = ?').run(m[1]); return ok({ ok: true }) }
+    let places = parse(l.places) ?? []
+    const sn = snap(body.place)
+    const pid = sn?.[0] ?? str(body.placeId, 120)
+    if (!pid) return bad('place')
+    places = places.filter((x) => (Array.isArray(x) ? x[0] : x) !== pid)
+    if (m[2] === 'add') places = [sn ?? pid, ...places].slice(0, 50)
+    db.prepare('UPDATE lists SET places = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(places), now, m[1])
+    return ok({ ok: true })
+  }
+  // ranking de curadores (geral ou por bairro)
+  if (method === 'GET' && path === '/api/ranking') {
+    const hood = str(new URL(req.url, 'http://x').searchParams.get('hood') ?? '', 40)
+    const users = db.prepare('SELECT device, data, hood FROM users WHERE consent_at > 0' + (hood ? ' AND hood = ?' : '')).all(...(hood ? [hood] : []))
+    const out = users.map((u) => { const p = parse(u.data) ?? {}; return { pid: pseudo(u.device), name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u.hood, reputation: reputationOf(u.device), me: u.device === device } })
+      .filter((x) => x.reputation.points > 0).sort((a, b) => b.reputation.points - a.reputation.points).slice(0, 30)
+    return ok(out)
+  }
+  // chat da turma (contínuo, além dos recados de cada rolê)
+  if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/chat$/))) {
+    if (!qp.member.get(m[1], device)) return bad('not_member', 403)
+    if (method === 'GET') {
+      const since = int(new URL(req.url, 'http://x').searchParams.get('since'), 0)
+      return ok(db.prepare(`SELECT id, device, name, text, at FROM group_messages WHERE group_id = ? AND at > ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'chat' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at DESC LIMIT 60`).all(m[1], since)
+        .reverse().map((x) => ({ id: x.id, name: x.name, text: x.text, at: x.at, mine: x.device === device, pid: pseudo(x.device) })))
+    }
+    if (write) {
+      const text = str(body.text, 500).trim()
+      if (!text) return bad('text')
+      if (db.prepare('SELECT COUNT(*) n FROM group_messages WHERE group_id = ? AND device = ? AND at > ?').get(m[1], device, now - 60_000).n >= 15) return bad('rate_limited', 429)
+      const id = `gm-${randomBytes(6).toString('hex')}`
+      const name = userName(device) ?? str(body.name, 40) ?? 'Alguém'
+      db.prepare('INSERT INTO group_messages (id, group_id, device, name, text, at) VALUES (?, ?, ?, ?, ?, ?)').run(id, m[1], device, name, text, now)
+      qp.touchGroup.run(now, m[1])
+      const to = qp.members.all(m[1]).map((x) => x.device).filter((d) => d !== device && !isBlocked(d, device))
+      notify({ to, key: `chat-${m[1]}`, title: `${name} na turma`, body: text.slice(0, 120), url: 'turmas' })
+      return ok({ ok: true, id })
+    }
+  }
+
   /* ---------- página da casa (B2B) ---------- */
   const PID = /^[A-Za-z0-9_-]{4,120}$/
   // destaques e ofertas ativos (o app usa pra rotular "patrocinado" e mostrar a oferta pra grupos)
@@ -1021,7 +1182,7 @@ export function handleApi(method, path, req, body) {
   // e vai pra fila da curadoria, que remove ou mantém
   if (method === 'POST' && path === '/api/reports') {
     if (!RE.device.test(device)) return bad('device')
-    const kind = ['review', 'message', 'suggestion', 'photo', 'placephoto'].includes(body.kind) ? body.kind : null
+    const kind = ['review', 'message', 'suggestion', 'photo', 'placephoto', 'chat'].includes(body.kind) ? body.kind : null
     const target = str(body.id, 60)
     if (!kind || !target) return bad('report')
     const reason = ['ofensivo', 'spam', 'falso', 'outro'].includes(body.reason) ? body.reason : 'outro'
@@ -1036,13 +1197,14 @@ export function handleApi(method, path, req, body) {
     return ok(rows.map((r) => {
       const t = r.kind === 'review' ? db.prepare('SELECT name who, note text FROM reviews WHERE id = ?').get(r.target_id)
         : r.kind === 'message' ? db.prepare('SELECT voter who, text FROM messages WHERE id = ?').get(r.target_id)
+        : r.kind === 'chat' ? db.prepare('SELECT name who, text FROM group_messages WHERE id = ?').get(r.target_id)
         : r.kind === 'placephoto' ? db.prepare("SELECT source who, 'p/' || place_id || '/' || id || '.jpg' text FROM place_photos WHERE id = ?").get(r.target_id)
         : r.kind === 'photo' ? db.prepare("SELECT voter who, request_id || '/' || id || '.jpg' text FROM photos WHERE id = ?").get(r.target_id)
         : db.prepare('SELECT by_name who, comment text FROM suggestions WHERE id = ?').get(r.target_id)
       return { kind: r.kind, id: r.target_id, count: r.n, reasons: [...new Set(String(r.reasons).split(','))], at: r.last, who: t?.who ?? '—', text: t?.text ?? '(já removido)' }
     }))
   }
-  if ((m = path.match(/^\/api\/admin\/reports\/(review|message|suggestion|photo|placephoto)\/([A-Za-z0-9_-]{1,60})$/)) && write) {
+  if ((m = path.match(/^\/api\/admin\/reports\/(review|message|suggestion|photo|placephoto|chat)\/([A-Za-z0-9_-]{1,60})$/)) && write) {
     if (!isCurator(req)) return bad('admin', 401)
     const [, kind, id] = m
     if (body.action === 'remove') {
@@ -1051,6 +1213,7 @@ export function handleApi(method, path, req, body) {
       if (kind === 'suggestion') db.prepare('DELETE FROM suggestions WHERE id = ?').run(id)
       if (kind === 'photo') removePhoto(id)
       if (kind === 'placephoto') removePlacePhoto(id)
+      if (kind === 'chat') db.prepare('DELETE FROM group_messages WHERE id = ?').run(id)
     } else if (kind === 'review') db.prepare("UPDATE reviews SET status = 'ok', motivo = NULL WHERE id = ? AND status = 'oculta'").run(id)
     db.prepare("UPDATE reports SET status = ? WHERE kind = ? AND target_id = ?").run(body.action === 'remove' ? 'removida' : 'mantida', kind, id)
     return ok({ ok: true })
