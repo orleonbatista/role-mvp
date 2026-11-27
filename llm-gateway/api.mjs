@@ -1391,12 +1391,12 @@ export function handleApi(method, path, req, body) {
   if (method === 'GET' && path === '/api/ranking') {
     const hood = str(new URL(req.url, 'http://x').searchParams.get('hood') ?? '', 40)
     const users = db.prepare('SELECT device, data, hood FROM users WHERE consent_at > 0' + (hood ? ' AND hood = ?' : '')).all(...(hood ? [hood] : []))
-    // amigos: você + seus amigos, mesmo sem pontos; geral: quem já pontuou
+    // amigos: você + seus amigos; geral: todos com cadastro. Sem pontos também aparecem (empate fica por último)
     const scope = new URL(req.url, 'http://x').searchParams.get('scope') === 'geral' ? 'geral' : 'amigos'
     const circle = scope === 'amigos' ? new Set([device, ...db.prepare("SELECT a, b FROM friendships WHERE (a = ? OR b = ?) AND status = 'amigos'").all(device, device).map((r) => (r.a === device ? r.b : r.a))]) : null
     const out = users.filter((u) => !circle || circle.has(u.device))
       .map((u) => { const p = parse(u.data) ?? {}; return { pid: pseudo(u.device), name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u.hood, handle: handleOf(u.device), photo: avatarVersion(u.device), reputation: reputationOf(u.device), me: u.device === device } })
-      .filter((x) => circle || x.reputation.points > 0).filter((x) => !/^E2E/.test(x.name)).sort((a, b) => b.reputation.points - a.reputation.points).slice(0, 30)
+      .filter((x) => !/^E2E/.test(x.name)) // geral: todo mundo com cadastro, mesmo sem pontos (antes só quem já pontuou).sort((a, b) => b.reputation.points - a.reputation.points).slice(0, 100)
     return ok(out)
   }
   // turma pública ou privada (privada: só entra quem recebe o link de uma votação; pública: aparece no perfil dos membros e qualquer um entra)

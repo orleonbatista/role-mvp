@@ -90,7 +90,7 @@ export function SocialPage() {
             {me?.hood && <button onClick={() => setHoodOnly((x) => !x)} className="hit text-[12px] text-accent">{hoodOnly ? 'todos os bairros' : `só ${me.hood}`}</button>}
           </div>
           <div className="divide-y divide-line overflow-hidden rounded-[20px] border border-line">
-            {rk.data?.length === 0 && <p className="p-4 text-[13px] text-faint">{scope === 'amigos' ? 'Adicione amigos pra comparar pontos.' : 'Ninguém pontuou ainda. Avalie um rolê que você foi e entre no ranking.'}</p>}
+            {rk.data?.length === 0 && <p className="p-4 text-[13px] text-faint">{scope === 'amigos' ? 'Adicione amigos pra comparar pontos.' : 'Ninguém por aqui ainda.'}</p>}
             {rk.data?.map((p, i) => (
               <PersonRow key={p.pid} p={p} right={<span className={cx('w-8 text-right font-serif text-[22px]', i < 3 ? 'text-accent' : 'text-mute')}>{i + 1}</span>} />
             ))}

@@ -88,12 +88,7 @@ function TurmaCard({ t, i }: { t: Turma; i: number }) {
         </ul>
       )}
       <TurmaChat gid={t.id} />
-      {(t.admin ?? t.mine) && (
-        <button onClick={async () => { const v = t.visibility === 'publica' ? 'privada' : 'publica'; if (await setGroupVisibility(t.id, v)) { track('turma_visibility', { v }); qc.invalidateQueries({ queryKey: ['turmas'] }) } }}
-          className="mt-2 w-full text-left text-[12px] text-mute">
-          {t.visibility === 'publica' ? <>Turma <b className="text-accent">pública</b>: aparece no perfil de vocês e qualquer um entra. Tornar privada</> : <>Turma <b className="text-ink">privada</b>: só entra quem recebe o link da turma ou de uma votação. Tornar pública</>}
-        </button>
-      )}
+      <VisibilityControl t={t} />
       <div className="mt-4 flex items-center gap-2">
         <Link to={`/novo?turma=${t.id}`} onClick={() => track('turma_novo_role', { members: t.members.length })} className="flex-1">
           <Button variant="soft" className="w-full" icon={<Sparkles size={15} />}>Novo rolê com essa turma</Button>
@@ -447,5 +442,39 @@ export function JoinTurmaPage() {
         )}
       </div>
     </Page>
+  )
+}
+
+/** privacidade da turma: controle explícito (antes era um texto clicável que ninguém percebia) */
+function VisibilityControl({ t }: { t: Turma }) {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const pub = t.visibility === 'publica'
+  const can = !!(t.admin ?? t.mine)
+  const set = async (v: 'privada' | 'publica') => {
+    if (!can || v === t.visibility) return
+    const ok = await setGroupVisibility(t.id, v)
+    track('turma_visibility', { v, ok })
+    toast(ok ? (v === 'publica' ? 'Turma agora é pública' : 'Turma agora é privada') : 'Não deu agora')
+    qc.invalidateQueries({ queryKey: ['turmas'] })
+  }
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-2">
+        <span className="text-[12px] text-mute">Privacidade</span>
+        <div className="ml-auto flex rounded-full bg-white/[0.05] p-0.5 text-[12px]" role="radiogroup" aria-label="Privacidade da turma">
+          {(['privada', 'publica'] as const).map((v) => (
+            <button key={v} role="radio" aria-checked={(t.visibility ?? 'privada') === v} disabled={!can} onClick={() => set(v)}
+              className={(t.visibility ?? 'privada') === v ? 'h-7 rounded-full bg-surface-2 px-3 text-ink' : 'h-7 rounded-full px-3 text-mute disabled:opacity-50'}>
+              {v === 'privada' ? 'Privada' : 'Pública'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="mt-1.5 text-[11px] text-faint">
+        {pub ? 'Aparece no perfil dos membros e qualquer um pode entrar.' : 'Só entra quem recebe o link da turma ou de uma votação.'}
+        {!can && ' Só admin muda.'}
+      </p>
+    </div>
   )
 }
