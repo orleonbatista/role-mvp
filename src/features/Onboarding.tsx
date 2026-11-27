@@ -1,3 +1,4 @@
+import { celebrate } from '../ui/Celebrate'
 import { canGoBack } from '../lib/nav'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
@@ -76,6 +77,7 @@ export function Onboarding() {
     // veio de um convite (ex.: evento divulgado): volta pro que a pessoa estava fazendo
     let next: string | null = null
     try { next = localStorage.getItem('role.next'); localStorage.removeItem('role.next') } catch { /* */ }
+    if (!editing) celebrate({ kind: 'cheers', title: 'Bem-vindo ao rolê.', text: 'Bora achar o próximo?' })
     nav(next && next.startsWith('/') ? next : '/', { replace: true })
   }
 

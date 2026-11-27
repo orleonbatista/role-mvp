@@ -1,3 +1,4 @@
+import { celebrate } from '../ui/Celebrate'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -38,7 +39,7 @@ export function SocialPage() {
   const [hoodOnly, setHoodOnly] = useState(false)
   const [scope, setScope] = useState<'amigos' | 'geral'>('amigos')
   const rk = useQuery({ queryKey: ['ranking', scope, hoodOnly ? me?.hood : ''], queryFn: () => ranking(hoodOnly ? me?.hood : undefined, scope), enabled: tab === 'ranking' })
-  const accept = async (pid: string) => { await personAction(pid, 'accept'); track('friend_accept', {}); qc.invalidateQueries({ queryKey: ['social'] }) }
+  const accept = async (pid: string) => { const ok = await personAction(pid, 'accept'); track('friend_accept', {}); if (ok) celebrate({ kind: 'friends', title: 'Agora vocês são amigos', text: 'Os rolês e curadorias de um aparecem pro outro' }); qc.invalidateQueries({ queryKey: ['social'] }) }
   return (
     <Page tabbed>
       <TopBar title="Amigos" back={false} />
@@ -127,7 +128,8 @@ export function PersonPage() {
     if (a === 'remove' && !(await confirmSheet({ title: 'Desfazer amizade?', ok: 'Desfazer' }))) return
     const ok = await personAction(pid, a)
     track('friend_' + a, {})
-    toast(ok ? ({ add: 'Pedido de amizade enviado', accept: 'Agora vocês são amigos', remove: 'Amizade desfeita', block: 'Pessoa bloqueada' } as const)[a] : 'Entre no app com cadastro pra fazer amizades')
+    if (ok && a === 'accept') celebrate({ kind: 'friends', title: `Você e ${p?.name.split(' ')[0] ?? 'ela'} agora são amigos` })
+    else toast(ok ? ({ add: 'Pedido de amizade enviado', accept: 'Agora vocês são amigos', remove: 'Amizade desfeita', block: 'Pessoa bloqueada' } as const)[a] : 'Entre no app com cadastro pra fazer amizades')
     qc.invalidateQueries({ queryKey: ['person', pid] }); qc.invalidateQueries({ queryKey: ['social'] })
   }
   if (q.isFetched && !p) return <Page><TopBar /><p className="px-5 text-[14px] text-mute">Perfil não encontrado.</p></Page>
@@ -194,7 +196,7 @@ export function PersonPage() {
                     <span className="min-w-0 flex-1"><span className="block truncate text-[14px]">{g.name}</span><span className="text-[12px] text-faint">{g.members} pessoas</span></span>
                     {g.member
                       ? <Link to="/turmas" className="text-[12px] text-accent">você está</Link>
-                      : <button onClick={async () => { const ok = await joinGroup(g.id); track('turma_join', { ok }); toast(ok ? 'Você entrou na turma' : 'Entre no app com cadastro pra participar'); qc.invalidateQueries({ queryKey: ['person', pid] }); qc.invalidateQueries({ queryKey: ['turmas'] }) }}
+                      : <button onClick={async () => { const ok = await joinGroup(g.id); track('turma_join', { ok }); if (ok) celebrate({ kind: 'turma', title: 'Você entrou na turma' }); else toast('Entre no app com cadastro pra participar'); qc.invalidateQueries({ queryKey: ['person', pid] }); qc.invalidateQueries({ queryKey: ['turmas'] }) }}
                           className="h-8 rounded-full bg-accent px-3 text-[12px] font-medium text-accent-ink">Entrar</button>}
                   </div>
                 ))}
@@ -378,7 +380,7 @@ export function AppInvitePage() {
     setBusy(false)
     track('app_invite_accept', { ok })
     if (!ok) { toast('Não deu agora; tente de novo daqui a pouco'); return }
-    toast(`Agora você e ${q.data?.name.split(' ')[0] ?? 'quem te chamou'} são amigos`)
+    celebrate({ kind: 'friends', title: `Você e ${q.data?.name.split(' ')[0] ?? 'quem te chamou'} agora são amigos` })
     qc.invalidateQueries({ queryKey: ['social'] })
     nav('/amigos', { replace: true })
   }

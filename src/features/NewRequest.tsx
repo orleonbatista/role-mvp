@@ -1,3 +1,4 @@
+import { celebrate } from '../ui/Celebrate'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
@@ -9,6 +10,7 @@ import { track } from '../lib/track'
 import { isVague, parseRequest } from '../mocks/ranker'
 import { parseText, useCreateRequest, useDeleteRequest } from '../lib/api'
 import { turmaName, useTurmas } from './Turmas'
+import { CheersMugs } from '../ui/Celebrate'
 import type { Criteria, Occasion, Vibe } from '../lib/types'
 import { placeById } from '../mocks/seeds/places'
 import { editOption } from '../mocks/remote'
@@ -83,6 +85,7 @@ export function NewRequest() {
     // o lugar escolhido no chat entra na votação (o pedido sobe pro servidor em segundo plano; tenta algumas vezes)
     if (fixed) void (async () => { for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 1200 * (i + 1))); if (await editOption(id, 'add', fixed).catch(() => false)) return } })()
     track('request_created', { vague, clarified: clarify, groupSize: group ?? now.groupSize, occasion: occasion ?? now.occasion, niches: now.niches, unmet })
+    celebrate({ kind: 'cheers', title: 'Rolê criado!', text: 'Agora é só mandar pro grupo votar' })
     nav(`/pedido/${id}`, { replace: true })
   }
 
@@ -223,6 +226,7 @@ function SearchSteps() {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-30 grid place-items-center bg-bg/80 px-8 backdrop-blur-md" role="status" aria-live="polite">
       <div className="w-full max-w-[320px] rounded-[28px] border border-line bg-surface p-5">
+        <div className="-mt-2 mb-2 flex justify-center"><CheersMugs size={150} loop /></div>
         <p className="font-serif text-[28px] leading-none">Montando o rolê<span className="text-accent">…</span></p>
         <ul className="mt-5 grid gap-3">
           {STEPS.map((s, k) => (

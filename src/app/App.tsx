@@ -1,3 +1,4 @@
+import { BeerLoader, CelebrateHost } from '../ui/Celebrate'
 import { ConfirmHost } from '../ui/Confirm'
 import { AnimatePresence, LayoutGroup, MotionConfig } from 'motion/react'
 import { PullToRefresh } from './PullToRefresh'
@@ -81,7 +82,7 @@ function RouteProgress() {
 function Fallback() {
   return (
     <div className="absolute inset-0 grid content-start gap-3 bg-bg px-5 pt-safe-lg" role="status" aria-label="Carregando">
-      <div className="mb-2 flex items-center gap-3"><span className="font-serif text-[26px] italic">rolê<span className="text-accent">.</span></span><span className="h-[3px] w-16 animate-pulse rounded-full bg-accent/70" /></div>
+      <div className="mb-2 flex items-center gap-3"><BeerLoader size={30} /><span className="font-serif text-[26px] italic">rolê<span className="text-accent">.</span></span></div>
       <Skeleton className="h-10 w-2/3" /><Skeleton className="h-40" /><Skeleton className="h-40" />
     </div>
   )
@@ -112,6 +113,7 @@ export function App() {
         <ToastHost>
           <RouteProgress />
           <PullToRefresh />
+          <CelebrateHost />
           <LayoutGroup>
             <AnimatePresence initial={false}>
               {(isLoading || !booted) && !isPublic ? (

@@ -244,7 +244,7 @@ export function Overlay({ children }: { children: ReactNode }) {
 export function EmptyState({ title, text, action }: { title: string; text: string; action?: ReactNode }) {
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center px-8 pt-24 text-center">
-      <span className="grid size-16 place-items-center rounded-full bg-white/[0.05] text-mute"><SearchX size={26} strokeWidth={1.5} /></span>
+      <motion.span className="grid size-16 place-items-center rounded-full bg-white/[0.05] text-mute" animate={{ y: [0, -6, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}><SearchX size={26} strokeWidth={1.5} /></motion.span>
       <h2 className="mt-6 font-serif text-[32px] leading-none">{title}</h2>
       <p className="mt-3 text-sm leading-relaxed text-mute">{text}</p>
       {action && <div className="mt-8">{action}</div>}

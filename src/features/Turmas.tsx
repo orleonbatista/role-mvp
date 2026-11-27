@@ -1,3 +1,4 @@
+import { celebrate } from '../ui/Celebrate'
 import { confirmSheet } from '../ui/Confirm'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'motion/react'
@@ -252,6 +253,8 @@ function CreateTurmaSheet({ open, onClose }: { open: boolean; onClose: () => voi
         if (!r?.ok) { toast('Não deu pra criar agora (precisa de cadastro e conexão)'); return }
         track('turma_create', {})
         setName(''); onClose()
+        celebrate({ kind: 'turma', title: 'Turma criada!', text: 'Agora é só chamar a galera pelo link' })
+        await new Promise((r) => setTimeout(r, 1400))
         await qc.invalidateQueries({ queryKey: ['turmas'] })
         const token = await groupLink(r.id)
         if (token) await shareInvite(name.trim() || 'a turma', token, toast)
@@ -412,6 +415,7 @@ export function JoinTurmaPage() {
     setBusy(false)
     track('turma_join_link', { ok: !!r?.ok })
     if (!r?.ok) { toast('Não deu pra entrar agora'); return }
+    celebrate({ kind: 'turma', title: 'Você entrou na turma!' })
     await qc.invalidateQueries({ queryKey: ['turmas'] })
     nav('/turmas', { replace: true })
   }

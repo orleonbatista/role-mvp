@@ -20,6 +20,7 @@ import { currentVoteLink, readPayload, shareLink } from '../lib/share'
 import { track } from '../lib/track'
 import type { Place, VoteTally } from '../lib/types'
 import { StorySheet } from './StorySheet'
+import { CheersMugs, Confetti } from '../ui/Celebrate'
 import { isCommunity } from '../mocks/seeds/places'
 import { AskBox } from './AskBox'
 import { InvitesList } from './Invites'
@@ -65,6 +66,7 @@ export function VotePage() {
   const live = !!syncQ.data?.online
   const [voter, setVoter] = useState(() => localStorage.getItem('role.voter') ?? '')
   const [celebrate, setCelebrate] = useState(false)
+  const [burst, setBurst] = useState<{ id: string; at: number } | null>(null) // confete pequeno no card votado
   const [highlight, setHighlight] = useState<string[]>([])
   const nameRef = useRef<HTMLInputElement>(null)
   const [customOpen, setCustomOpen] = useState(false)
@@ -114,6 +116,7 @@ export function VotePage() {
       return
     }
     vote.mutate({ placeId, voter: voter.trim(), kind })
+    if (kind === 'place') setBurst({ id: placeId, at: Date.now() })
     track('vote_cast', { kind, external })
   }
 
@@ -238,6 +241,7 @@ export function VotePage() {
                   className={cx('relative overflow-hidden rounded-[22px] border p-3 text-left transition-[colors,box-shadow] duration-500', mine ? 'border-accent/70' : 'border-line bg-surface/60', highlight.includes(p.id) && 'shadow-[0_0_0_2px_rgba(198,255,61,0.9),0_0_40px_-6px_rgba(198,255,61,0.55)]')}
                 >
                   <motion.div className="absolute inset-y-0 left-0 bg-accent/[0.12]" initial={false} animate={{ width: `${pct * 100}%` }} transition={{ type: 'spring', stiffness: 120, damping: 22 }} />
+                  {burst?.id === p.id && <div key={burst.at} className="pointer-events-none absolute right-10 top-1/2"><Confetti count={12} radius={46} delay={0} /></div>}
                   <div className="relative flex items-center gap-3">
                     <Cover hue={p.hue} icon={placeIcon(p)} iconSize={22} className="size-14 shrink-0" rounded="rounded-[14px]" />
                     <div className="min-w-0 flex-1">
@@ -440,8 +444,10 @@ function Celebration({ place, size, time, onReview, onHome, author }: { place: P
         <motion.div initial={{ scale: 0.4, rotate: -12, opacity: 0 }} animate={{ scale: 1, rotate: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 18 }}>
           <Cover hue={place.hue} className="size-36 shadow-[0_30px_80px_-20px_rgba(198,255,61,0.5)]" rounded="rounded-[36px]" />
         </motion.div>
+        {/* brinde: as canecas aparecem em cima da capa do lugar */}
+        <div className="absolute -top-24 left-1/2 -translate-x-1/2"><CheersMugs size={170} delay={0.35} /></div>
       </div>
-      <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.6, ease }} className="mt-10 text-sm uppercase tracking-[0.16em] text-accent">rolê fechado</motion.p>
+      <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.6, ease }} className="mt-10 text-sm uppercase tracking-[0.16em] text-accent">rolê fechado · saúde!</motion.p>
       <motion.h2 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45, duration: 0.6, ease }} className="mt-2 font-serif text-[44px] leading-none">{place.name}</motion.h2>
       <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-3 text-sm text-mute">{time ? `${time} · ` : ''}{size} {size === 1 ? 'pessoa' : 'pessoas'}. Avise a casa pela ficha do lugar.</motion.p>
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.75, duration: 0.5, ease }} className="mt-10 grid w-full gap-2">

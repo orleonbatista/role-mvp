@@ -1,3 +1,4 @@
+import { celebrate, StarBurst } from '../ui/Celebrate'
 import { useProfile } from '../lib/api'
 import { VERDICT_LABEL } from '../lib/labels'
 import { StorySheet } from './StorySheet'
@@ -45,7 +46,8 @@ export function ReviewPage() {
     try { localStorage.setItem(`role.reviewed.${id}`, '1') } catch { /* */ }
     setCredited(res.credited)
     if (!res.credited) {
-      toast('Avaliação salva no seu diário')
+      if (went) celebrate({ kind: 'check', title: 'Avaliação salva', text: 'Vira curadoria e soma pontos no seu perfil' })
+      else toast('Avaliação salva no seu diário')
       // foi e avaliou: oferece postar a avaliação no Story (fecha → vai pro perfil)
       const p = data?.options.find((o) => o.id === placeId)
       if (went && verdict && p) setStory({ kind: 'avaliacao', place: p, verdict: VERDICT_LABEL[verdict], note: note.trim() || undefined, author: me?.name.split(' ')[0] ?? 'Alguém' })
@@ -127,6 +129,7 @@ export function ReviewPage() {
         {credited && (
           <motion.div className="pointer-events-auto absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg/92 px-8 text-center backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 16 }} className="relative">
+              <StarBurst />
               <Avatar name={credited.name} hue={credited.hue} size={96} />
               <motion.span initial={{ scale: 0, y: 10 }} animate={{ scale: 1, y: 0 }} transition={{ delay: 0.35, ...spring }} className="absolute -right-3 -top-2 rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-accent-ink">+15 rep</motion.span>
             </motion.div>

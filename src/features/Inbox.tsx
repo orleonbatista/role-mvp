@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react'
+import { motion } from 'motion/react'
 import { Link, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bell, CalendarCheck, Camera, Check, MessageCircle, Star, UserPlus, Users, Vote } from 'lucide-react'
@@ -16,9 +18,13 @@ export const useInbox = () => useQuery({ queryKey: ['inbox'], queryFn: inbox, re
 /** sino com contador de não lidas (vai no topo da Início) */
 export function InboxBell({ className }: { className?: string }) {
   const n = useInbox().data?.unread ?? 0
+  // balança só quando chega notificação nova (não toda vez que a tela abre)
+  const prev = useRef(n)
+  const [ring, setRing] = useState(0)
+  useEffect(() => { if (n > prev.current) setRing((x) => x + 1); prev.current = n }, [n])
   return (
     <Link to="/notificacoes" aria-label={n ? `Notificações, ${n} novas` : 'Notificações'} className={cx('relative grid size-10 place-items-center rounded-full bg-white/[0.06]', className)}>
-      <Bell size={17} />
+      <motion.span key={ring} className="grid" animate={ring ? { rotate: [0, -18, 16, -10, 8, 0] } : undefined} transition={{ duration: 0.8, delay: 0.2 }} style={{ originY: 0.1 }}><Bell size={17} /></motion.span>
       {n > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-ink">{n > 9 ? '9+' : n}</span>}
     </Link>
   )

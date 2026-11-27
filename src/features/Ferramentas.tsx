@@ -1,3 +1,4 @@
+import { celebrate } from '../ui/Celebrate'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { Check, ClipboardList, Copy, Dices, Image, LocateFixed, MessageCircle, Receipt, Share2, Sparkles, Vote } from 'lucide-react'
@@ -200,6 +201,7 @@ export function BringPage() {
     track('bring_' + a, { ok: !!r })
     if (!r) { toast(a === 'claim' ? 'Alguém já pegou esse item' : 'Não deu agora'); qc.invalidateQueries({ queryKey: ['bring', id] }); return }
     qc.setQueryData(['bring', id], r)
+    if (a === 'claim' && r.items.find((x) => x.i === body.i)?.me) celebrate({ kind: 'check', title: `Você leva ${r.items.find((x) => x.i === body.i)?.what}`, text: 'A galera já vê na lista' })
   }
   return (
     <Page>

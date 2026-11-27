@@ -1,3 +1,4 @@
+import { BeerLoader } from '../ui/Celebrate'
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
@@ -68,7 +69,7 @@ export function PullToRefresh() {
   return (
     <div className="pointer-events-none fixed inset-x-0 z-[80] flex justify-center" style={{ top: `calc(env(safe-area-inset-top) + ${busy ? 18 : Math.max(4, dy - 30)}px)` }} role="status" aria-live="polite">
       <span className={`grid size-9 place-items-center rounded-full border border-white/10 bg-surface-2 shadow-lg ${ready || busy ? 'text-accent' : 'text-mute'}`}>
-        <RefreshCw size={16} className={busy ? 'animate-spin' : ''} style={busy ? undefined : { transform: `rotate(${dy * 3}deg)` }} />
+        {busy ? <BeerLoader size={16} /> : <RefreshCw size={16} style={{ transform: `rotate(${dy * 3}deg)` }} />}
         <span className="sr-only">{busy ? 'Atualizando' : ready ? 'Solte pra atualizar' : 'Puxe pra atualizar'}</span>
       </span>
     </div>
