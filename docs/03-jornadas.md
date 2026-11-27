@@ -88,8 +88,11 @@ Personagens: **Nina** (organiza), **Bia** (vota pelo link, nunca abriu o app), *
    "Nova votação: …" e "Fechou: …" com link "abrir votação".
 3. Aba **Turmas**: cartão com membros (5 primeiros) + **ver membros** (lista com @ e nível; toque abre o
    perfil), chat, "Novo rolê com essa turma", sair.
-4. Dona da turma alterna **privada** (só entra quem recebe link de votação) ↔ **pública** (aparece no
+4. Em "ver membros", qualquer membro **chama um amigo** (precisa ser amigo no app): ele entra na hora,
+   recebe aviso e o chat registra. Funciona em turma privada.
+5. Dona da turma alterna **privada** (só entra quem recebe link de votação) ↔ **pública** (aparece no
    perfil dos membros e qualquer pessoa com cadastro entra).
+- 🧪 Chamar quem não é amigo → `403 so_amigos`; depois da amizade → entra e recebe item `gi` na central.
 - 🧪 Chat da turma traz `system: true, ref: r-test1` pros dois recados; turma pública aparece no perfil
   da Ana pra Caio como "Ana, Bia · 2 pessoas"; Caio entra → turma com 3.
 
@@ -137,7 +140,5 @@ Login Google → o servidor devolve a sessão do perfil → o app puxa pedidos, 
 
 ## Gaps conhecidos ⚠️
 - Layout no iPhone usa a área segura real, mas falta confirmar num aparelho físico.
-- Busca por @ percorre todos os usuários em memória: ok até alguns milhares; na nuvem vira índice.
-- Turma privada não tem "convidar pelo @" ainda (entra quem recebe o link de uma votação).
 - Ferramentas "Quem leva o quê" e Pix ficam só no aparelho (de propósito); não sincronizam.
 - Instagram da casa conectado (NF15) depende do app de desenvolvedor da Meta.

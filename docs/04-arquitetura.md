@@ -239,7 +239,6 @@ leads       (id PK, device, data JSON, at)
 
 - o servidor é um PC doméstico atrás de túnel sem WAF; cai se o PC desliga (o monitor abre issue);
 - sem backup automático fora do PC;
-- busca de pessoas varre a tabela em memória (ok até alguns milhares de cadastros);
 - denúncias dependem de 3 pessoas ou do admin pra ocultar.
 
 Resolvidos desde a primeira versão: autenticação por sessão com hash, pseudônimos no lugar do id do
