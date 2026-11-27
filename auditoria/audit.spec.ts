@@ -150,9 +150,9 @@ test('auditoria de todas as telas', async ({ page }, info) => {
   await audit(page, '28-ranking', device, out, Date.now())
   await go('turmas', '29-turmas')
   await go('notificacoes', '30-notificacoes', 'Notificações')
-  await go('perfil', '31-perfil')
+  await go('perfil', '31-perfil', 'Suas listas')
   await scroll(page, 1200); await audit(page, '32-perfil-fim', device, out, Date.now())
-  await go('buscar', '33-busca-rapida')
+  await go('buscar', '33-busca-rapida', 'Conta o que você quer fazer')
   await go('indicar', '34-indicar')
   } catch (e) { out.findings.push({ screen: 'roteiro', kind: 'falha', detail: String(e).slice(0, 300) }) }
 
