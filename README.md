@@ -1,140 +1,77 @@
-# rolê. — MVP local
+# rolê.
 
-> 📚 Documentação completa (produto, jornadas, arquitetura, operação, métricas, roadmap e modelo de negócio) em [`docs/`](docs/README.md).
+PWA de rolês decididos em grupo: alguém descreve o que quer ("aniversário pra 14 sábado em Pinheiros,
+até R$ 90"), a IA e a comunidade sugerem lugares, a turma vota por um link e o rolê fecha. Depois, quem
+foi avalia, e a avaliação vira curadoria pro próximo pedido.
 
+- Site: https://orleonbatista.github.io/role-mvp/ (noindex, em teste com amigos)
+- Documentação completa: [`docs/`](docs/README.md). Jornadas passo a passo com dados de teste:
+  [`docs/03-jornadas.md`](docs/03-jornadas.md)
 
-App mobile-first (PWA) de curadoria de rolês: você descreve o que quer, a "IA" sugere, a comunidade refina, o grupo vota por link e depois você avalia.
-**Tudo roda 100% local e mockado** — sem backend, sem chaves, sem rede.
+## O que tem
+
+| Área | Funcionalidades |
+|---|---|
+| Pedido e IA | texto livre → critérios (LLM ou regras) → ranking misturando catálogo curado, casas reais do Google e sugestões; busca rápida `/buscar` |
+| Votação | link curto pro WhatsApp e story; vários horários por pessoa; horário alternativo; prazo; a autora tira/põe lugares e escolhe quem vota (qualquer um com o link ou só amigos e a turma) |
+| Depois de fechar | vou/talvez/não, recados, álbum de fotos, rota, clima, agenda, dividir a conta com Pix, convite pra avaliar |
+| Turmas | quem vota entra na turma; chat ligado às votações (recados automáticos e votações abertas); membros com @ e nível; pública ou privada |
+| Social | @ único, busca por @ ou nome, pedidos de amizade, feed dos amigos, perfil público, listas, ranking, bloquear e denunciar |
+| Notificações | avisos no celular (Web Push) e central `/notificacoes` com tudo guardado por 60 dias |
+| Ferramentas | dividir conta, convite com flyer, post 4:5, link do WhatsApp, ponto de encontro, quem leva o quê, sorteio (sem precisar de grupo) |
+| Casas (B2B) | reivindicar página, oferta pra grupos, fotos próprias, destaque patrocinado marcado, relatório |
+| Curadoria | papéis admin/curador/usuário; fila de eventos, denúncias (3 ocultam sozinho), reivindicações, funil, teste de avisos |
+
+## Arquitetura
+
+```
+GitHub Pages (PWA estático)                     PC do Orleon (Windows)
+ React 19 + Vite + Tailwind + Motion             llm-gateway (Node 22, node:sqlite)
+ Dexie (IndexedDB) = cópia local       ⇄ HTTPS ⇄  ├─ API /api/* (sessões, pseudônimos, social, turmas, inbox…)
+ shim de fetch em src/mocks/browser.ts  túnel     ├─ IA: nuvem (Gemini/OpenAI) com fallback qwen2.5:7b local
+ TanStack Query, React Router           Cloudflare├─ Web Push (VAPID)
+                                                  └─ fotos em data/photos (teto 5 GB)
+```
+
+- **Local-first:** a tela lê do IndexedDB; o servidor é a fonte do que é compartilhado (votos, turmas,
+  amizades, notificações). Sem servidor, o app segue funcionando com o que já tem.
+- **Identidade:** cada aparelho tem uma sessão (`X-Session`, só o hash fica no banco). Os outros só veem
+  pseudônimos `u-…` (sha256 com sal), nunca o id do aparelho.
+- **Google Places:** a chave fica só no secret `PLACES_KEY` e no `.env.local` (fora do git). Do Google só
+  guardamos `place_id` e lat/lng por até 30 dias; fotos do Google nunca são guardadas (o link vive 6 h no
+  `sessionStorage` do aparelho).
+- Detalhes: [`docs/04-arquitetura.md`](docs/04-arquitetura.md).
 
 ## Rodar
 
 ```bash
 npm install
-npm run dev
+npm run dev               # http://localhost:5173
+npm run build             # gera dist/ com cópias das rotas fixas (novo/, perfil/, amigos/, ferramentas/…)
+npx playwright test       # E2E contra o site publicado (E2E_BASE muda o alvo)
 ```
 
-- Desktop: abra http://localhost:5173 (o app aparece numa moldura de celular).
-- Celular na mesma rede Wi-Fi: use o endereço `Network:` que o Vite mostra (ex.: `http://192.168.0.10:5173`). Libere a porta 5173 no firewall do Windows se pedir.
-- Build de produção local: `npm run build && npm run preview`.
+Servidor (no PC): `powershell -ExecutionPolicy Bypass -File llm-gateway\start-role.ps1` sobe o gateway e
+o túnel e publica o endereço novo no `llm.json`. Dados em `llm-gateway/data/` (fora do git: banco,
+chaves de IA, chave de admin, sal dos pseudônimos, fotos).
 
-## Versão web (testes)
+## Automação
 
-Deploy automático no GitHub Pages via `.github/workflows/pages.yml` a cada push na `main`
-(build com `BASE_PATH=/<repo>/` + `404.html` para as rotas da SPA). A página tem `noindex`.
-Cada visitante tem seus próprios dados no navegador (IndexedDB) — nada é compartilhado entre pessoas.
-
-## Stack
-
-| Camada | Escolha |
-|---|---|
-| Build | Vite + React 19 + TypeScript |
-| Rotas | React Router (transições com `AnimatePresence` + telas em camadas absolutas) |
-| Estilo | Tailwind v4, tokens em `src/index.css` (dark-first, acento lima `#c6ff3d`, Geist + Instrument Serif) |
-| Animação | Motion: elementos compartilhados (`layoutId`), springs, stagger, blur-in, sheet arrastável, parallax |
-| API mock | MSW (Mock Service Worker) — o front chama `fetch('/api/...')` normal |
-| Persistência | Dexie (IndexedDB): perfil, pedidos, respostas, votos, avaliações |
-| Estado servidor | TanStack Query (cache, polling das respostas, votos otimistas) |
-| "IA" | `src/mocks/ranker.ts`: extrai ocasião/grupo/bairro/preço/nicho/vibe do texto e ranqueia com motivos |
-
-## Novidades da v2 (pós-avaliação)
-
-- **Link autossuficiente**: o pedido viaja no fragmento da URL (`#p=…`), então o link de votação abre em qualquer celular sem backend. Votos de quem abre o link ficam no aparelho dessa pessoa (placar compartilhado = próxima fase, exige backend).
-- **Votação de horário** além do lugar; "Fechar no X · Sáb 20h".
-- **Compartilhar**: botão direto do WhatsApp (`wa.me`), folha nativa do celular (`navigator.share`) ou copiar.
-- **IA mais honesta**: casamento por palavra inteira + tolerância a 1 erro de digitação, entende dia/horário (hoje, sexta, almoço, madrugada), tags (vegano, samba, pet, acessível, karaokê), espaço reservável para grupos grandes, avisos ("fecha às 23h", "acima do orçamento"), match calibrado pela quantidade de critérios, nível de confiança e "não tenho X no catálogo". Pedido vago → pergunta antes de chutar.
-- **Medição local**: eventos do funil, botão de feedback em todas as telas, "fake door" de reserva (formulário de lead) e **Painel de testes** (`/testes`, link no perfil) com export JSON.
-- **Modo demonstração** (perfil): liga/desliga curadores e amigos simulados — desligue para testes com pessoas reais.
-- **UX**: ícone do tipo de lugar nas capas, aberto agora/abre às, distância aproximada do seu bairro, estados de erro, folhas e celebrações fora da área de rolagem, code-split por tela.
-- **IA via LLM local (opcional)**: veja a seção abaixo.
-
-## LLM local (Ollama na sua GPU)
-
-Testado com **qwen2.5:7b** numa RTX 2070 8 GB: roda 100% na GPU, ~1,3–1,8 s por pedido depois de carregado (a 1ª chamada leva alguns segundos para subir o modelo).
-
-1. Instale o Ollama (`winget install Ollama.Ollama`) e baixe o modelo: `ollama pull qwen2.5:7b`.
-2. Crie `.env.local` na raiz com `VITE_OLLAMA_MODEL=qwen2.5:7b`.
-3. `npm run dev`. O app chama `/ollama/*` e o proxy do Vite repassa ao Ollama local (sem CORS; funciona também do celular no Wi-Fi).
-
-Como funciona (`src/mocks/llm.ts`):
-- O LLM só **extrai critérios** (ocasião, pessoas, orçamento, nichos, vibes, tags) com saída JSON por schema; o **ranking continua determinístico** e explicável.
-- **Extração ancorada**: cada critério vem com o trecho exato do pedido que o justifica; o que não aparece no texto é descartado (corta alucinação de modelo pequeno). Tags exigem vocabulário da própria tag (ex.: "acessível" só com cadeirante/rampa).
-- União com o parser por regras: regras garantem números, bairro e dia/horário; o LLM soma gírias e contexto ("minha mina" → date, "pagodinho" → samba, "sem barulho" → tranquilo).
-- Se o Ollama estiver desligado ou demorar >15 s, cai para as regras sem quebrar nada. A tela de resultado mostra qual motor entendeu o pedido.
-- No site publicado (GitHub Pages) o LLM chega pelo **gateway + túnel** (seção abaixo); sem eles, vale só o parser por regras.
-
-## LLM do seu PC no site publicado (para testes com amigos)
-
-```
-GitHub Pages ──HTTPS──> trycloudflare.com ──túnel──> llm-gateway (127.0.0.1:8787) ──> Ollama (127.0.0.1:11434)
-```
-
-- `llm-gateway/server.mjs` (Node 22.18+, sem dependências): expõe **só** `POST /extract {text}` e `GET /health`. O prompt e o schema ficam no servidor (`src/mocks/llmPrompt.ts`, compartilhado com o app), então ninguém usa sua GPU como chatbot genérico. A API do Ollama não é exposta. Aceita só as origens do site/dev, limita 20 pedidos/min e 400/dia por IP, até 400 caracteres por pedido, uma extração por vez na GPU.
-- `llm-gateway\start.cmd` sobe o gateway e abre um **Cloudflare Quick Tunnel** (sem conta). O endereço `https://….trycloudflare.com` muda a cada reinício.
-- O site lê o endereço atual de **`llm.json`** na raiz do repo (em tempo de execução, sem rebuild). Ao reiniciar o túnel, atualize a `url` ali e faça commit — ou, só para um aparelho, cole a URL em **/testes → IA (LLM)**.
-- PC desligado/túnel fora: o app percebe em segundos, usa só as regras por 1 minuto e tenta de novo depois. O painel /testes mostra o status.
-
-## Fluxo para testar
-
-1. **Onboarding** → nome, bairro, nichos e vibes.
-2. **Início** → "Pra você", eventos da semana e feed da comunidade.
-3. **+** → escreva, por ex.: `aniversário pra 14 pessoas sábado em Pinheiros, até R$ 90` (veja os chips detectados ao vivo).
-4. **Resultado** → a IA responde em streaming, 3 recomendações com % de match e motivos; curadores "respondem" nos segundos seguintes.
-5. **Mandar pro grupo** → preview do link como no WhatsApp → **página de votação** (`/r/:id`): amigos simulados votam ao vivo → **Fechar no …**.
-6. **Avaliar** → foi/não foi, nota e diário. Se o lugar veio de um curador e você "amou", ele ganha reputação.
-7. **Você** → reputação, curadoria por nicho, diário e pedidos.
-
-Zerar tudo: botão "zerar dados locais" no perfil (ou na lateral, no desktop).
+| Workflow | Quando | O que faz |
+|---|---|---|
+| `pages.yml` | push na `main` | build com `BASE_PATH` e deploy no Pages |
+| `e2e.yml` | depois de cada deploy e 1x/dia | jornadas no site publicado com dados `[E2E]`, apagados no fim |
+| `monitor.yml` | a cada 15 min | `/api/health`; abre/fecha a issue "Servidor fora do ar" |
 
 ## Estrutura
 
 ```
-src/
-  app/        App (rotas + transições), PhoneFrame, TabBar
-  features/   Onboarding, Home, NewRequest, Results, Vote, Place, Review, Profile
-  ui/         primitives (Button, Chip, Cover, StreamText…), Sheet, Toast, motion presets
-  mocks/      handlers MSW, ranker ("IA"), seeds (36 lugares, 10 curadores, 7 pedidos)
-  db/         Dexie
-  lib/        tipos, rótulos, cliente da API (hooks React Query)
+src/app        rotas, barra de abas, fallback de carregamento
+src/features   telas (Home, Vote, Results, Social, Turmas, Inbox, Ferramentas, VoteSetup, Venue…)
+src/lib        regras puras (Pix, slots, share, storyCard, places, push)
+src/mocks      shim da API local, ranker, sincronização com o servidor (remote.ts)
+src/db         Dexie
+llm-gateway    servidor: api.mjs (rotas e banco), server.mjs (HTTP, mídia, IA, push), providers.mjs
+e2e            Playwright
+docs           produto, jornadas, arquitetura, operação, métricas, roadmap, negócio, decisões
 ```
-
-## Trocar mock por real (próximas fases)
-
-- **Backend**: implemente as rotas de `src/mocks/handlers.ts` numa API real e remova `worker.start()` de `src/main.tsx` — os hooks em `src/lib/api.ts` não mudam.
-- **IA real**: troque `parseRequest`/`rank` por uma chamada a LLM (ex.: Ollama local) mantendo a mesma interface `Criteria` → `Ranked[]`.
-- **Dados de lugares**: substitua `seeds/places.ts` por Google Places + sua camada de tags de vibe/ocasião.
-- **Loja**: empacotar com Capacitor.
-
-## Divulgação de eventos (artistas, produtores, criadores)
-
-**Fase 1 — compartilhar.** Toda página de evento tem "Divulgar": a pessoa informa o @ e recebe
-arte de Story + link `/v/?to=e&id=<evento>&src=cr_<@>`. O link abre o convite `/e/:id`
-("Bora? Chama teu grupo"), que cria uma votação com o evento fixo como 1ª opção + 2 parecidas.
-A origem `cr_<@>` fica na tabela "Por origem" do /testes (coluna *grupos* = votações criadas).
-Link de bio: `/v/?to=p&id=<@>` → `/p/:handle`, página tipo linktree com os eventos daquele @.
-
-**Fase 2 — envio com curadoria.** `/divulgar` é um formulário aberto (sem cadastro). Mostra ao
-vivo em quantos pedidos recentes o evento entraria no top 5. O envio gera um link de curadoria
-(`/v/?to=c&id=…#d=<evento comprimido>`) que vai por WhatsApp/direct. Quem abre vê o evento na
-fila (`/c/:id` e /testes → Fila de eventos) e aprova ou recusa.
-
-Publicar pra todo mundo: aprovar (aparece na hora naquele aparelho) → "Copiar JSON" → adicionar
-ao array em `eventos.json` na raiz do repo. O app lê esse arquivo em tempo de execução
-(`VITE_EVENTS_URL`, via raw.githubusercontent), sem precisar de novo deploy. Eventos com data
-passada somem do feed sozinhos.
-
-## Curadoria em duas camadas
-
-- **Curado** (visível): lugares indicados pela comunidade em `/indicar` ou confirmados ao sugerir. O feed, o
-  "Pra você" (gosto + distância do bairro) e a 1ª opção da IA usam só essa camada.
-- **Base** (descoberta): lugares abertos do Google, buscados ao vivo perto de você e pelo seu gosto (até 5 km) e
-  a cada pedido. Aparecem marcados "sem curadoria". Do Google, só o `place_id` fica guardado.
-- **Curador fundador:** `/fundador` mostra o que falta curar (estilo × bairro) e gera o link de convite.
-- **Modo demo** (fictício): desligado por padrão; liga/desliga em `/testes`.
-
-## Backend compartilhado (SQLite no PC, mesmo túnel)
-
-O `llm-gateway/server.mjs` também serve `/api/*` (`llm-gateway/api.mjs`, `node:sqlite`, sem dependências).
-Com ele no ar, pedidos, votos (placar ao vivo), sugestões (entram direto na votação), decisão, envio e
-curadoria de eventos (aprovar = publicar) e métricas ficam compartilhados entre aparelhos. Sem ele, o app
-volta sozinho ao modo link (tudo no aparelho). Dados em `llm-gateway/data/role.db`; chave da curadoria em
-`llm-gateway/data/admin-key.txt` (cole em `/testes`). Detalhes em [docs/05-operacao.md](docs/05-operacao.md).

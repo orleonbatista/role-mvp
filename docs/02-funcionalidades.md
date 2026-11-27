@@ -2,6 +2,18 @@
 
 Inventário do MVP (nov/2026). Entre parênteses, a rota da tela.
 
+## Onda de 27/11/2026
+- **@ único** criado no cadastro, editável no Perfil; aparece em busca, perfil, membros, participantes.
+- **Busca por @ ou nome** na aba Amigos, com pedido de amizade em um toque.
+- **Central de notificações** (`/notificacoes`) com sino e contador na Início; aceitar amizade ali mesmo.
+- **Montar a votação:** a autora tira lugar (mín. 2), põe lugar fora da sugestão (máx. 6) e escolhe quem vota.
+- **Turma ligada à votação:** "Conversar com a turma" na votação; chat com votações abertas e recados automáticos.
+- **Lista de membros** da turma com @ e nível, cada um abrindo o perfil.
+- **Turma pública ou privada**; turmas públicas aparecem no perfil e aceitam "Entrar".
+- **Caixa de ferramentas** (`/ferramentas`): dividir conta, convite com flyer, post 4:5, link do WhatsApp,
+  ponto de encontro, quem leva o quê, sorteio.
+- **Carregamento visível** (splash da marca e esqueletos) e **layout do iPhone** com a área segura real.
+
 ## Entrada e perfil
 - **Onboarding** (`/onboarding`): nome, estilos favoritos (jazz, eletrônica, boteco, listening…) e vibe.
   Monta o feed "Pra você". Se a pessoa veio de um convite, volta pra onde estava ao terminar.

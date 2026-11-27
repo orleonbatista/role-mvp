@@ -5,11 +5,14 @@ usando IA ancorada em catálogo, link que circula no WhatsApp e conteúdo autom�
 Cada fase só avança quando os critérios da anterior forem cumpridos.
 
 ## Onde estamos
-**Fase A, semana ~6.** O produto mínimo com IA está no ar para testes com amigos:
+**Fase A, semana ~7 (27/11/2026).** O produto mínimo com IA está no ar para testes com amigos:
 
-- loop completo: pedido → IA → votação por link → fechar → avaliar;
-- Story, sugestões, divulgação de eventos e curadoria;
-- backend compartilhado e painel global.
+- loop completo: pedido → IA → votação por link → fechar → avaliar, com a autora montando a votação;
+- camada social: @ único, amigos, feed, perfil, listas, ranking, turmas com chat e notificações;
+- caixa de ferramentas fora de grupo; B2B das casas; curadoria com papéis;
+- E2E diário no site publicado e monitor do servidor.
+
+Próximo marco da fase A: teste com 3 turmas reais por 2 semanas medindo taxa de fechamento e retorno.
 
 ---
 

@@ -1,34 +1,58 @@
 # 04 · Arquitetura
 
-## Visão geral
+## Visão geral (atualizado em 27/11/2026)
 
 ```
- celular / navegador                                     PC do Orleon (Windows, RTX 2070)
-┌──────────────────────────────────────────┐            ┌────────────────────────────────────────┐
-│ PWA (GitHub Pages)                       │   HTTPS    │ cloudflared (Quick Tunnel)             │
-│  React 19 · Vite · Tailwind v4 · motion  │ ─────────▶ │   https://<aleatório>.trycloudflare.com │
-│                                          │            │              │                         │
-│  UI ──fetch('/api/*')──▶ "API" local     │            │              ▼                         │
-│        (handlers MSW, no próprio app)    │            │ llm-gateway/server.mjs  :8787          │
-│          │          │                    │            │  ├─ POST /extract, /ask ─▶ Ollama      │
-│          ▼          ▼                    │            │  │                      qwen2.5:7b     │
-│     IndexedDB    remote.ts ──────────────┼────────────┼─▶└─ /api/*  (api.mjs) ─▶ SQLite        │
-│     (Dexie)      (sincronização)         │            │                       data/role.db     │
-│                                          │            └────────────────────────────────────────┘
-│  llm.ts ─── lê llm.json (raw.github) ────┼─▶ URL do túnel
-└──────────────────────────────────────────┘
+ celular / navegador                                     PC do Orleon (Windows)
+┌──────────────────────────────────────────┐            ┌──────────────────────────────────────────┐
+│ PWA (GitHub Pages)                       │   HTTPS    │ cloudflared (Quick Tunnel)               │
+│  React 19 · Vite · Tailwind v4 · motion  │ ─────────▶ │              │                           │
+│                                          │ X-Session  │              ▼                           │
+│  UI ──fetch('/api/*')──▶ shim local      │            │ llm-gateway/server.mjs  :8787            │
+│   (src/mocks/browser.ts + handlers.ts)   │            │  ├─ /extract, /ask ─▶ nuvem ou Ollama    │
+│          │          │                    │            │  ├─ /api/*  (api.mjs) ─▶ SQLite role.db  │
+│          ▼          ▼                    │            │  ├─ /media/* (fotos próprias, 5 GB)      │
+│     IndexedDB    remote.ts ──────────────┼────────────┼─▶├─ /og/r/:id (prévia dinâmica)          │
+│     (Dexie)      (sessão + sincronização)│            │  └─ Web Push (VAPID) + checkDeadlines 5m │
+└──────────────────────────────────────────┘            └──────────────────────────────────────────┘
 ```
 
-**Offline-first.** O app inteiro roda no aparelho:
+**Local-first.** A tela lê do IndexedDB e de um shim de `fetch` que responde `/api/*` dentro do próprio
+app (o MSW saiu: o shim é mais simples e espera o catálogo carregar por até 2,5 s). O servidor é a fonte de
+tudo que é compartilhado: votos, sugestões, opções da votação, turmas, chat, amizades, @, notificações,
+fotos e casas. Sem servidor, o app segue com o que já tem e mostra "sem conexão" nas telas sociais.
 
-- **Catálogo:** fixo no código.
-- **Ranking:** determinístico, em TypeScript.
-- **Dados:** IndexedDB.
-- **API:** handlers do MSW, servidos em processo, sem Service Worker.
+### Identidade e privacidade entre pessoas
+- **Sessão por aparelho:** `POST /api/session/start` devolve um token; o banco guarda só o hash. O app
+  manda `X-Session`; um aparelho que já tem sessão não aceita mais só `X-Device`. Login Google devolve a
+  sessão do perfil (troca de aparelho).
+- **Pseudônimos:** ninguém vê o id de outro aparelho. Tudo que sai pra outras pessoas usa
+  `u-` + sha256(sal + aparelho)[0:16] (o sal fica em `data/pseudo-salt.txt`). A central de notificações
+  guarda o autor (`actor`) já em pseudônimo.
+- **@ único:** coluna `users.handle` com índice único; normalizado (`[a-z0-9_.]{3,20}`, sem acento).
+  Criado no primeiro `POST /api/me` a partir do nome; colisão ganha número. Troca por `POST /api/me/handle`.
 
-O PC acrescenta duas camadas opcionais: o **LLM**, que entende melhor o pedido e responde perguntas, e
-o **backend**, que compartilha dados entre aparelhos. Se o PC desliga, o app volta sozinho ao modo
-"link + regras".
+### Social, turmas e votação
+- Amizade: `friendships(a,b)` ordenado, `status` = `pedido:<quem pediu>` ou `amigos`; `blocks` esconde nos dois sentidos.
+- Turma: cada pedido pertence a uma turma (`requests.group_id`); quem vota ou sugere entra. Se autora e
+  convidado já têm turma juntos, o pedido migra pra ela (e o chat vai junto).
+- `groups.visibility`: `privada` (padrão) ou `publica` (listada no perfil dos membros; `POST /api/groups/:id/join`).
+- `group_messages.ref` liga recados automáticos ("Nova votação", "Fechou") ao pedido; `device = 'system'`.
+- Opções da votação: `POST /api/requests/:id/options` (só a autora; mín. 2, máx. 6). `data.removed`
+  impede que a autora, reenviando o pedido de um aparelho desatualizado, ressuscite o que tirou, e o
+  `syncRequest` dos outros aparelhos remove o que está em `removed`.
+- Quem vota: `requests.voters` = `link` ou `amigos`; `canVoteIn()` barra votos, horários, presença e
+  sugestões com `403 so_amigos` (autora, amigos dela e membros da turma passam).
+
+### Notificações
+`notify()` faz duas coisas: grava em `inbox` (uma linha por destinatário, 60 dias; mesma chave na última
+hora atualiza em vez de empilhar) e chama o Web Push. `GET /api/inbox` traz não lidas + 60 itens;
+`POST /api/inbox/read` marca um ou todos. O sino da Início consulta a cada 30 s.
+
+### Caixa de ferramentas
+Tudo no aparelho, sem servidor: Pix (BR Code com CRC16), arte em canvas (story 1080×1920 e feed
+1080×1350), links `wa.me`, GPS → link do Maps, lista "quem leva o quê" e sorteio com `crypto.getRandomValues`.
+A chave Pix fica só no `localStorage` de quem digitou, pra não redigitar.
 
 ## Stack
 
@@ -36,7 +60,7 @@ o **backend**, que compartilha dados entre aparelhos. Se o PC desliga, o app vol
 |---|---|---|
 | UI | React 19, react-router 8, Tailwind v4, motion 14 | Velocidade de iteração e transições refinadas (layoutId, springs) |
 | Estado remoto | TanStack Query | Cache, polling da votação, voto otimista |
-| "Backend" no app | MSW 3 (`getResponse` interceptando fetch) | Mesma interface de uma API real; trocar pelo backend definitivo é trocar o `BASE` |
+| "Backend" no app | shim de `fetch` próprio (`src/mocks/browser.ts`) sobre os handlers | Mesma interface de uma API real, sem Service Worker |
 | Dados locais | Dexie (IndexedDB) | Funciona offline e sobrevive a recarregar a página |
 | Build | Vite 8 (rolldown), multi-página (`index.html` + `v/index.html`) | `/v/` é página estática com tags OG para o preview do WhatsApp |
 | Hospedagem | GitHub Pages + workflow `pages.yml` | Grátis; `404.html` faz o fallback da SPA |
@@ -211,11 +235,14 @@ leads       (id PK, device, data JSON, at)
 - Guarda só o nome digitado, o identificador aleatório do aparelho e o contato opcional do
   formulário de reserva ou de evento. Não guarda localização, e o IP não é gravado.
 
-**O que não é seguro o bastante para produção:**
+**O que ainda não é seguro o bastante para produção:**
 
-- não há autenticação de usuário;
-- um `deviceId` pode ser forjado;
-- o túnel não tem WAF;
-- não há backup automático.
+- o servidor é um PC doméstico atrás de túnel sem WAF; cai se o PC desliga (o monitor abre issue);
+- sem backup automático fora do PC;
+- busca de pessoas varre a tabela em memória (ok até alguns milhares de cadastros);
+- denúncias dependem de 3 pessoas ou do admin pra ocultar.
+
+Resolvidos desde a primeira versão: autenticação por sessão com hash, pseudônimos no lugar do id do
+aparelho, papéis (admin/curador/usuário), limites de taxa por aparelho nas ações sociais.
 
 Ver o roadmap da fase B.

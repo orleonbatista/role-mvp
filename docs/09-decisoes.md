@@ -68,3 +68,17 @@ Formato curto: **decisão**, **por quê**, **trade-off**.
 27. **A IA escolhe sobre fatos, não sobre texto livre.** A LLM recebe só campos verificados (null = não se sabe) e
     escreve o motivo citando esses campos. Assim a escolha considera o pedido inteiro (requisitos, clima, ocasião),
     sem inventar ambiente ou cardápio. *Trade-off:* +3–6 s por pedido na GPU do PC.
+28. **Sessão com hash e pseudônimos (substitui a 23).** O id do aparelho deixou de ser credencial e nunca sai pra
+    outras pessoas. *Trade-off:* perder o token sem login Google significa começar de novo naquele aparelho.
+29. **@ único resolvido no servidor.** O celular sugere, o servidor decide (índice único) e devolve. Evita corrida
+    entre dois aparelhos e funciona sem conta Google. *Trade-off:* o @ só existe com o servidor no ar.
+30. **Notificação = aviso + caixa.** Todo `notify()` também grava na `inbox`. Quem não liga Web Push (iPhone sem
+    instalar o app) ainda vê pedidos de amizade e votos. *Trade-off:* uma escrita a mais por destinatário; limpeza de 60 dias.
+31. **Opções da votação são do servidor.** A autora edita via endpoint; `removed` evita ressurreição por aparelho
+    desatualizado. *Trade-off:* tirar/pôr lugar exige conexão.
+32. **"Só amigos" inclui a turma.** Restringir só a amigos do app quebraria o caso comum (galera do zap que não é
+    amiga no app). Quem já está na turma continua votando.
+33. **Turma privada por padrão.** Pública é opt-in da dona e só expõe nome e tamanho no perfil.
+34. **Ferramentas sem servidor.** Pix, flyer, sorteio e listas rodam no aparelho: funcionam com o PC desligado
+    e não criam dados pessoais no banco.
+
