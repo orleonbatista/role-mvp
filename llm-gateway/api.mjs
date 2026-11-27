@@ -4,7 +4,7 @@
 // Catálogo, ranking e perfil continuam no aparelho (o app funciona sem backend e sincroniza quando ele está no ar).
 import { DatabaseSync } from 'node:sqlite'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -94,6 +94,13 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS rsvps (request_id TEXT NOT NULL, device TEXT NOT NULL, status TEXT NOT NULL, voter TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (request_id, device));
   CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, device TEXT NOT NULL, voter TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS ix_msg_req ON messages(request_id, at);
+  CREATE TABLE IF NOT EXISTS photos (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, device TEXT NOT NULL, voter TEXT NOT NULL, bytes INTEGER NOT NULL, at INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS ix_photos_req ON photos(request_id, at);
+  -- página da casa: quem reivindicou, dados que a casa edita, destaque pago e oferta pra grupos
+  CREATE TABLE IF NOT EXISTS venues (
+    place_id TEXT PRIMARY KEY, owner_device TEXT, status TEXT NOT NULL, claim TEXT, data TEXT NOT NULL DEFAULT '{}',
+    sponsored_until INTEGER, at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, kind TEXT NOT NULL, target_id TEXT NOT NULL, device TEXT NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'aberta', UNIQUE (kind, target_id, device));
 `)
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'closes_at'").get()) { db.exec('ALTER TABLE requests ADD COLUMN closes_at INTEGER'); db.exec('ALTER TABLE requests ADD COLUMN close_notified INTEGER') }
@@ -199,6 +206,7 @@ function requestState(id) {
     rsvps: db.prepare('SELECT device, status, voter, at FROM rsvps WHERE request_id = ? ORDER BY at').all(id),
     messages: db.prepare("SELECT id, device, voter, text, at FROM messages WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'message' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at DESC LIMIT 30").all(id).reverse(),
     closesAt: r.closes_at ?? null,
+    photos: db.prepare("SELECT id, device, voter, at FROM photos WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'photo' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at").all(id),
     suggestions: q.sugs.all(id).map((x) => ({ ...x, place: x.place ? parse(x.place) : undefined })),
   }
 }
@@ -424,11 +432,47 @@ function joinGroupOf(requestId, device, name, hue) {
   qp.touchGroup.run(now, gid)
 }
 
+/** aparelhos de quem é admin (pra avisos de operação) */
+function adminDevices() {
+  const emails = adminEmails()
+  return db.prepare('SELECT device, email FROM users WHERE google_sub IS NOT NULL').all().filter((u) => emails.has(String(u.email).toLowerCase())).map((u) => u.device)
+}
+const PHOTO_CAP = Number(process.env.ROLE_PHOTO_CAP_MB ?? 5000) * 1_000_000 // teto de disco pras fotos (padrão 5 GB)
+function removePhoto(id) {
+  const p = db.prepare('SELECT request_id FROM photos WHERE id = ?').get(id)
+  if (!p) return
+  try { rmSync(join(DATA, 'photos', p.request_id, `${id}.jpg`), { force: true }) } catch { /* já foi */ }
+  db.prepare('DELETE FROM photos WHERE id = ?').run(id)
+}
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const SITE = (process.env.ROLE_SITE_URL ?? 'https://orleonbatista.github.io/role-mvp').replace(/\/$/, '')
+/** página só de prévia (og:*) pra um pedido: título com as opções; quem abre vai direto pra votação no app */
+export function ogPage(id, search = '') {
+  const r = q.getReq.get(id)
+  const d = r ? parse(r.data) ?? {} : {}
+  const names = (d.places ?? []).map((p) => (Array.isArray(p) ? p[1] : null)).filter(Boolean).slice(0, 3)
+  const title = r ? (names.length ? `Vota: ${names.join(', ')}` : 'Onde vai ser o rolê? Vota aqui') : 'rolê.'
+  const desc = r ? `"${String(d.text ?? '').slice(0, 120)}" · vota em 10 segundos, sem instalar nada.` : 'Diga o que você quer. A IA sugere, sua turma vota.'
+  const to = `${SITE}/v/?id=${encodeURIComponent(id)}${search ? '&' + search.slice(1) : ''}`
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<meta property="og:type" content="website"><meta property="og:site_name" content="rolê."><meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(desc)}"><meta property="og:image" content="${SITE}/og.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="0;url=${esc(to)}"><script>location.replace(${JSON.stringify(to)}+location.hash)</script></head><body></body></html>`
+}
+
+/** arquivo de uma foto (pro server.mjs servir em /media/); null se não existe */
+export function photoFile(requestId, file) {
+  if (!/^r-[a-z0-9-]{1,24}$/.test(requestId) || !/^ph-[a-f0-9]{12}\.jpg$/.test(file)) return null
+  const f = join(DATA, 'photos', requestId, file)
+  return existsSync(f) ? f : null
+}
+
 /** quem participa de um pedido: autor + quem votou, marcou horário, confirmou presença ou mandou recado */
 function participantsOf(requestId) {
   const r = q.getReq.get(requestId)
   const set = new Set(r ? [r.author_device] : [])
-  for (const t of ['votes', 'slots', 'rsvps', 'messages']) for (const x of db.prepare(`SELECT DISTINCT device FROM ${t} WHERE request_id = ?`).all(requestId)) set.add(x.device)
+  for (const t of ['votes', 'slots', 'rsvps', 'messages', 'photos']) for (const x of db.prepare(`SELECT DISTINCT device FROM ${t} WHERE request_id = ?`).all(requestId)) set.add(x.device)
   return [...set]
 }
 /** prazos vencidos: avisa o autor uma vez pra fechar o rolê (chamado pelo server a cada poucos minutos) */
@@ -677,6 +721,32 @@ export function handleApi(method, path, req, body) {
     notify({ to: participantsOf(m[1]).filter((d) => d !== device), key: `msg-${m[1]}`, title: `${voter} no rolê`, body: text.slice(0, 120), url: `r/${m[1]}` })
     return ok({ ok: true, id })
   }
+  // fotos do rolê, guardadas no disco do servidor (data/photos/<pedido>/<foto>.jpg) e servidas em /media/
+  if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/photos$/)) && write) {
+    const r = q.getReq.get(m[1])
+    if (!r) return bad('not_found', 404)
+    if (!participantsOf(m[1]).includes(device)) return bad('not_participant', 403)
+    const buf = Buffer.from(String(body.data ?? '').replace(/^data:image\/jpeg;base64,/, ''), 'base64')
+    if (buf.length < 2000 || buf.length > 1_600_000 || buf[0] !== 0xff || buf[1] !== 0xd8) return bad('photo')
+    if (db.prepare('SELECT COUNT(*) n FROM photos WHERE request_id = ?').get(m[1]).n >= 40) return bad('too_many')
+    if ((db.prepare('SELECT SUM(bytes) b FROM photos').get().b ?? 0) + buf.length > PHOTO_CAP) return bad('disk_full', 507)
+    const id = `ph-${randomBytes(6).toString('hex')}`
+    const dir = join(DATA, 'photos', m[1])
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, `${id}.jpg`), buf)
+    const voter = str(body.voter, 40) || 'Alguém'
+    db.prepare('INSERT INTO photos (id, request_id, device, voter, bytes, at) VALUES (?, ?, ?, ?, ?, ?)').run(id, m[1], device, voter, buf.length, now)
+    notify({ to: participantsOf(m[1]).filter((d) => d !== device), key: `ph-${m[1]}`, title: `${voter} pôs fotos do rolê`, body: 'Veja o álbum da turma', url: `r/${m[1]}` })
+    return ok({ ok: true, id })
+  }
+  if ((m = path.match(/^\/api\/photos\/(ph-[a-f0-9]{12})\/delete$/)) && write) {
+    const p = db.prepare('SELECT device FROM photos WHERE id = ?').get(m[1])
+    if (!p) return bad('not_found', 404)
+    if (p.device !== device && !isCurator(req)) return bad('not_owner', 403)
+    removePhoto(m[1])
+    return ok({ ok: true })
+  }
+
   // prazo da votação (só o autor); quando vence, o autor recebe um aviso pra fechar
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/deadline$/)) && write) {
     const r = q.getReq.get(m[1])
@@ -756,11 +826,83 @@ export function handleApi(method, path, req, body) {
     const upd = q.setSub.run(status, now, m[1])
     return upd.changes ? ok({ ok: true }) : bad('not_found', 404)
   }
+  /* ---------- página da casa (B2B) ---------- */
+  const PID = /^[A-Za-z0-9_-]{4,120}$/
+  // destaques e ofertas ativos (o app usa pra rotular "patrocinado" e mostrar a oferta pra grupos)
+  if (method === 'GET' && path === '/api/venues/active') {
+    const rows = db.prepare("SELECT place_id, data, sponsored_until FROM venues WHERE status = 'verificada'").all()
+    return ok(rows.map((v) => { const d = parse(v.data) ?? {}; return { placeId: v.place_id, offer: d.offer || null, sponsored: (v.sponsored_until ?? 0) > now } })
+      .filter((v) => v.offer || v.sponsored))
+  }
+  if ((m = path.match(/^\/api\/venues\/([A-Za-z0-9_-]{4,120})$/)) && method === 'GET') {
+    const v = db.prepare('SELECT * FROM venues WHERE place_id = ?').get(m[1])
+    if (!v) return ok({ status: 'livre' })
+    const d = parse(v.data) ?? {}
+    return ok({ status: v.status, mine: v.owner_device === device, bio: d.bio ?? '', instagram: d.instagram ?? '', groupMax: d.groupMax ?? null, offer: d.offer ?? '', sponsored: (v.sponsored_until ?? 0) > now })
+  }
+  // dono reivindica: vai pra fila do admin, que confirma ligando no telefone que o Google mostra
+  if ((m = path.match(/^\/api\/venues\/([A-Za-z0-9_-]{4,120})\/claim$/)) && write) {
+    const cur = db.prepare('SELECT status FROM venues WHERE place_id = ?').get(m[1])
+    if (cur?.status === 'verificada') return bad('ja_verificada', 409)
+    const claim = { name: str(body.name, 60), role: str(body.role, 40), contact: str(body.contact, 80), placeName: str(body.placeName, 80) }
+    if (!claim.name || !claim.contact) return bad('claim')
+    db.prepare(`INSERT INTO venues (place_id, owner_device, status, claim, at, updated_at) VALUES (?, ?, 'pendente', ?, ?, ?)
+      ON CONFLICT(place_id) DO UPDATE SET owner_device = excluded.owner_device, status = 'pendente', claim = excluded.claim, updated_at = excluded.updated_at`).run(m[1], device, JSON.stringify(claim), now, now)
+    notify({ to: adminDevices(), key: 'claim', title: 'Nova casa reivindicada', body: `${claim.placeName || m[1]} · ${claim.name}`, url: 'testes' })
+    return ok({ ok: true })
+  }
+  // dono verificado edita a página e a oferta pra grupos
+  if ((m = path.match(/^\/api\/venues\/([A-Za-z0-9_-]{4,120})$/)) && write) {
+    const v = db.prepare('SELECT * FROM venues WHERE place_id = ?').get(m[1])
+    if (!v || v.status !== 'verificada' || (v.owner_device !== device && !isAdmin(req))) return bad('not_owner', 403)
+    const text = [body.bio, body.offer].map((x) => str(x, 300)).join(' ')
+    if (/https?:\/\/|www\./i.test(text)) return bad('link')
+    const d = { bio: str(body.bio, 300), instagram: str(body.instagram, 40).replace(/[^A-Za-z0-9._]/g, ''), groupMax: body.groupMax ? int(body.groupMax, 0) : null, offer: str(body.offer, 140) }
+    db.prepare('UPDATE venues SET data = ?, updated_at = ? WHERE place_id = ?').run(JSON.stringify(d), now, m[1])
+    return ok({ ok: true })
+  }
+  // relatório da casa (dono ou admin): últimos 30 dias
+  if ((m = path.match(/^\/api\/venues\/([A-Za-z0-9_-]{4,120})\/report$/)) && method === 'GET') {
+    const v = db.prepare('SELECT owner_device, status FROM venues WHERE place_id = ?').get(m[1])
+    if (!isAdmin(req) && !(v && v.status === 'verificada' && v.owner_device === device)) return bad('not_owner', 403)
+    const since = now - 30 * 86_400_000
+    const like = `%"${m[1]}"%`
+    return ok({
+      views: db.prepare("SELECT COUNT(*) n FROM events WHERE name = 'screen' AND path = ? AND at >= ?").get(`/lugar/${m[1]}`, since).n,
+      inRequests: db.prepare('SELECT COUNT(*) n FROM requests WHERE created_at >= ? AND data LIKE ?').get(since, like).n,
+      votes: db.prepare("SELECT COUNT(*) n FROM votes WHERE kind = 'place' AND value = ? AND at >= ?").get(m[1], since).n,
+      wins: db.prepare('SELECT COUNT(*) n FROM requests WHERE decided_place = ? AND decided_at >= ?').get(m[1], since).n,
+      contacts: db.prepare("SELECT COUNT(*) n FROM events WHERE name = 'contact_casa' AND props LIKE ? AND at >= ?").get(like, since).n,
+    })
+  }
+  if (method === 'GET' && path === '/api/venues/mine/list') {
+    return ok(db.prepare("SELECT place_id, status, claim FROM venues WHERE owner_device = ?").all(device).map((v) => ({ placeId: v.place_id, status: v.status, name: parse(v.claim)?.placeName ?? v.place_id })))
+  }
+  if (method === 'GET' && path === '/api/admin/claims') {
+    if (!isAdmin(req)) return bad('admin', 401)
+    return ok(db.prepare("SELECT place_id, status, claim, sponsored_until, updated_at FROM venues ORDER BY status = 'pendente' DESC, updated_at DESC LIMIT 100").all()
+      .map((v) => ({ placeId: v.place_id, status: v.status, claim: parse(v.claim), sponsoredUntil: v.sponsored_until ?? null, at: v.updated_at })))
+  }
+  if ((m = path.match(/^\/api\/admin\/claims\/([A-Za-z0-9_-]{4,120})$/)) && write) {
+    if (!isAdmin(req)) return bad('admin', 401)
+    const v = db.prepare('SELECT owner_device FROM venues WHERE place_id = ?').get(m[1])
+    if (!v) return bad('not_found', 404)
+    if (body.action === 'sponsor') {
+      const days = Math.min(90, Math.max(0, int(body.days, 0)))
+      db.prepare('UPDATE venues SET sponsored_until = ?, updated_at = ? WHERE place_id = ?').run(days ? now + days * 86_400_000 : null, now, m[1])
+      return ok({ ok: true })
+    }
+    const status = body.action === 'approve' ? 'verificada' : 'recusada'
+    db.prepare('UPDATE venues SET status = ?, updated_at = ? WHERE place_id = ?').run(status, now, m[1])
+    if (v.owner_device) notify({ to: [v.owner_device], key: `claim-${m[1]}`, title: status === 'verificada' ? 'Sua casa foi verificada no rolê' : 'Não deu pra verificar sua casa', body: status === 'verificada' ? 'Já dá pra editar a página e criar oferta pra grupos' : 'Fale com a gente pra tentar de novo', url: `lugar/${m[1]}` })
+    return ok({ ok: true })
+  }
+
   // denúncia: qualquer pessoa denuncia avaliação, recado ou sugestão; com 3 denúncias de aparelhos diferentes some na hora
   // e vai pra fila da curadoria, que remove ou mantém
   if (method === 'POST' && path === '/api/reports') {
     if (!RE.device.test(device)) return bad('device')
-    const kind = ['review', 'message', 'suggestion'].includes(body.kind) ? body.kind : null
+    const kind = ['review', 'message', 'suggestion', 'photo'].includes(body.kind) ? body.kind : null
     const target = str(body.id, 60)
     if (!kind || !target) return bad('report')
     const reason = ['ofensivo', 'spam', 'falso', 'outro'].includes(body.reason) ? body.reason : 'outro'
@@ -775,17 +917,19 @@ export function handleApi(method, path, req, body) {
     return ok(rows.map((r) => {
       const t = r.kind === 'review' ? db.prepare('SELECT name who, note text FROM reviews WHERE id = ?').get(r.target_id)
         : r.kind === 'message' ? db.prepare('SELECT voter who, text FROM messages WHERE id = ?').get(r.target_id)
+        : r.kind === 'photo' ? db.prepare("SELECT voter who, request_id || '/' || id || '.jpg' text FROM photos WHERE id = ?").get(r.target_id)
         : db.prepare('SELECT by_name who, comment text FROM suggestions WHERE id = ?').get(r.target_id)
       return { kind: r.kind, id: r.target_id, count: r.n, reasons: [...new Set(String(r.reasons).split(','))], at: r.last, who: t?.who ?? '—', text: t?.text ?? '(já removido)' }
     }))
   }
-  if ((m = path.match(/^\/api\/admin\/reports\/(review|message|suggestion)\/([A-Za-z0-9_-]{1,60})$/)) && write) {
+  if ((m = path.match(/^\/api\/admin\/reports\/(review|message|suggestion|photo)\/([A-Za-z0-9_-]{1,60})$/)) && write) {
     if (!isCurator(req)) return bad('admin', 401)
     const [, kind, id] = m
     if (body.action === 'remove') {
       if (kind === 'review') db.prepare("UPDATE reviews SET status = 'removida', motivo = 'curadoria' WHERE id = ?").run(id)
       if (kind === 'message') db.prepare('DELETE FROM messages WHERE id = ?').run(id)
       if (kind === 'suggestion') db.prepare('DELETE FROM suggestions WHERE id = ?').run(id)
+      if (kind === 'photo') removePhoto(id)
     } else if (kind === 'review') db.prepare("UPDATE reviews SET status = 'ok', motivo = NULL WHERE id = ? AND status = 'oculta'").run(id)
     db.prepare("UPDATE reports SET status = ? WHERE kind = ? AND target_id = ?").run(body.action === 'remove' ? 'removida' : 'mantida', kind, id)
     return ok({ ok: true })

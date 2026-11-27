@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarPlus, CloudSun, Navigation, Send, Timer } from 'lucide-react'
-import { pushDeadline, pushMessage, pushRsvp, type Rsvp } from '../mocks/remote'
+import { CalendarPlus, Camera, CloudSun, Copy, Navigation, Receipt, Send, Timer, Trash2 } from 'lucide-react'
+import { apiBase, deletePhoto, pushDeadline, pushMessage, pushPhoto, pushRsvp, type Rsvp } from '../mocks/remote'
+import { pixKeyOk, pixPayload } from '../lib/pix'
+import { Sheet } from '../ui/Sheet'
+import { Button } from '../ui/primitives'
+import { useToast } from '../ui/Toast'
 import type { Place, RequestDetail } from '../lib/types'
 import { slotDate } from '../lib/slot'
 import { track } from '../lib/track'
@@ -150,5 +154,101 @@ export function DecidedExtras({ place, time, createdAt, text }: { place: Place; 
       {cal ? <a href={cal} target="_blank" rel="noreferrer" className={chip} onClick={() => track('decided_calendar', {})}><CalendarPlus size={13} />Agenda</a> : <span />}
       {wx.data ? <span className={chip}><CloudSun size={13} />{wx.data.t}° · {wx.data.rain}% chuva</span> : <span />}
     </div>
+  )
+}
+
+/** foto reduzida no celular (até 1280 px, JPEG): sobe leve pro servidor */
+async function shrink(file: File): Promise<string> {
+  const bmp = await createImageBitmap(file)
+  const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height))
+  const c = document.createElement('canvas')
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k)
+  c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height)
+  return c.toDataURL('image/jpeg', 0.8)
+}
+
+/** álbum da turma: quem participou põe fotos depois do rolê (guardadas no servidor) */
+export function PhotoAlbum({ d, voter }: { d: RequestDetail; voter: string }) {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const base = useQuery({ queryKey: ['api-base'], queryFn: () => apiBase(), staleTime: 60_000 })
+  const ex = d.extra
+  if (!ex?.online || d.request.status !== 'decidido') return null
+  const url = (id: string) => (base.data ? `${base.data}/media/${d.request.id}/${id}.jpg` : '')
+  return (
+    <section className="mx-5 mt-5">
+      <p className="mb-2 text-[13px] uppercase tracking-[0.14em] text-mute">Fotos da turma</p>
+      <div className="grid grid-cols-3 gap-1.5">
+        {ex.photos.map((p) => (
+          <div key={p.id} className="relative aspect-square overflow-hidden rounded-xl bg-white/[0.04]">
+            {base.data && <a href={url(p.id)} target="_blank" rel="noreferrer"><img src={url(p.id)} alt={`Foto de ${p.voter}`} loading="lazy" className="size-full object-cover" /></a>}
+            {p.mine
+              ? <button aria-label="Apagar foto" onClick={async () => { await deletePhoto(p.id); qc.invalidateQueries({ queryKey: ['request', d.request.id] }) }} className="absolute right-1 top-1 grid size-7 place-items-center rounded-full bg-black/60"><Trash2 size={12} /></button>
+              : <span className="absolute right-0.5 top-0.5"><ReportButton kind="photo" id={p.id} className="grid size-7 place-items-center rounded-full bg-black/50 text-ink/70" /></span>}
+          </div>
+        ))}
+        <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/15 text-[11px] text-mute">
+          <Camera size={18} className="text-accent" />{busy ? 'Enviando…' : 'Pôr fotos'}
+          <input type="file" accept="image/*" multiple className="hidden" disabled={busy} onChange={async (e) => {
+            const files = [...(e.target.files ?? [])].slice(0, 10)
+            if (!files.length) return
+            if (!voter.trim()) { toast('Escreva seu nome lá em cima antes'); return }
+            setBusy(true)
+            let n = 0
+            for (const f of files) { try { if (await pushPhoto(d.request.id, await shrink(f), voter.trim())) n++ } catch { /* foto ilegível */ } }
+            setBusy(false); e.target.value = ''
+            track('photos_uploaded', { n })
+            toast(n ? `${n} ${n === 1 ? 'foto enviada' : 'fotos enviadas'}` : 'Não deu pra enviar (só quem participou do rolê pode pôr fotos)')
+            qc.invalidateQueries({ queryKey: ['request', d.request.id] })
+          }} />
+        </label>
+      </div>
+    </section>
+  )
+}
+
+/** dividir a conta: valor por pessoa + Pix copia e cola de quem pagou (nada passa pelo app) */
+export function SplitBill({ d }: { d: RequestDetail }) {
+  const [open, setOpen] = useState(false)
+  const going = d.extra?.rsvps.filter((r) => r.status === 'vou').length || d.request.criteria.groupSize || 2
+  const [f, setF] = useState({ total: '', people: String(going), key: '', name: '', city: '' })
+  const toast = useToast()
+  if (d.request.status !== 'decidido') return null
+  const total = Number(f.total.replace(',', '.')) || 0
+  const people = Math.max(1, Number(f.people) || 1)
+  const each = Math.ceil((total / people) * 100) / 100
+  const keyOk = pixKeyOk(f.key)
+  const code = total > 0 && keyOk && f.name.trim() ? pixPayload({ key: f.key, name: f.name, city: f.city || 'SAO PAULO', amount: each }) : ''
+  const fi = 'h-12 w-full rounded-2xl border border-line bg-white/[0.03] px-4 text-[14px] outline-none placeholder:text-faint focus:border-accent'
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="mx-5 mt-3 flex h-11 w-[calc(100%-2.5rem)] items-center justify-center gap-2 rounded-full border border-line text-[13px]"><Receipt size={15} />Dividir a conta</button>
+      <Sheet open={open} onClose={() => setOpen(false)}>
+        <p className="font-serif text-[28px] leading-tight">Dividir a conta</p>
+        <p className="mt-1 text-[13px] text-mute">Quem pagou põe a chave Pix; o app gera o código com o valor de cada um. O pagamento acontece no app do banco.</p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <input className={fi} inputMode="decimal" placeholder="Total (R$)" value={f.total} onChange={(e) => setF({ ...f, total: e.target.value.replace(/[^\d,.]/g, '') })} />
+          <input className={fi} inputMode="numeric" placeholder="Pessoas" value={f.people} onChange={(e) => setF({ ...f, people: e.target.value.replace(/\D/g, '') })} />
+        </div>
+        {total > 0 && <p className="mt-3 text-center font-serif text-[34px] leading-none">R$ {each.toFixed(2).replace('.', ',')} <span className="font-sans text-[13px] text-mute">por pessoa</span></p>}
+        <div className="mt-4 grid gap-2">
+          <input className={fi} placeholder="Chave Pix de quem pagou" value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })} />
+          {f.key && !keyOk && <p className="text-[12px] text-[#ff8a8a]">Chave inválida: CPF/CNPJ só números, celular com +55, e-mail ou chave aleatória.</p>}
+          <div className="grid grid-cols-2 gap-2">
+            <input className={fi} placeholder="Nome de quem recebe" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+            <input className={fi} placeholder="Cidade" value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} />
+          </div>
+        </div>
+        {code && (
+          <>
+            <p className="mt-4 break-all rounded-2xl bg-white/[0.04] p-3 font-mono text-[11px] text-ink/80">{code}</p>
+            <Button size="lg" className="mt-3 w-full" icon={<Copy size={16} />} onClick={async () => { await navigator.clipboard.writeText(code); toast('Código Pix copiado'); track('pix_copied', {}) }}>Copiar Pix copia e cola</Button>
+            <a className="mt-2 flex h-12 items-center justify-center rounded-full border border-line text-[14px]" target="_blank" rel="noreferrer"
+              href={`https://wa.me/?text=${encodeURIComponent(`Rolê no ${d.options.find((o) => o.id === d.request.decidedPlaceId)?.name ?? 'bar'}: R$ ${each.toFixed(2).replace('.', ',')} pra cada. Pix copia e cola:\n${code}`)}`}>Mandar no grupo</a>
+          </>
+        )}
+      </Sheet>
+    </>
   )
 }

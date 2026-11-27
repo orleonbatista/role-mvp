@@ -19,7 +19,8 @@ import { StorySheet } from './StorySheet'
 import { isCommunity } from '../mocks/seeds/places'
 import { AskBox } from './AskBox'
 import { InvitesList } from './Invites'
-import { DeadlineBadge, DecidedExtras, Messages, RsvpBlock } from './GroupPanel'
+import { venuesActive } from '../mocks/remote'
+import { DeadlineBadge, DecidedExtras, Messages, PhotoAlbum, RsvpBlock, SplitBill } from './GroupPanel'
 import type { StoryCard } from '../lib/storyCard'
 
 const FRIENDS = ['Bia', 'Caio', 'Duda', 'Léo', 'Mari']
@@ -156,6 +157,8 @@ export function VotePage() {
             return p ? <DecidedExtras place={p} time={data.request.decidedTime} createdAt={data.request.createdAt} text={data.request.text} /> : null
           })()}
           <RsvpBlock d={data} voter={voter} />
+          <SplitBill d={data} />
+          <PhotoAlbum d={data} voter={voter} />
           <DeadlineBadge d={data} />
 
           {decided && (() => {
@@ -210,7 +213,8 @@ export function VotePage() {
                         {p.name}
                         <AnimatePresence>{isLeader && <motion.span initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0 }} transition={spring}><Crown size={14} className="text-accent" /></motion.span>}</AnimatePresence>
                       </p>
-                      <p className="text-xs text-mute">{p.hood} · {priceLabel(p.price)}{p.curation === 'base' ? ' · sem curadoria' : isCommunity(p) ? ' · comunidade' : ''}</p>
+                      <p className="text-xs text-mute">{p.hood} · {priceLabel(p.price)}{p.curation === 'base' ? ' · sem curadoria' : isCommunity(p) ? ' · comunidade' : ''}{venuesActive.get(p.id)?.sponsored ? ' · patrocinado' : ''}</p>
+                      {venuesActive.get(p.id)?.offer && <p className="mt-0.5 text-[11px] text-accent">Oferta pra grupos: {venuesActive.get(p.id)!.offer}</p>}
                       {(() => {
                         const i = p.shared ?? (p.live ? { r: p.live.rating, c: p.live.count, o: p.live.outdoor, b: p.live.beer, m: p.live.music, g: p.live.groups } : undefined)
                         if (!i) return null

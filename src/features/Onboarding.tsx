@@ -222,8 +222,9 @@ function Region({ home, setHome, hood, setHood }: { home?: Home; setHome: (h?: H
           </div>
           {err && <p className="text-[13px] text-[#ff8a8a]">{err}</p>}
           <button className="mt-1 w-fit text-[13px] text-mute underline-offset-4 hover:underline" onClick={() => setManual((m) => !m)}>
-            {manual ? 'esconder bairros' : 'prefiro escolher um bairro'}
+            {manual ? 'esconder bairros' : 'prefiro escolher um bairro (São Paulo)'}
           </button>
+          {manual && <p className="text-[12px] text-faint">Bairros de São Paulo. Em outra cidade, use a localização ou o CEP.</p>}
           {manual && (
             <div className="flex flex-wrap gap-2">
               {HOODS.map((h) => <Chip key={h} active={!home && hood === h} onClick={() => { setHood(h); setHome(undefined) }}>{h}</Chip>)}

@@ -91,6 +91,14 @@ export function ownType(name: string, types: string, googleLabel?: string): { la
   return { label: googleLabel ?? 'Bar' }
 }
 
+let searchCenter: { latitude: number; longitude: number } | null = null
+let searchCity = 'São Paulo'
+/** cidade e centro da busca manual de lugares (vem da região do perfil) */
+export function setSearchArea(lat?: number, lng?: number, city?: string) {
+  if (lat != null && lng != null) searchCenter = { latitude: lat, longitude: lng }
+  if (city) searchCity = city
+}
+
 /** query ajuda a estimar estilo/vibe: quem buscou "listening bar" quer um listening bar */
 export function toPlace(g: GPlace, query = ''): Place {
   const types = [g.primaryType ?? '', ...(g.types ?? [])].join(' ')
@@ -131,9 +139,10 @@ export async function searchGoogle(query: string): Promise<PlacesResult> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': KEY, 'X-Goog-FieldMask': FIELDS },
       body: JSON.stringify({
-        textQuery: /s[aã]o paulo|sp\b/i.test(q) ? q : `${q} São Paulo`,
+        // outras cidades: busca em volta da região de quem usa (CEP/GPS), não mais fixo em São Paulo
+        textQuery: searchCity && !q.toLowerCase().includes(searchCity.toLowerCase()) ? `${q} ${searchCity}` : q,
         languageCode: 'pt-BR', regionCode: 'BR', pageSize: 8,
-        locationBias: { circle: { center: SP, radius: 30000 } },
+        locationBias: { circle: { center: searchCenter ?? SP, radius: 30000 } },
       }),
       signal: AbortSignal.timeout(8000),
     })

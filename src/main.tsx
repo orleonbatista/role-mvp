@@ -15,6 +15,7 @@ import { App } from './app/App'
 import { db } from './db/db'
 import { discoverForTaste, centerOf } from './lib/gdiscover'
 import { registerHood } from './lib/hours'
+import { setSearchArea } from './lib/places'
 import { pushMe, ratings } from './mocks/remote'
 import { placeById } from './mocks/seeds/places'
 
@@ -28,6 +29,7 @@ async function boot() {
   const catalog = Promise.all([loadExtraEvents(), loadGooglePlaces()])
   setCatalogLoading(catalog)
   void catalog.then(() => qc.invalidateQueries())
+  void import('./mocks/remote').then((r) => r.loadVenuesActive()).then(() => qc.invalidateQueries()).catch(() => {})
   // região de quem já se cadastrou: lugares em volta vindos do banco do PC (não trava a abertura)
   // reset geral de perfis feito no servidor: este aparelho apaga o perfil local e volta pro cadastro
   // (pedidos, votos, avaliações e turmas ficam)
@@ -43,7 +45,7 @@ async function boot() {
     for (const [id, [score, n]] of Object.entries(r ?? {})) { const p = placeById.get(id); if (p) { p.rating = score; p.ratingCount = n } }
   }).catch(() => {})
   // descoberta ao vivo no Google: lugares abertos em até 5 km que combinam com o gosto (não trava a abertura)
-  if (me?.home) registerHood(me.hood, [me.home.lat, me.home.lng])
+  if (me?.home) { registerHood(me.hood, [me.home.lat, me.home.lng]); setSearchArea(me.home.lat, me.home.lng, me.home.city) }
   void applyRatings().then(() => qc.invalidateQueries())
   if (me?.onboarded) discoverForTaste(centerOf(me), me.niches).then(applyRatings).then(() => qc.invalidateQueries()).catch(() => {})
   // perfil no banco (só com consentimento): mantém nome, gosto e região atualizados

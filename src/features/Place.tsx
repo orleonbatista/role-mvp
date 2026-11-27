@@ -4,6 +4,7 @@ import type { StoryCard } from '../lib/storyCard'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { GoogleLive } from './GoogleLive'
 import { ReportButton } from './Report'
+import { VenueSection } from './Venue'
 import { useQuery } from '@tanstack/react-query'
 import { placeReviews } from '../mocks/remote'
 import { ChevronLeft, Clock, MapPin, Megaphone, MessageCircle, Phone, Share2, Star, Ticket, Users } from 'lucide-react'
@@ -183,6 +184,8 @@ export function PlacePage() {
             )}
           </div>
 
+          {place.kind !== 'evento' && <VenueSection place={place} />}
+
           <h2 className="mb-3 mt-9 text-[13px] uppercase tracking-[0.14em] text-mute">Quem foi</h2>
           <div className="grid gap-2.5">
             {!data && <Skeleton className="h-24" />}
@@ -244,7 +247,7 @@ function ContactCasa({ place, group }: { place: Place; group?: number }) {
   )
   const gid = place.id.startsWith('g-') ? place.id.slice(2) : ''
   const maps = gid ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${encodeURIComponent(gid)}`
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.name} ${place.hood} São Paulo`)}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.name} ${place.address || place.hood}`)}`
   return (
     <a href={maps} target="_blank" rel="noreferrer" className={cls} onClick={() => track('contact_casa', { id: place.id, via: 'maps' })}><MapPin size={16} />Como chegar</a>
   )

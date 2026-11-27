@@ -7,7 +7,7 @@ async function onboard(page: Page) {
   await page.goto('./')
   await expect(page.getByText('O rolê certo,')).toBeVisible({ timeout: 8000 })
   await page.getByRole('button', { name: 'Começar' }).click()
-  await page.getByRole('button', { name: 'prefiro escolher um bairro' }).click()
+  await page.getByRole('button', { name: /prefiro escolher um bairro/ }).click()
   await page.getByRole('button', { name: 'Pinheiros', exact: true }).click()
   await page.getByPlaceholder('Seu nome').fill('E2E Teste')
   await page.getByRole('button', { name: 'Continuar' }).click()

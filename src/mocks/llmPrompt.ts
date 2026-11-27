@@ -10,7 +10,7 @@ export const OCCS: Occasion[] = ['aniversario', 'date', 'amigos', 'solo', 'traba
 export const TAGS: Tag[] = ['vegano', 'samba', 'pet', 'acessivel', 'karaoke', 'funk', 'sertanejo', 'open-bar']
 export const ALL: string[] = [...NICHES, ...VIBES, ...TAGS]
 
-export const SYSTEM = `Você extrai critérios de pedidos de rolê (bares, restaurantes, baladas, eventos em São Paulo).
+export const SYSTEM = `Você extrai critérios de pedidos de rolê (bares, restaurantes, baladas, eventos; a maioria em São Paulo, mas pode ser qualquer cidade do Brasil).
 Regras:
 - Cada item precisa de "trecho": as palavras EXATAS do pedido que justificam o item (copie do texto).
 - Só inclua o que o pedido diz ou implica claramente. Na dúvida, não inclua. Listas vazias são normais.

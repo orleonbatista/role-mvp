@@ -1,10 +1,11 @@
+import { createReadStream } from 'node:fs'
 // Gateway do rolê para testes: fica entre o túnel (cloudflared) e o PC.
 //  - LLM: expõe SÓ /extract e /ask (nunca a API crua do Ollama), com origem permitida, limite e fila de 1 na GPU.
 //  - Dados: /api/* (api.mjs, SQLite) com pedidos, votos, sugestões, curadoria e métricas compartilhados entre aparelhos.
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { DESTAQUES, askBody, moderateBody, moderationRules, ollamaBody, pickBody } from '../src/mocks/llmPrompt.ts'
-import { checkDeadlines, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
+import { checkDeadlines, ogPage, photoFile, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
 import { geoFromCep, geoReverse } from './geo.mjs'
 import { createLLM } from './providers.mjs'
 import { createPush } from './push.mjs'
@@ -93,6 +94,19 @@ const server = http.createServer(async (req, res) => {
     return res.end()
   }
   const path = (req.url ?? '').split('?')[0]
+  // fotos do rolê: públicas mas com endereço impossível de adivinhar; <img> não manda Origin, por isso fora de /api/
+  let mm
+  if (req.method === 'GET' && (mm = path.match(/^\/media\/(r-[a-z0-9-]{1,24})\/(ph-[a-f0-9]{12}\.jpg)$/))) {
+    const f = photoFile(mm[1], mm[2])
+    if (!f) { res.writeHead(404); return res.end() }
+    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' })
+    return createReadStream(f).pipe(res)
+  }
+  // prévia dinâmica do link de votação (título com as opções); pessoas seguem pro app. Ligar quando houver domínio fixo
+  if (req.method === 'GET' && (mm = path.match(/^\/og\/r\/(r-[a-z0-9-]{1,24})$/))) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' })
+    return res.end(ogPage(mm[1], new URL(req.url, 'http://x').search))
+  }
   if (path.startsWith('/api/')) {
     if (!origin) return send(res, 403, { error: 'origin' }, null)
     const ip = String(req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? '?')
@@ -101,7 +115,8 @@ const server = http.createServer(async (req, res) => {
     let body = {}
     if (write) {
       let raw = ''
-      for await (const chunk of req) { raw += chunk; if (raw.length > 16_000) return send(res, 413, { error: 'too_large' }, origin) }
+      const limit = /\/photos$/.test(path) ? 2_400_000 : 16_000 // foto (base64, já reduzida no celular) cabe; o resto é pequeno
+      for await (const chunk of req) { raw += chunk; if (raw.length > limit) return send(res, 413, { error: 'too_large' }, origin) }
       try { body = JSON.parse(raw || '{}') } catch { return send(res, 400, { error: 'bad_json' }, origin) }
     }
     if (req.method === 'GET' && path === '/api/push/key') return send(res, 200, { key: push.publicKey }, origin)

@@ -46,7 +46,8 @@ export async function shareUrl(d: RequestDetail) {
   // 6º item (opcional): resumo dos lugares do Google, que o outro aparelho não tem no catálogo
   const compact = [d.request.id, d.request.text, idx, d.author.name.split(' ')[0], d.author.hue, ...(gs.length ? [gs] : [])]
   const json = new TextEncoder().encode(JSON.stringify(compact))
-  const base = `${location.origin}${import.meta.env.BASE_URL}v/?id=${encodeURIComponent(d.request.id)}`
+  // com domínio fixo (VITE_SHARE_BASE, na nuvem) o link passa pelo servidor, que monta a prévia com as opções
+  const base = SHARE_BASE ? `${SHARE_BASE}/og/r/${encodeURIComponent(d.request.id)}` : `${location.origin}${import.meta.env.BASE_URL}v/?id=${encodeURIComponent(d.request.id)}`
   if (canCompress()) return `${base}#d=${toB64url(await pipe(json, new CompressionStream('deflate-raw')))}`
   return `${base}#j=${toB64url(json)}`
 }
@@ -84,14 +85,14 @@ export function shareText(d: RequestDetail) {
 }
 
 /** mesmo link do pedido, mas abrindo a página "me indica um lugar" */
-export const suggestUrl = (voteLink: string) => voteLink.replace('/v/?', '/v/?to=s&')
+export const suggestUrl = (voteLink: string) => toPages(voteLink).replace('/v/?', '/v/?to=s&')
 
 const b64 = (s: string) => toB64url(new TextEncoder().encode(s))
 /** link de retorno: leva o pedido (#d=) + a sugestão (&g=) de volta ao autor */
 export function returnUrl(voteLink: string, placeId: string, by: string, comment: string, hue: number) {
   const p = placeById.get(placeId)
   const g = b64(JSON.stringify([refOf(placeId), by.slice(0, 30), comment.slice(0, 140), hue, ...(p?.source ? [snapOf(p)] : [])]))
-  return voteLink.replace('/v/?', '/v/?to=i&').replace(/[?&]src=[^&#]*/, '') + `&g=${g}`
+  return toPages(voteLink).replace('/v/?', '/v/?to=i&').replace(/[?&]src=[^&#]*/, '') + `&g=${g}`
 }
 
 export function readSuggestion(hash: string): { placeId: string; by: string; comment: string; hue: number } | null {
@@ -103,6 +104,13 @@ export function readSuggestion(hash: string): { placeId: string; by: string; com
     const pid = idOf(idx)
     return pid ? { placeId: pid, by: String(by || 'Alguém'), comment: String(comment ?? ''), hue: Number(hue) || 200 } : null
   } catch { return null }
+}
+
+const SHARE_BASE = (import.meta.env.VITE_SHARE_BASE as string | undefined)?.replace(/\/$/, '')
+/** link de prévia (/og/r/ID) → link equivalente no app (/v/?id=ID), pros derivados (sugerir, importar) */
+function toPages(link: string) {
+  const m = link.match(/\/og\/r\/([^?#]+)\??([^#]*)(#.*)?$/)
+  return m ? `${location.origin}${import.meta.env.BASE_URL}v/?id=${m[1]}${m[2] ? `&${m[2]}` : ''}${m[3] ?? ''}` : link
 }
 
 /** reconstrói o link de votação a partir da URL atual (para montar o link de retorno) */

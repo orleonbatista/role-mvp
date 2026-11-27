@@ -96,10 +96,11 @@ interface RemoteState {
   rsvps?: { device: string; status: Rsvp; voter: string; at: number }[]
   messages?: { id: string; device: string; voter: string; text: string; at: number }[]
   closesAt?: number | null
+  photos?: { id: string; device: string; voter: string; at: number }[]
 }
 export type Rsvp = 'vou' | 'talvez' | 'nao'
 /** o que só existe no servidor (presença, recados, prazo): guardado em memória por pedido, vem junto do detalhe */
-export interface GroupExtra { rsvps: { status: Rsvp; voter: string; mine: boolean }[]; messages: { id: string; voter: string; text: string; at: number; mine: boolean }[]; closesAt: number | null; online: boolean }
+export interface GroupExtra { photos: { id: string; voter: string; at: number; mine: boolean }[]; rsvps: { status: Rsvp; voter: string; mine: boolean }[]; messages: { id: string; voter: string; text: string; at: number; mine: boolean }[]; closesAt: number | null; online: boolean }
 const extras = new Map<string, GroupExtra>()
 export const extraOf = (id: string): GroupExtra | undefined => extras.get(id)
 
@@ -164,6 +165,7 @@ export async function syncRequest(id: string): Promise<boolean> {
     rsvps: (s.rsvps ?? []).map((x) => ({ status: x.status, voter: x.voter, mine: x.device === me })),
     messages: (s.messages ?? []).map((x) => ({ id: x.id, voter: x.voter, text: x.text, at: x.at, mine: x.device === me })),
     closesAt: s.closesAt ?? null, online: true,
+    photos: (s.photos ?? []).map((x) => ({ id: x.id, voter: x.voter, at: x.at, mine: x.device === me })),
   })
   // sugestões que chegaram por qualquer aparelho viram respostas "sugestão pelo link"
   if (s.suggestions.length) {
@@ -321,8 +323,31 @@ export const pushKey = () => call<{ key: string }>('GET', '/api/push/key', undef
 export const pushSubscribe = (sub: PushSubscriptionJSON) => call<{ ok: boolean }>('POST', '/api/push/subscribe', sub)
 
 /* ---------- denúncias ---------- */
-export type ReportKind = 'review' | 'message' | 'suggestion'
+export type ReportKind = 'review' | 'message' | 'suggestion' | 'photo'
 export const report = (kind: ReportKind, id: string, reason: string) => call('POST', '/api/reports', { kind, id, reason }).then(Boolean)
 export interface OpenReport { kind: ReportKind; id: string; count: number; reasons: string[]; at: number; who: string; text: string }
 export const openReports = () => call<OpenReport[]>('GET', '/api/admin/reports', undefined, { admin: true, timeout: 5000 })
 export const resolveReport = (kind: ReportKind, id: string, action: 'remove' | 'keep') => call('POST', `/api/admin/reports/${kind}/${encodeURIComponent(id)}`, { action }, { admin: true }).then(Boolean)
+
+/* ---------- fotos do rolê (guardadas no servidor) ---------- */
+export const pushPhoto = (rid: string, dataUrl: string, voter: string) =>
+  call<{ ok: boolean; id: string }>('POST', `/api/requests/${encodeURIComponent(rid)}/photos`, { data: dataUrl, voter }, { timeout: 30_000 })
+export const deletePhoto = (id: string) => call('POST', `/api/photos/${id}/delete`, {}).then(Boolean)
+export async function photoUrl(rid: string, id: string) { const b = await apiBase(); return b ? `${b}/media/${rid}/${id}.jpg` : null }
+
+/* ---------- página da casa ---------- */
+export interface Venue { status: 'livre' | 'pendente' | 'verificada' | 'recusada'; mine?: boolean; bio?: string; instagram?: string; groupMax?: number | null; offer?: string; sponsored?: boolean }
+export const venueOf = (pid: string) => call<Venue>('GET', `/api/venues/${encodeURIComponent(pid)}`, undefined, { timeout: 4000 })
+export const claimVenue = (pid: string, b: { name: string; role: string; contact: string; placeName: string }) => call('POST', `/api/venues/${encodeURIComponent(pid)}/claim`, b).then(Boolean)
+export const saveVenue = (pid: string, b: { bio: string; instagram: string; groupMax: number | null; offer: string }) => call('POST', `/api/venues/${encodeURIComponent(pid)}`, b).then(Boolean)
+export const venueReport = (pid: string) => call<{ views: number; inRequests: number; votes: number; wins: number; contacts: number }>('GET', `/api/venues/${encodeURIComponent(pid)}/report`, undefined, { admin: true })
+export interface Claim { placeId: string; status: string; claim: { name: string; role: string; contact: string; placeName: string } | null; sponsoredUntil: number | null; at: number }
+export const adminClaims = () => call<Claim[]>('GET', '/api/admin/claims', undefined, { admin: true })
+export const actClaim = (pid: string, action: 'approve' | 'reject' | 'sponsor', days?: number) => call('POST', `/api/admin/claims/${encodeURIComponent(pid)}`, { action, days }, { admin: true }).then(Boolean)
+/** ofertas e destaques ativos: carregados na abertura, usados pelo ranking e pelos cards */
+export const venuesActive = new Map<string, { offer: string | null; sponsored: boolean }>()
+export async function loadVenuesActive() {
+  const r = await call<{ placeId: string; offer: string | null; sponsored: boolean }[]>('GET', '/api/venues/active', undefined, { timeout: 5000 })
+  venuesActive.clear()
+  for (const v of r ?? []) venuesActive.set(v.placeId, { offer: v.offer, sponsored: v.sponsored })
+}

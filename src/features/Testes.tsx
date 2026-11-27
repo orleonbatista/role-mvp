@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { Cpu, Database, Download, MessageSquareHeart, Store } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { adminUsers, openReports, resolveReport, checkAdmin, getAdminKey, setAdminKey, setUserRole } from '../mocks/remote'
+import { actClaim, adminClaims, adminUsers, openReports, resolveReport, checkAdmin, getAdminKey, setAdminKey, setUserRole } from '../mocks/remote'
 import { useToast } from '../ui/Toast'
 import { cx } from '../ui/primitives'
 import { getLLMOverride, llmStatus, setLLMOverride } from '../mocks/llm'
@@ -196,6 +196,7 @@ export function TestesPage() {
 
       {canGlobal && <UsersCard />}
       {sync?.curator && <ReportsCard />}
+      {canGlobal && <ClaimsCard />}
       {canGlobal && global?.funnel && <FunnelCard f={global.funnel} />}
       {canGlobal && global?.apis && <ApisCard apis={global.apis} />}
       <BackendCard />
@@ -444,7 +445,7 @@ function FunnelCard({ f }: { f: { people: { label: string; n: number }[]; reques
 function ReportsCard() {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['reports'], queryFn: openReports, staleTime: 15_000 })
-  const KIND = { review: 'avaliação', message: 'recado', suggestion: 'sugestão' } as const
+  const KIND = { review: 'avaliação', message: 'recado', suggestion: 'sugestão', photo: 'foto' } as const
   return (
     <section className="mt-7">
       <SectionTitle aside={<span className="text-xs text-faint">{q.data?.length ?? 0} abertas</span>}>Denúncias</SectionTitle>
@@ -461,6 +462,35 @@ function ReportsCard() {
           </div>
         ))}
       </div>
+    </section>
+  )
+}
+
+/* admin: casas que pediram a página (confirmar ligando no telefone do Google) e destaque pago */
+function ClaimsCard() {
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['claims'], queryFn: adminClaims, staleTime: 15_000 })
+  const act = async (pid: string, a: 'approve' | 'reject' | 'sponsor', days?: number) => { await actClaim(pid, a, days); qc.invalidateQueries({ queryKey: ['claims'] }) }
+  return (
+    <section className="mt-7">
+      <SectionTitle aside={<span className="text-xs text-faint">{q.data?.filter((c) => c.status === 'pendente').length ?? 0} pendentes</span>}>Casas</SectionTitle>
+      <div className="mx-5 grid gap-2">
+        {q.data?.length === 0 && <p className="rounded-[20px] border border-dashed border-line p-4 text-[13px] text-faint">Nenhuma casa pediu a página ainda.</p>}
+        {q.data?.map((c) => (
+          <div key={c.placeId} className="rounded-[20px] border border-line p-4">
+            <p className="text-[14px]">{c.claim?.placeName ?? c.placeId} <span className="text-[11px] text-faint">· {c.status}{c.sponsoredUntil && c.sponsoredUntil > Date.now() ? ` · patrocinado até ${new Date(c.sponsoredUntil).toLocaleDateString('pt-BR')}` : ''}</span></p>
+            <p className="mt-1 text-[12px] text-mute">{c.claim?.name} · {c.claim?.role} · {c.claim?.contact}</p>
+            <div className="mt-3 flex flex-wrap gap-2 text-[12px]">
+              {c.status === 'pendente' && <button className="h-9 rounded-full bg-accent px-4 font-medium text-accent-ink" onClick={() => act(c.placeId, 'approve')}>Verificar</button>}
+              {c.status === 'pendente' && <button className="h-9 rounded-full border border-line px-4" onClick={() => act(c.placeId, 'reject')}>Recusar</button>}
+              {c.status === 'verificada' && <button className="h-9 rounded-full border border-line px-4" onClick={() => act(c.placeId, 'sponsor', 30)}>Destacar 30 dias</button>}
+              {c.status === 'verificada' && !!c.sponsoredUntil && <button className="h-9 rounded-full border border-line px-4" onClick={() => act(c.placeId, 'sponsor', 0)}>Tirar destaque</button>}
+              <a className="flex h-9 items-center rounded-full border border-line px-4" href={`${import.meta.env.BASE_URL}lugar/${c.placeId}`}>Ver página</a>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mx-5 mt-2 text-[11px] text-faint">Verifique ligando no telefone da ficha do Google antes de aprovar. O destaque aparece marcado como patrocinado, no máximo 1 por votação e só quando encaixa no pedido.</p>
     </section>
   )
 }

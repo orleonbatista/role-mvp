@@ -454,11 +454,16 @@ export const handlers = [
     const picked = await curateWithLLM(req, top, profile)
     if (picked) { top = picked; req.aiPicked = true }
     top = top.slice(0, 5)
+    // destaque pago: no máximo 1, só se encaixa de verdade (sem alerta e com encaixe razoável), sempre por último
+    // e marcado "patrocinado" na tela; nunca muda a ordem das opções orgânicas
+    const spon = [...remote.venuesActive].filter(([id, v]) => v.sponsored && !top.some((r) => r.place.id === id)).map(([id]) => placeById.get(id)).filter((p): p is Place => !!p)
+    const sponsoredPick = spon.length ? rank(spon, criteria, profile).find((r) => r.match >= 45 && !r.warnings.length) : undefined
+    if (sponsoredPick) { top = [...top, sponsoredPick]; track('sponsored_shown', { id: sponsoredPick.place.id }) }
     // métrica-chave da curadoria: pedido atendido com lugar curado (encaixe bom) ou caiu na base
     const servedByCurated = top.some((r) => isCurated(r.place) && r.match >= CURATED_OK)
     track(servedByCurated ? 'request_curated' : 'request_uncurated', { best: top[0]?.match, niches: criteria.niches, hood: criteria.hood })
     req.optionIds = [...top.map((r) => r.place.id), ...answers.map((a) => a.placeId)]
-      .filter((x, i, arr) => arr.indexOf(x) === i).slice(0, 5)
+      .filter((x, i, arr) => arr.indexOf(x) === i).slice(0, sponsoredPick ? 6 : 5)
     req.optSnaps = snapsFor(req.optionIds, aiNotes.get(req.id))
     if (limits.basic) req.degraded = 'sem_google'
     else if (limits.rich) req.degraded = 'sem_confirmacao'
