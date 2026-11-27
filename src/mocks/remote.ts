@@ -35,9 +35,19 @@ let downUntil = 0
 
 /** URL do backend se ele estiver no ar (cache de 60s; 30s de pausa depois de uma falha) */
 let probing: Promise<string | null> | null = null
+const LAST_KEY = 'role.apiBase'
+function lastGood(): string | null {
+  try { const x = JSON.parse(localStorage.getItem(LAST_KEY) ?? 'null'); return x && Date.now() - x.at < 6 * 3600_000 ? x.base : null } catch { return null }
+}
 export async function apiBase(force = false): Promise<string | null> {
   if (Date.now() < downUntil && !force) return null
   if (!force && health && Date.now() - health.at < 60_000) return health.base
+  // abertura a frio: usa o último endereço bom (até 6 h) na hora e confere em segundo plano. Antes eram 3 idas e
+  // voltas em série (llm.json → /health → sessão) antes da primeira chamada; a votação levava ~7 s pra abrir
+  if (!force && !health) {
+    const last = lastGood()
+    if (last) { if (!probing) probing = probe().finally(() => { probing = null }); return last }
+  }
   // várias telas perguntando ao mesmo tempo: um teste só
   if (probing) return probing
   probing = probe().finally(() => { probing = null })
@@ -54,6 +64,7 @@ async function probe(): Promise<string | null> {
     if (ok) serverEpoch = Number(j.profileEpoch ?? 0)
     health = { at: Date.now(), base: ok ? base : null }
     if (!ok) downUntil = Date.now() + 30_000
+    try { ok ? localStorage.setItem(LAST_KEY, JSON.stringify({ base, at: Date.now() })) : localStorage.removeItem(LAST_KEY) } catch { /* */ }
   } catch {
     health = { at: Date.now(), base: null }
     downUntil = Date.now() + 30_000
@@ -112,6 +123,8 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opt
     if (!r.ok) return null
     return (await r.json()) as T
   } catch {
+    // o endereço guardado pode ter mudado (túnel novo): confere de novo uma vez antes de desistir
+    if (!retried) { const b = await apiBase(true); if (b && b !== base) return call<T>(method, path, body, opts, true) }
     downUntil = Date.now() + 30_000
     health = { at: Date.now(), base: null }
     return null

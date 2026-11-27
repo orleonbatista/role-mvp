@@ -79,7 +79,7 @@ export function SocialPage() {
         <section className="px-5 pb-28">
           <div className="mb-3 flex items-center justify-between">
             <p className="flex items-center gap-1.5 text-[13px] text-mute"><Trophy size={14} className="text-accent" />Curadores {hoodOnly && me?.hood ? `de ${me.hood}` : 'do rolê'}</p>
-            {me?.hood && <button onClick={() => setHoodOnly((x) => !x)} className="text-[12px] text-accent">{hoodOnly ? 'ver todos' : `só ${me.hood}`}</button>}
+            {me?.hood && <button onClick={() => setHoodOnly((x) => !x)} className="hit text-[12px] text-accent">{hoodOnly ? 'ver todos' : `só ${me.hood}`}</button>}
           </div>
           <div className="divide-y divide-line overflow-hidden rounded-[20px] border border-line">
             {rk.data?.length === 0 && <p className="p-4 text-[13px] text-faint">Ninguém pontuou ainda. Avalie um rolê que você foi e entre no ranking.</p>}

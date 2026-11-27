@@ -91,7 +91,7 @@ export function Results() {
             <div className="rounded-[24px] border border-accent/20 bg-accent/[0.05] p-4">
               <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-accent">
                 <Sparkles size={13} /> IA do rolê
-                <span className={cx('ml-auto rounded-full px-2 py-0.5 text-[10px] normal-case tracking-normal', data.confidence === 'alta' ? 'bg-accent/15 text-accent' : data.confidence === 'media' ? 'bg-white/10 text-ink/80' : 'bg-amber-400/15 text-amber-300')}>
+                <span className={cx('ml-auto rounded-full px-2 py-0.5 text-[11px] normal-case tracking-normal', data.confidence === 'alta' ? 'bg-accent/15 text-accent' : data.confidence === 'media' ? 'bg-white/10 text-ink/80' : 'bg-amber-400/15 text-amber-300')}>
                   confiança {data.confidence === 'media' ? 'média' : data.confidence}
                 </span>
               </div>
@@ -160,7 +160,7 @@ export function Results() {
           <Community data={data} />
 
           <div className="mt-8 px-5 text-center">
-            <Link to={`/avaliar/${id}`} className="text-sm text-mute underline decoration-white/20 underline-offset-4 hover:text-ink">Já foi? Conta como foi</Link>
+            <Link to={`/avaliar/${id}`} className="hit text-sm text-mute underline decoration-white/20 underline-offset-4 hover:text-ink">Já foi? Conta como foi</Link>
           </div>
           {data.request.authorId === 'me' && (
             <div className="mt-6 flex justify-center gap-6 px-5 text-[13px]">

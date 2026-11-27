@@ -176,8 +176,8 @@ export function IndicarPage() {
 
         {!picked && (
           <div className="mt-8 flex justify-between pb-6 text-[13px]">
-            <Link to="/fundador" className="text-mute underline-offset-4 hover:text-ink hover:underline">O que falta curar?</Link>
-            <button onClick={() => nav('/')} className="text-mute underline-offset-4 hover:text-ink hover:underline">Ir pro início</button>
+            <Link to="/fundador" className="hit text-mute underline-offset-4 hover:text-ink hover:underline">O que falta curar?</Link>
+            <button onClick={() => nav('/')} className="hit text-mute underline-offset-4 hover:text-ink hover:underline">Ir pro início</button>
           </div>
         )}
       </div>

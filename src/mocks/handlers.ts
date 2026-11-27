@@ -20,7 +20,8 @@ import { centerOf, discoverForRequest, discoverForTaste, limits } from '../lib/g
 import { snapOf } from '../lib/places'
 
 const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`
-const latency = () => delay(160 + Math.random() * 200)
+// a API roda dentro do app: sem atraso artificial (era resto da fase de protótipo e somava ~0,3 s em cada tela)
+const latency = () => Promise.resolve()
 const notFound = () => HttpResponse.json({ error: 'not_found' }, { status: 404 })
 
 const getProfile = () => db.profile.get('me')
@@ -290,7 +291,6 @@ export const handlers = [
     }
     await db.requests.add(req)
     void authorInfo().then((a) => remote.pushRequest(req, a))
-    await delay(400)
     return HttpResponse.json({ id: req.id })
   }),
 

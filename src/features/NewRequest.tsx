@@ -181,7 +181,7 @@ export function NewRequest() {
 
           <p className="mb-2.5 mt-7 text-[13px] uppercase tracking-[0.14em] text-mute">Quantas pessoas</p>
           <div className="flex items-center gap-4">
-            <Stepper onClick={() => setGroup(Math.max(1, size - 1))}><Minus size={16} /></Stepper>
+            <Stepper label="Menos uma pessoa" onClick={() => setGroup(Math.max(1, size - 1))}><Minus size={16} /></Stepper>
             <div className="w-14 overflow-hidden text-center font-serif text-5xl leading-none">
               <AnimatePresence mode="popLayout" initial={false}>
                 <motion.span key={size} className="inline-block" initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -30, opacity: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 30 }}>
@@ -189,7 +189,7 @@ export function NewRequest() {
                 </motion.span>
               </AnimatePresence>
             </div>
-            <Stepper onClick={() => setGroup(Math.min(80, size + 1))}><Plus size={16} /></Stepper>
+            <Stepper label="Mais uma pessoa" onClick={() => setGroup(Math.min(80, size + 1))}><Plus size={16} /></Stepper>
           </div>
         </motion.div>
       </div>
@@ -198,9 +198,9 @@ export function NewRequest() {
   )
 }
 
-function Stepper({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+function Stepper({ children, onClick, label }: { children: React.ReactNode; onClick: () => void; label: string }) {
   return (
-    <motion.button whileTap={{ scale: 0.88 }} onClick={onClick} className="grid size-11 place-items-center rounded-full bg-white/[0.07] hover:bg-white/[0.1]">
+    <motion.button whileTap={{ scale: 0.88 }} onClick={onClick} aria-label={label} className="grid size-11 place-items-center rounded-full bg-white/[0.07] hover:bg-white/[0.1]">
       {children}
     </motion.button>
   )

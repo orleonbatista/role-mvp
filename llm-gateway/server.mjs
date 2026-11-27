@@ -55,26 +55,34 @@ function allowedOrigin(origin) {
   return null
 }
 
-function limited(ip) {
+// limites por aparelho (sessão/X-Device) e, bem mais folgado, por IP: no Brasil a operadora põe muita gente atrás do
+// mesmo IP (CGNAT) e a turma toda costuma estar no mesmo Wi-Fi; limitar só por IP barrava gente de verdade
+const who = (req, ip) => { const k = String(req.headers['x-session'] || req.headers['x-device'] || ''); return k ? `k:${k.slice(0, 64)}` : `ip:${ip}` }
+function limitedKey(key, perMin, perDay) {
   const now = Date.now()
-  const arr = (hits.get(ip) ?? []).filter((t) => now - t < 86_400_000)
+  const arr = (hits.get(key) ?? []).filter((t) => now - t < 86_400_000)
   const lastMin = arr.filter((t) => now - t < 60_000).length
-  if (lastMin >= PER_MIN || arr.length >= PER_DAY) return true
+  if (lastMin >= perMin || arr.length >= perDay) return true
   arr.push(now)
-  hits.set(ip, arr)
+  hits.set(key, arr)
   return false
 }
+const limited = (req, ip) => limitedKey(`ip:${ip}`, PER_MIN * 6, PER_DAY * 6) || (who(req, ip) !== `ip:${ip}` && limitedKey(who(req, ip), PER_MIN, PER_DAY))
 
 // limite separado pra API de dados (bem mais folgado que o do LLM)
 const apiHits = new Map()
-function apiLimited(ip, write) {
+function apiLimitedKey(key, max) {
   const now = Date.now()
-  const key = `${ip}:${write ? 'w' : 'r'}`
   const arr = (apiHits.get(key) ?? []).filter((t) => now - t < 60_000)
-  if (arr.length >= (write ? 90 : 400)) return true
+  if (arr.length >= max) return true
   arr.push(now)
   apiHits.set(key, arr)
   return false
+}
+function apiLimited(req, ip, write) {
+  const w = write ? 'w' : 'r', k = who(req, ip)
+  if (apiLimitedKey(`ip:${ip}:${w}`, write ? 540 : 2400)) return true
+  return k !== `ip:${ip}` && apiLimitedKey(`${k}:${w}`, write ? 90 : 400)
 }
 
 /** moderação pela LLM (fila de 1 na GPU, 8s); se falhar, deixa passar — as regras já pegaram o óbvio */
@@ -127,7 +135,7 @@ const server = http.createServer(async (req, res) => {
     if (!origin) return send(res, 403, { error: 'origin' }, null)
     const ip = String(req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? '?')
     const write = req.method === 'POST'
-    if (apiLimited(ip, write)) return send(res, 429, { error: 'rate_limited' }, origin)
+    if (apiLimited(req, ip, write)) return send(res, 429, { error: 'rate_limited' }, origin)
     const sessErr = resolveSession(req, path)
     if (sessErr) return send(res, 401, sessErr, origin)
     // teste de avisos (admin): manda um aviso pros aparelhos do próprio admin e devolve o resultado de cada envio
@@ -227,7 +235,7 @@ const server = http.createServer(async (req, res) => {
   if (!origin) return send(res, 403, { error: 'origin' }, null)
 
   const ip = String(req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? '?')
-  if (limited(ip)) { stats.limited++; return send(res, 429, { error: 'rate_limited' }, origin) }
+  if (limited(req, ip)) { stats.limited++; return send(res, 429, { error: 'rate_limited' }, origin) }
 
   let raw = ''
   for await (const chunk of req) { raw += chunk; if (raw.length > 12_000) return send(res, 413, { error: 'too_large' }, origin) }

@@ -56,7 +56,7 @@ export function Page({ children, className, tabbed, footer, chrome, scrollRef }:
 export function TopBar({ title, right, back = true }: { title?: ReactNode; right?: ReactNode; back?: boolean }) {
   const nav = useNavigate()
   return (
-    <div className="sticky top-0 z-20 flex items-center gap-2 bg-bg/70 px-4 pb-2 pt-safe backdrop-blur-xl">
+    <div className="sticky top-0 z-20 flex items-center gap-2 bg-bg/[0.92] px-4 pb-2 pt-safe backdrop-blur-xl">
       {back && (
         <motion.button
           whileTap={{ scale: 0.9 }}

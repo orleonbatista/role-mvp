@@ -131,6 +131,8 @@ test('auditoria de todas as telas', async ({ page }, info) => {
   await scroll(page, 1400); await audit(page, '18-resultados-fim', device, out, Date.now())
   id = page.url().match(/r-[a-z0-9-]+/)![0]
   await go(`r/${id}`, '19-votacao', 'Onde vai ser?')
+  const top = await page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('*')].map((e) => e.scrollTop)))
+  if (top > 40) out.findings.push({ screen: '19-votacao', kind: 'abre-rolado', detail: `a votação abriu rolada ${top}px pra baixo` })
   await scroll(page, 1000); await audit(page, '20-votacao-meio', device, out, Date.now())
   await scroll(page, 1600); await audit(page, '21-votacao-fim', device, out, Date.now())
   await page.goto(`r/${id}`)

@@ -132,7 +132,7 @@ export function Home() {
       </section>
 
       <section className="mt-9">
-        <SectionTitle aside={<Link to="/divulgar" className="text-xs text-faint transition-colors hover:text-accent">+ divulgar evento</Link>}>Essa semana</SectionTitle>
+        <SectionTitle aside={<Link to="/divulgar" className="hit text-xs text-faint transition-colors hover:text-accent">+ divulgar evento</Link>}>Essa semana</SectionTitle>
         <motion.div variants={list} initial="initial" animate="animate" className="grid gap-2 px-5">
           {events.data?.length === 0 && (
             <p className="rounded-[20px] border border-dashed border-line px-4 py-4 text-center text-[13px] text-faint">

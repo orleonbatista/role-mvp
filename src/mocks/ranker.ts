@@ -213,7 +213,7 @@ export function rank(places: Place[], c: Criteria, profile?: Profile | null): Ra
         : c.when.hour === undefined
           ? [13, 19, 21, 23].some((x) => isOpenAt(place.periods, d, x)) || isOpenAt(place.periods, (d + 1) % 7, 1)
           : isOpenAt(place.periods, d, h)
-      if (ok) { score += 1.5; why.push([2.2, place.kind === 'evento' ? `Acontece ${place.when?.toLowerCase()}` : `Aberto ${c.when.label}${place.live?.hours ? ' (horário do Google)' : ''}`]) }
+      if (ok) { score += 1.5; why.push([2.2, place.kind === 'evento' && place.when ? `Acontece ${place.when?.toLowerCase()}` : `Aberto ${c.when.label}${place.live?.hours ? ' (horário do Google)' : ''}`]) }
       else { score -= 6; warn.push(place.kind === 'evento' ? `Só acontece ${place.when}` : c.when.day === undefined ? `Não abre ${c.when.label}` : `Fechado ${c.when.label}`) }
     }
 

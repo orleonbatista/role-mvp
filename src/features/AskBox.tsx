@@ -20,7 +20,8 @@ export function AskBox({ pedido, options, criteria, tally, hood, onHighlight }: 
   const [busy, setBusy] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }, [msgs])
+  // só rola quando chega mensagem nova: no primeiro render isso jogava a votação pro meio da página ao abrir o link
+  useEffect(() => { if (msgs.length) endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }, [msgs])
 
   async function ask(q: string) {
     const question = q.trim().slice(0, 200)

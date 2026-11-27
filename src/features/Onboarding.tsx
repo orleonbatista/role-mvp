@@ -221,7 +221,7 @@ function Region({ home, setHome, hood, setHood }: { home?: Home; setHome: (h?: H
               icon={busy === 'cep' ? <LoaderCircle size={16} className="animate-spin" /> : undefined}>Buscar</Button>
           </div>
           {err && <p className="text-[13px] text-[#ff8a8a]">{err}</p>}
-          <button className="mt-1 w-fit text-[13px] text-mute underline-offset-4 hover:underline" onClick={() => setManual((m) => !m)}>
+          <button className="hit mt-1 w-fit text-[13px] text-mute underline-offset-4 hover:underline" onClick={() => setManual((m) => !m)}>
             {manual ? 'esconder bairros' : 'prefiro escolher um bairro (São Paulo)'}
           </button>
           {manual && <p className="text-[12px] text-faint">Bairros de São Paulo. Em outra cidade, use a localização ou o CEP.</p>}
@@ -255,19 +255,19 @@ function Welcome({ onGoogle }: { onGoogle: (r: LoginOutcome) => void }) {
         ))}
       </div>
       <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.2 } }} className="relative mb-4 font-serif text-2xl italic text-accent">rolê.</motion.p>
-      <h1 className="relative font-serif text-[56px] leading-[0.92] tracking-tight text-balance">
+      <h1 className="relative font-serif text-[clamp(40px,9.5vh,56px)] leading-[0.92] tracking-tight text-balance">
         {['O rolê certo,', 'pra cada', 'ocasião.'].map((l, i) => (
           <motion.span key={i} className="block" initial={{ opacity: 0, y: 30, filter: 'blur(10px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ delay: 0.3 + i * 0.12, duration: 0.8, ease }}>
             {i === 2 ? <em>{l}</em> : l}
           </motion.span>
         ))}
       </h1>
-      <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8, duration: 0.6, ease }} className="relative mt-6 max-w-[290px] text-[15px] leading-relaxed text-mute">
+      <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8, duration: 0.6, ease }} className="relative mt-5 max-w-[290px] text-[15px] leading-relaxed text-mute">
         Diga o que você quer. A IA sugere, a comunidade refina, sua turma vota.
       </motion.p>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }} className="relative mt-8 grid gap-2">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }} className="relative mt-6 grid gap-2">
         <GoogleButton onDone={onGoogle} />
-        <p className="text-center text-[12px] text-faint">Com a conta Google, seu perfil e suas turmas te acompanham em qualquer celular. Ou toque em Começar pra seguir sem conta.</p>
+        <p className="text-center text-[12px] text-faint">Com Google, seu perfil e suas turmas vão junto pra qualquer celular. Sem conta? Toque em Começar.</p>
       </motion.div>
     </div>
   )
