@@ -1,6 +1,7 @@
 import { ReportButton } from './Report'
 import { venuesActive } from '../mocks/remote'
 import { DeadlinePicker } from './GroupPanel'
+import { GroupChatLink, VoteSetup } from './VoteSetup'
 import { confirmSheet } from '../ui/Confirm'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
@@ -153,6 +154,8 @@ export function Results() {
               : <button onClick={() => { track('ig_decided_click', { id }); setStoryDecided(true) }} className="flex h-12 items-center justify-center gap-2 rounded-full text-[14px] font-medium text-white" style={{ background: 'linear-gradient(90deg,#f58529,#dd2a7b 45%,#8134af 75%,#515bd4)' }}>Postar no Story o rolê fechado</button>}
           </div>
           {data.request.authorId === 'me' && <DeadlinePicker d={data} />}
+          <VoteSetup d={data} />
+          <GroupChatLink d={data} />
 
           <Community data={data} />
 

@@ -8,7 +8,7 @@ import { Avatar, Button, EmptyState, Page, Skeleton, TopBar } from '../ui/primit
 import { ease } from '../ui/motion'
 import { timeAgo } from '../lib/labels'
 import { track } from '../lib/track'
-import { groupChat, leaveGroup, myGroups, renameGroup, sendChat, type Turma } from '../mocks/remote'
+import { groupChat, leaveGroup, myGroups, renameGroup, sendChat, setGroupVisibility, type Turma } from '../mocks/remote'
 import { Sheet } from '../ui/Sheet'
 import { ReportButton } from './Report'
 import { MessagesSquare, Send } from 'lucide-react'
@@ -82,6 +82,12 @@ function TurmaCard({ t, i }: { t: Turma; i: number }) {
         </ul>
       )}
       <TurmaChat gid={t.id} />
+      {t.mine && (
+        <button onClick={async () => { const v = t.visibility === 'publica' ? 'privada' : 'publica'; if (await setGroupVisibility(t.id, v)) { track('turma_visibility', { v }); qc.invalidateQueries({ queryKey: ['turmas'] }) } }}
+          className="mt-2 w-full text-left text-[12px] text-mute">
+          {t.visibility === 'publica' ? <>Turma <b className="text-accent">pública</b>: aparece no perfil de vocês e qualquer um entra. Tornar privada</> : <>Turma <b className="text-ink">privada</b>: só entra quem recebe o link de uma votação. Tornar pública</>}
+        </button>
+      )}
       <div className="mt-4 flex items-center gap-2">
         <Link to={`/novo?turma=${t.id}`} onClick={() => track('turma_novo_role', { members: t.members.length })} className="flex-1">
           <Button variant="soft" className="w-full" icon={<Sparkles size={15} />}>Novo rolê com essa turma</Button>
@@ -113,36 +119,58 @@ export function TurmasStrip() {
 /** chat contínuo da turma (atualiza a cada 4 s com o chat aberto; quem não está no app recebe aviso no celular) */
 function TurmaChat({ gid }: { gid: string }) {
   const [open, setOpen] = useState(false)
-  const [text, setText] = useState('')
-  const qc = useQueryClient()
-  const q = useQuery({ queryKey: ['chat', gid], queryFn: () => groupChat(gid), enabled: open, refetchInterval: open ? 4000 : false })
   return (
     <>
       <button onClick={() => setOpen(true)} className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-full border border-line text-[13px]"><MessagesSquare size={15} />Chat da turma</button>
-      <Sheet open={open} onClose={() => setOpen(false)}>
-        <p className="font-serif text-[26px] leading-tight">Chat da turma</p>
-        <div className="mt-3 grid max-h-[50vh] gap-1.5 overflow-y-auto">
-          {q.data?.length === 0 && <p className="text-[13px] text-faint">Nenhuma mensagem ainda.</p>}
-          {q.data === null && <p className="text-[13px] text-faint">Sem conexão agora.</p>}
-          {q.data?.map((m) => (
-            <div key={m.id} className={m.mine ? 'flex justify-end' : 'flex items-center gap-1'}>
-              <p className={m.mine ? 'max-w-[85%] rounded-2xl bg-accent/15 px-3 py-2 text-[13px]' : 'max-w-[85%] rounded-2xl bg-white/[0.05] px-3 py-2 text-[13px]'}>
-                {!m.mine && <Link to={`/u/${m.pid}`} className="mr-1 font-medium text-accent">{m.name}</Link>}{m.text}
-              </p>
-              {!m.mine && <ReportButton kind="chat" id={m.id} />}
-            </div>
+      <TurmaChatSheet gid={gid} open={open} onClose={() => setOpen(false)} />
+    </>
+  )
+}
+
+/** chat da turma ligado às votações: votações abertas no topo, recados automáticos (nova votação, rolê fechado) com link */
+export function TurmaChatSheet({ gid, open, onClose, from }: { gid: string; open: boolean; onClose: () => void; from?: string }) {
+  const [text, setText] = useState('')
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['chat', gid], queryFn: () => groupChat(gid), enabled: open, refetchInterval: open ? 4000 : false })
+  const t = useTurmas().data?.find((x) => x.id === gid)
+  const openVotes = (t?.requests ?? []).filter((r) => !r.decided && r.id !== from)
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <p className="font-serif text-[26px] leading-tight">{t ? turmaName(t) : 'Chat da turma'}</p>
+      {openVotes.length > 0 && (
+        <div className="no-scrollbar -mx-5 mt-2 flex gap-2 overflow-x-auto px-5">
+          {openVotes.map((r) => (
+            <Link key={r.id} to={`/r/${r.id}`} onClick={onClose} className="shrink-0 rounded-full border border-accent/40 bg-accent/[0.06] px-3 py-1.5 text-[12px]">
+              <span className="text-accent">votação aberta · </span>{r.text.slice(0, 32)}{r.text.length > 32 ? '…' : ''}
+            </Link>
           ))}
         </div>
-        <form className="mt-3 flex gap-2" onSubmit={async (e) => {
-          e.preventDefault()
-          if (!text.trim()) return
-          if (await sendChat(gid, text.trim())) { setText(''); qc.invalidateQueries({ queryKey: ['chat', gid] }) }
-        }}>
-          <input value={text} onChange={(e) => setText(e.target.value.slice(0, 500))} placeholder="Mensagem" aria-label="Mensagem pra turma" className="h-11 min-w-0 flex-1 rounded-full border border-line bg-white/[0.03] px-4 text-[14px] outline-none focus:border-accent" />
-          <button type="submit" aria-label="Enviar" className="grid size-11 place-items-center rounded-full bg-accent text-accent-ink"><Send size={16} /></button>
-        </form>
-      </Sheet>
-    </>
+      )}
+      <div className="mt-3 grid max-h-[50vh] gap-1.5 overflow-y-auto">
+        {q.data?.length === 0 && <p className="text-[13px] text-faint">Nenhuma mensagem ainda.</p>}
+        {q.data === null && <p className="text-[13px] text-faint">Sem conexão agora.</p>}
+        {q.data?.map((m) => m.system ? (
+          <p key={m.id} className="my-1 text-center text-[12px] text-mute">
+            {m.text}{m.ref && <> · <Link to={`/r/${m.ref}`} onClick={onClose} className="text-accent">abrir votação</Link></>}
+          </p>
+        ) : (
+          <div key={m.id} className={m.mine ? 'flex justify-end' : 'flex items-center gap-1'}>
+            <p className={m.mine ? 'max-w-[85%] rounded-2xl bg-accent/15 px-3 py-2 text-[13px]' : 'max-w-[85%] rounded-2xl bg-white/[0.05] px-3 py-2 text-[13px]'}>
+              {!m.mine && m.pid && <Link to={`/u/${m.pid}`} className="mr-1 font-medium text-accent">{m.name}</Link>}{m.text}
+            </p>
+            {!m.mine && <ReportButton kind="chat" id={m.id} />}
+          </div>
+        ))}
+      </div>
+      <form className="mt-3 flex gap-2" onSubmit={async (e) => {
+        e.preventDefault()
+        if (!text.trim()) return
+        if (await sendChat(gid, text.trim())) { setText(''); qc.invalidateQueries({ queryKey: ['chat', gid] }) }
+      }}>
+        <input value={text} onChange={(e) => setText(e.target.value.slice(0, 500))} placeholder="Mensagem" aria-label="Mensagem pra turma" className="h-11 min-w-0 flex-1 rounded-full border border-line bg-white/[0.03] px-4 text-[14px] outline-none focus:border-accent" />
+        <button type="submit" aria-label="Enviar" className="grid size-11 place-items-center rounded-full bg-accent text-accent-ink"><Send size={16} /></button>
+      </form>
+    </Sheet>
   )
 }
 
@@ -155,7 +183,7 @@ function MembersButton({ t }: { t: Turma }) {
         {t.members.length > 5 ? `+${t.members.length - 5} · ` : ''}ver membros
       </button>
       <Sheet open={open} onClose={() => setOpen(false)}>
-        <div className="p-5">
+        <div className="pt-2">
           <p className="mb-3 font-serif text-[24px] leading-none">{turmaName(t)} · {t.members.length}</p>
           <ul className="divide-y divide-line overflow-hidden rounded-[18px] border border-line">
             {t.members.map((m, j) => (

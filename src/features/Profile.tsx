@@ -219,7 +219,7 @@ function HandleEditor({ handle }: { handle: string }) {
     <>
       <button onClick={() => { setV(handle.replace(/^@/, '')); setErr(''); setOpen(true) }} className="text-accent underline decoration-dotted underline-offset-4" aria-label={`Seu @ é ${handle}. Toque pra trocar`}>{handle}</button>
       <Sheet open={open} onClose={() => setOpen(false)}>
-        <div className="p-5">
+        <div className="pt-2">
           <p className="font-serif text-[26px] leading-none">Seu @ no rolê</p>
           <p className="mt-2 text-[13px] text-mute">É por ele que os amigos te acham na busca. Único: ninguém mais pode usar.</p>
           <label className="mt-4 flex h-12 items-center rounded-full border border-line bg-white/[0.03] px-4 focus-within:border-accent">

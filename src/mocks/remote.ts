@@ -120,8 +120,11 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opt
 
 /* ---------- pedidos, votos, sugestões, decisão ---------- */
 interface RemoteState {
-  request: { id: string; text: string; criteria: RoleRequest['criteria']; optionIds: string[]; times: string[]; author: { name: string; hue: number }; createdAt: number; eventId?: string; places?: unknown[] }
+  request: { id: string; text: string; criteria: RoleRequest['criteria']; optionIds: string[]; removed?: string[]; times: string[]; author: { name: string; hue: number }; createdAt: number; eventId?: string; places?: unknown[] }
   authorDevice: string
+  groupId?: string
+  voters?: 'link' | 'amigos'
+  canVote?: boolean
   /** apelido deste aparelho no servidor (os ids reais não saem de lá) */
   me?: string
   decision: { placeId: string; time?: string; at: number } | null
@@ -136,7 +139,7 @@ interface RemoteState {
 }
 export type Rsvp = 'vou' | 'talvez' | 'nao'
 /** o que só existe no servidor (presença, recados, prazo): guardado em memória por pedido, vem junto do detalhe */
-export interface GroupExtra { participants: NonNullable<RemoteState['participants']>; photos: { id: string; voter: string; at: number; mine: boolean }[]; rsvps: { status: Rsvp; voter: string; mine: boolean }[]; messages: { id: string; voter: string; text: string; at: number; mine: boolean }[]; closesAt: number | null; online: boolean }
+export interface GroupExtra { participants: NonNullable<RemoteState['participants']>; photos: { id: string; voter: string; at: number; mine: boolean }[]; rsvps: { status: Rsvp; voter: string; mine: boolean }[]; messages: { id: string; voter: string; text: string; at: number; mine: boolean }[]; closesAt: number | null; online: boolean; groupId?: string; voters: 'link' | 'amigos'; canVote: boolean }
 const extras = new Map<string, GroupExtra>()
 export const extraOf = (id: string): GroupExtra | undefined => extras.get(id)
 
@@ -177,7 +180,9 @@ export async function syncRequest(id: string): Promise<boolean> {
     })
   } else {
     // nunca encolhe a lista local por falta de resumo: só acrescenta opções novas (ex.: sugestão de alguém)
-    const merged = [...(local.optionIds ?? []), ...optionIds.filter((x) => !(local.optionIds ?? []).includes(x))].slice(0, 6)
+    // o que o autor tirou da votação sai de todo aparelho
+    const removed = new Set(s.request.removed ?? [])
+    const merged = [...(local.optionIds ?? []).filter((x) => !removed.has(x)), ...optionIds.filter((x) => !(local.optionIds ?? []).includes(x))].slice(0, 6)
     if (merged.join() !== (local.optionIds ?? []).join() || snaps.length !== (local.optSnaps?.length ?? 0)) await db.requests.update(id, { optionIds: merged, optSnaps: snaps })
   }
   if (s.decision) {
@@ -202,7 +207,7 @@ export async function syncRequest(id: string): Promise<boolean> {
   extras.set(id, {
     rsvps: (s.rsvps ?? []).map((x) => ({ status: x.status, voter: x.voter, mine: x.device === me })),
     messages: (s.messages ?? []).map((x) => ({ id: x.id, voter: x.voter, text: x.text, at: x.at, mine: x.device === me })),
-    closesAt: s.closesAt ?? null, online: true, participants: s.participants ?? [],
+    closesAt: s.closesAt ?? null, online: true, participants: s.participants ?? [], groupId: s.groupId, voters: s.voters ?? 'link', canVote: s.canVote !== false,
     photos: (s.photos ?? []).map((x) => ({ id: x.id, voter: x.voter, at: x.at, mine: x.device === me })),
   })
   // sugestões que chegaram por qualquer aparelho viram respostas "sugestão pelo link"
@@ -354,7 +359,7 @@ export const pushPlaceReview = (r: Review & { name: string; hue: number; placeNa
 export interface CommunityReviews { score: number | null; count: number; items: { id: string; name: string; hue: number; verdict: NonNullable<Review['verdict']>; note: string; at: number; mine: boolean; pending: boolean; pid: string }[] }
 export const placeReviews = (id: string) => call<CommunityReviews>('GET', `/api/places/${encodeURIComponent(id)}/reviews`, undefined, { timeout: 4000 })
 export const ratings = () => call<Record<string, [number, number]>>('GET', '/api/ratings', undefined, { timeout: 4000 })
-export interface Turma { id: string; name: string | null; mine: boolean; updatedAt: number; members: { name: string; hue: number; me: boolean; pid?: string; handle?: string | null; level?: string }[]; requests: { id: string; text: string; createdAt: number; decided: boolean }[] }
+export interface Turma { id: string; name: string | null; mine: boolean; updatedAt: number; visibility?: 'privada' | 'publica'; members: { name: string; hue: number; me: boolean; pid?: string; handle?: string | null; level?: string }[]; requests: { id: string; text: string; createdAt: number; decided: boolean }[] }
 export const myGroups = () => call<Turma[]>('GET', '/api/groups', undefined, { timeout: 4000 })
 export const renameGroup = (id: string, name: string) => call('POST', `/api/groups/${id}/name`, { name })
 export const leaveGroup = (id: string) => call('POST', `/api/groups/${id}/leave`, {})
@@ -419,7 +424,7 @@ export const inboxRead = (id?: string) => call('POST', '/api/inbox/read', id ? {
 export interface Rep { points: number; level: string; reviews: number; photos: number; closed: number }
 export interface PersonCard { pid: string; handle?: string | null; name: string; hue: number; reputation: Rep }
 export interface PersonPage { pid: string; handle?: string | null; name: string; hue: number; hood: string | null; niches: string[]; me: boolean; relation: 'nenhuma' | 'enviado' | 'recebido' | 'amigos'; reputation: Rep
-  reviews: { placeId: string; verdict: string; note: string; name: string | null; at: number }[]; lists: { id: string; title: string; places: unknown[]; updatedAt: number }[]; friendsCount: number }
+  reviews: { placeId: string; verdict: string; note: string; name: string | null; at: number }[]; lists: { id: string; title: string; places: unknown[]; updatedAt: number }[]; friendsCount: number; groups?: { id: string; name: string; members: number; member: boolean }[] }
 export type FeedItem = { kind: 'review'; who: PersonCard; placeId: string; placeName: string | null; verdict: string; note: string; at: number }
   | { kind: 'list'; who: PersonCard; listId: string; title: string; count: number; at: number }
   | { kind: 'decided'; who: PersonCard; placeId: string; placeName: string | null; at: number }
@@ -434,7 +439,23 @@ export const listOf = (id: string) => call<UserList & { mine: boolean; owner: { 
 export const createList = (title: string, pub = true) => call<{ ok: boolean; id: string }>('POST', '/api/lists', { title, public: pub })
 export const listAction = (id: string, a: 'add' | 'remove' | 'delete', place?: PlaceT) =>
   call('POST', `/api/lists/${id}/${a}`, place ? { placeId: place.id, place: place.source ? snapOf(place) : undefined } : {}).then(Boolean)
-export interface ChatMsg { id: string; name: string; text: string; at: number; mine: boolean; pid: string }
+export interface ChatMsg { id: string; name: string; text: string; at: number; mine: boolean; pid: string | null; system?: boolean; ref?: string | null }
 export const groupChat = (gid: string, since = 0) => call<ChatMsg[]>('GET', `/api/groups/${gid}/chat?since=${since}`, undefined, { timeout: 5000 })
 export const sendChat = (gid: string, text: string) => call('POST', `/api/groups/${gid}/chat`, { text }).then(Boolean)
 export const pushTest = () => call<{ subs: number; results: string[] }>('POST', '/api/admin/push-test', {}, { admin: true, timeout: 15000 })
+
+/* ---------- montar a votação (autor) ---------- */
+/** tira uma opção ou põe um lugar na votação; o servidor é a fonte (todo aparelho vê igual) */
+export async function editOption(rid: string, action: 'add' | 'remove', place: PlaceT) {
+  const r = await call<{ ok: boolean; optionIds: string[] }>('POST', `/api/requests/${encodeURIComponent(rid)}/options`, { action, placeId: place.id, place: place.source ? snapOf(place) : undefined })
+  if (!r) return false
+  const local = await db.requests.get(rid)
+  if (local) {
+    const snaps = place.source && action === 'add' ? mergeSnaps([snapOf(place)], local.optSnaps) : local.optSnaps
+    await db.requests.update(rid, { optionIds: r.optionIds.filter((x) => placeById.has(x) || x === place.id), optSnaps: snaps })
+  }
+  return true
+}
+export const setVoters = (rid: string, voters: 'link' | 'amigos') => call<{ ok: boolean }>('POST', `/api/requests/${encodeURIComponent(rid)}/settings`, { voters }).then(Boolean)
+export const setGroupVisibility = (gid: string, visibility: 'privada' | 'publica') => call('POST', `/api/groups/${gid}/settings`, { visibility }).then(Boolean)
+export const joinGroup = (gid: string) => call('POST', `/api/groups/${gid}/join`, {}).then(Boolean)

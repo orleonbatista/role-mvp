@@ -6,7 +6,7 @@ import { Avatar, Page, SectionTitle, Skeleton, Tag, TopBar, cx } from '../ui/pri
 import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
 import { confirmSheet } from '../ui/Confirm'
-import { searchPeople, createList, listAction, listOf, myLists, person, personAction, ranking, social, type FeedItem, type PersonCard, type Rep } from '../mocks/remote'
+import { joinGroup, searchPeople, createList, listAction, listOf, myLists, person, personAction, ranking, social, type FeedItem, type PersonCard, type Rep } from '../mocks/remote'
 import { fromSnap } from '../lib/places'
 import { VERDICT_LABEL, nicheLabel, timeAgo } from '../lib/labels'
 import { useProfile, useSync } from '../lib/api'
@@ -154,6 +154,22 @@ export function PersonPage() {
               <SectionTitle>Listas</SectionTitle>
               <div className="grid gap-2">
                 {p.lists.map((l) => <Link key={l.id} to={`/lista/${l.id}`} className="flex items-center gap-3 rounded-[18px] border border-line px-4 py-3"><Bookmark size={15} className="text-accent" /><span className="flex-1 text-[14px]">{l.title}</span><span className="text-[12px] text-faint">{l.places.length}</span></Link>)}
+              </div>
+            </section>
+          )}
+          {!!p.groups?.length && (
+            <section className="mt-8">
+              <SectionTitle>Turmas públicas</SectionTitle>
+              <div className="grid gap-2">
+                {p.groups.map((g) => (
+                  <div key={g.id} className="flex items-center gap-3 rounded-[18px] border border-line px-4 py-3">
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[14px]">{g.name}</span><span className="text-[12px] text-faint">{g.members} pessoas</span></span>
+                    {g.member
+                      ? <Link to="/turmas" className="text-[12px] text-accent">você está</Link>
+                      : <button onClick={async () => { const ok = await joinGroup(g.id); track('turma_join', { ok }); toast(ok ? 'Você entrou na turma' : 'Entre no app com cadastro pra participar'); qc.invalidateQueries({ queryKey: ['person', pid] }); qc.invalidateQueries({ queryKey: ['turmas'] }) }}
+                          className="h-8 rounded-full bg-accent px-3 text-[12px] font-medium text-accent-ink">Entrar</button>}
+                  </div>
+                ))}
               </div>
             </section>
           )}

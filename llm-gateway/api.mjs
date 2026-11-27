@@ -122,6 +122,9 @@ db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_users_handle ON users(handle)')
 // caixa de notificações: tudo que vira aviso no celular também fica aqui (dá pra ver depois, mesmo sem avisos ligados)
 db.exec(`CREATE TABLE IF NOT EXISTS inbox (id TEXT PRIMARY KEY, device TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, url TEXT NOT NULL, ref TEXT, actor TEXT, at INTEGER NOT NULL, read INTEGER NOT NULL DEFAULT 0);
   CREATE INDEX IF NOT EXISTS ix_inbox ON inbox(device, at);`)
+if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'voters'").get()) db.exec("ALTER TABLE requests ADD COLUMN voters TEXT NOT NULL DEFAULT 'link'")
+if (!db.prepare("SELECT 1 FROM pragma_table_info('groups') WHERE name = 'visibility'").get()) db.exec("ALTER TABLE groups ADD COLUMN visibility TEXT NOT NULL DEFAULT 'privada'")
+if (!db.prepare("SELECT 1 FROM pragma_table_info('group_messages') WHERE name = 'ref'").get()) db.exec('ALTER TABLE group_messages ADD COLUMN ref TEXT')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('inbox') WHERE name = 'actor'").get()) db.exec('ALTER TABLE inbox ADD COLUMN actor TEXT')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'review_notified'").get()) db.exec('ALTER TABLE requests ADD COLUMN review_notified INTEGER')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'closes_at'").get()) { db.exec('ALTER TABLE requests ADD COLUMN closes_at INTEGER'); db.exec('ALTER TABLE requests ADD COLUMN close_notified INTEGER') }
@@ -259,7 +262,7 @@ function requestState(id, viewer) {
   if (!r) return null
   return {
     request: { ...parse(r.data), id: r.id, createdAt: r.created_at },
-    authorDevice: pseudo(r.author_device), me: pseudo(viewer), groupId: r.group_id ?? undefined,
+    authorDevice: pseudo(r.author_device), me: pseudo(viewer), groupId: r.group_id ?? undefined, voters: r.voters ?? 'link', canVote: !viewer || canVoteIn(r, viewer),
     decision: r.decided_place ? { placeId: r.decided_place, time: r.decided_time ?? undefined, at: r.decided_at } : null,
     votes: hide(q.votes.all(id)),
     slots: hide(db.prepare('SELECT device, slot, voter, at FROM slots WHERE request_id = ? ORDER BY at').all(id)),
@@ -471,10 +474,21 @@ export function insertReview(body, device, verdict) {
 
 function groupView(g, device) {
   return {
-    id: g.id, name: g.name, mine: g.owner_device === device, updatedAt: g.updated_at,
+    id: g.id, name: g.name, mine: g.owner_device === device, updatedAt: g.updated_at, visibility: g.visibility ?? 'privada',
     members: qp.members.all(g.id).map((m) => ({ name: m.name, hue: m.hue, me: m.device === device, pid: pseudo(m.device), handle: handleOf(m.device), level: reputationOf(m.device).level })),
     requests: qp.groupRequests.all(g.id).map((r) => ({ id: r.id, text: parse(r.data)?.text ?? '', createdAt: r.created_at, decided: !!r.decided_place })),
   }
+}
+/** quem pode votar: 'link' (qualquer um com o link) ou 'amigos' (amigos do autor e quem já está na turma) */
+function canVoteIn(r, device) {
+  if (!r || (r.voters ?? 'link') === 'link' || r.author_device === device) return true
+  if (relation(r.author_device, device) === 'amigos') return true
+  return !!(r.group_id && qp.member.get(r.group_id, device))
+}
+/** recado automático no chat da turma (nova votação, rolê fechado): liga a conversa à votação */
+function groupNote(gid, text, ref) {
+  if (!gid) return
+  db.prepare('INSERT INTO group_messages (id, group_id, device, name, text, at, ref) VALUES (?, ?, ?, ?, ?, ?, ?)').run(`gm-${randomBytes(6).toString('hex')}`, gid, 'system', 'rolê', text, Date.now(), ref ?? null)
 }
 /** quem vota/sugere num pedido de turma entra nela */
 function joinGroupOf(requestId, device, name, hue) {
@@ -491,6 +505,7 @@ function joinGroupOf(requestId, device, name, hue) {
         JOIN group_members b ON b.group_id = g.id AND b.device = ? WHERE g.id != ? ORDER BY g.updated_at DESC LIMIT 1`).get(r.author_device, device, gid)
       if (other) {
         q.setGroup.run(other.id, requestId)
+        db.prepare('UPDATE group_messages SET group_id = ? WHERE group_id = ?').run(other.id, gid)
         db.prepare('DELETE FROM group_members WHERE group_id = ?').run(gid)
         db.prepare('DELETE FROM groups WHERE id = ?').run(gid)
         gid = other.id
@@ -831,6 +846,7 @@ export function handleApi(method, path, req, body) {
       // o autor pode atualizar (ex.: novas opções); os outros não. Resumos de lugares se juntam (não somem)
       const prev = parse(q.getReq.get(id)?.data ?? 'null')
       const next = parse(data)
+      if (prev?.removed?.length) { next.removed = prev.removed; next.optionIds = next.optionIds.filter((x) => !prev.removed.includes(x)) }
       if (prev?.places?.length) {
         const have = new Set(next.places.map((p) => p[0]))
         next.places = [...next.places, ...prev.places.filter((p) => !have.has(p[0]))].slice(-8)
@@ -846,6 +862,7 @@ export function handleApi(method, path, req, body) {
       if (!groupId) { groupId = `t-${randomBytes(8).toString('hex').slice(0, 10)}`; qp.insGroup.run(groupId, null, device, now, now) }
       q.setGroup.run(groupId, id)
       qp.addMember.run(groupId, device, str(body.author?.name, 40) || 'Alguém', int(body.author?.hue, 82), now, now)
+      if (ins.changes || want) if (!db.prepare('SELECT 1 FROM group_messages WHERE group_id = ? AND ref = ?').get(groupId, id)) groupNote(groupId, `Nova votação: “${str(body.text, 120)}”`, id)
       qp.touchGroup.run(now, groupId)
     }
     return ok({ ok: true, groupId })
@@ -874,6 +891,7 @@ export function handleApi(method, path, req, body) {
   }
 
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/votes$/)) && write) {
+    if (!canVoteIn(q.getReq.get(m[1]), device)) return bad('so_amigos', 403)
     if (!q.getReq.get(m[1])) return bad('not_found', 404)
     const kind = body.kind === 'time' ? 'time' : 'place'
     const value = str(body.value, 60)
@@ -889,6 +907,7 @@ export function handleApi(method, path, req, body) {
 
   // vários horários por pessoa (disponibilidade): marca/desmarca um horário
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/slots$/)) && write) {
+    if (!canVoteIn(q.getReq.get(m[1]), device)) return bad('so_amigos', 403)
     const r = q.getReq.get(m[1])
     if (!r) return bad('not_found', 404)
     const slot = str(body.slot, 40).trim()
@@ -905,6 +924,7 @@ export function handleApi(method, path, req, body) {
   }
   // presença no rolê fechado
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/rsvp$/)) && write) {
+    if (!canVoteIn(q.getReq.get(m[1]), device)) return bad('so_amigos', 403)
     const r = q.getReq.get(m[1])
     if (!r) return bad('not_found', 404)
     const status = ['vou', 'talvez', 'nao'].includes(body.status) ? body.status : null
@@ -996,7 +1016,44 @@ export function handleApi(method, path, req, body) {
     return ok({ ok: true })
   }
 
+  // o autor monta a votação: tira opção ou põe lugar que a IA não sugeriu
+  if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/options$/)) && write) {
+    const r = q.getReq.get(m[1])
+    if (!r) return bad('not_found', 404)
+    if (r.author_device !== device) return bad('not_author', 403)
+    const data = parse(r.data)
+    const placeId = str(body.placeId, 60)
+    if (!RE.place.test(placeId)) return bad('place')
+    data.removed = (data.removed ?? []).filter((x) => x !== placeId)
+    if (body.action === 'remove') {
+      if (data.optionIds.length <= 2 && data.optionIds.includes(placeId)) return bad('min_2', 409)
+      data.optionIds = data.optionIds.filter((x) => x !== placeId)
+      data.removed = [...data.removed, placeId].slice(-30)
+      db.prepare("DELETE FROM votes WHERE request_id = ? AND kind = 'place' AND value = ?").run(m[1], placeId)
+    } else {
+      const ext = placeId.startsWith('g-') || placeId.startsWith('o-')
+      const ps = ext ? snap(body.place) : null
+      if (ext && (!ps || ps[0] !== placeId)) return bad('place_snapshot')
+      if (!data.optionIds.includes(placeId)) {
+        if (data.optionIds.length >= 6) return bad('max_6', 409)
+        data.optionIds = [...data.optionIds, placeId]
+      }
+      if (ps) data.places = [...(data.places ?? []).filter((p) => p[0] !== placeId), ps].slice(-8)
+    }
+    db.prepare('UPDATE requests SET data = ? WHERE id = ?').run(JSON.stringify(data), m[1])
+    return ok({ ok: true, optionIds: data.optionIds })
+  }
+  // quem pode votar (qualquer um com o link / só amigos e a turma)
+  if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/settings$/)) && write) {
+    const r = q.getReq.get(m[1])
+    if (!r) return bad('not_found', 404)
+    if (r.author_device !== device) return bad('not_author', 403)
+    const voters = body.voters === 'amigos' ? 'amigos' : 'link'
+    db.prepare('UPDATE requests SET voters = ? WHERE id = ?').run(voters, m[1])
+    return ok({ ok: true, voters })
+  }
   if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/suggestions$/)) && write) {
+    if (!canVoteIn(q.getReq.get(m[1]), device)) return bad('so_amigos', 403)
     const r = q.getReq.get(m[1])
     if (!r) return bad('not_found', 404)
     const placeId = str(body.placeId, 60)
@@ -1009,6 +1066,7 @@ export function handleApi(method, path, req, body) {
     const ins = q.sug.run(id, m[1], placeId, by, str(body.comment, 200) || 'Sugeri esse aqui!', int(body.hue, 200), device, now, ps ? JSON.stringify(ps) : null)
     // a sugestão vira opção da votação pra todo mundo (máx. 6 opções; as mais antigas da IA saem primeiro)
     const data = parse(r.data)
+    data.removed = (data.removed ?? []).filter((x) => x !== placeId)
     if (!data.optionIds.includes(placeId)) {
       data.optionIds = [...data.optionIds, placeId].slice(-6)
       if (ps) data.places = [...(data.places ?? []).filter((p) => p[0] !== placeId), ps].slice(-6)
@@ -1035,6 +1093,7 @@ export function handleApi(method, path, req, body) {
     if (upd.changes) {
       const r = q.getReq.get(m[1])
       const voters = db.prepare('SELECT DISTINCT device FROM votes WHERE request_id = ? AND device != ?').all(m[1], device).map((x) => x.device)
+      groupNote(r.group_id, `Fechou: ${placeNameIn(r, placeId) ?? 'lugar escolhido'}${body.time ? ` · ${str(body.time, 20)}` : ''}`, m[1])
       notify({ to: voters, key: `d-${m[1]}`, title: 'Fechou o rolê!', body: `${placeNameIn(r, placeId) ?? 'O lugar foi escolhido'}${body.time ? ` · ${str(body.time, 20)}` : ''}`, url: `r/${m[1]}` })
     }
     return upd.changes ? ok({ ok: true }) : bad('not_author', 403)
@@ -1115,6 +1174,8 @@ export function handleApi(method, path, req, body) {
         .map((r) => ({ placeId: r.place_id, verdict: r.verdict, note: r.note, name: parse(r.place ?? 'null')?.[1] ?? null, at: r.at })),
       lists: db.prepare('SELECT id, title, places, updated_at FROM lists WHERE device = ? AND (public = 1 OR ?) ORDER BY updated_at DESC').all(dev, friends ? 1 : 0)
         .map((l) => ({ id: l.id, title: l.title, places: parse(l.places) ?? [], updatedAt: l.updated_at })),
+      groups: db.prepare("SELECT g.* FROM groups g JOIN group_members m ON m.group_id = g.id WHERE m.device = ? AND g.visibility = 'publica' ORDER BY g.updated_at DESC LIMIT 10").all(dev)
+        .map((g) => { const ms = qp.members.all(g.id); return { id: g.id, name: g.name || ms.slice(0, 3).map((x) => x.name.split(' ')[0]).join(', '), members: ms.length, member: !!(device && qp.member.get(g.id, device)) } }).filter((g) => g.members >= 2),
       friendsCount: db.prepare("SELECT COUNT(*) n FROM friendships WHERE (a = ? OR b = ?) AND status = 'amigos'").get(dev, dev).n,
     })
   }
@@ -1205,13 +1266,33 @@ export function handleApi(method, path, req, body) {
       .filter((x) => x.reputation.points > 0).sort((a, b) => b.reputation.points - a.reputation.points).slice(0, 30)
     return ok(out)
   }
+  // turma pública ou privada (privada: só entra quem recebe o link de uma votação; pública: aparece no perfil dos membros e qualquer um entra)
+  if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/settings$/)) && write) {
+    const g = db.prepare('SELECT * FROM groups WHERE id = ?').get(m[1])
+    if (!g || !qp.member.get(m[1], device)) return bad('not_member', 403)
+    if (g.owner_device !== device) return bad('not_owner', 403)
+    const vis = body.visibility === 'publica' ? 'publica' : 'privada'
+    db.prepare('UPDATE groups SET visibility = ? WHERE id = ?').run(vis, m[1])
+    return ok({ ok: true, visibility: vis })
+  }
+  if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/join$/)) && write) {
+    const g = db.prepare('SELECT * FROM groups WHERE id = ?').get(m[1])
+    if (!g || g.visibility !== 'publica') return bad('not_found', 404)
+    const u = qp.getUser.get(device)
+    if (!u) return bad('perfil', 403)
+    if (qp.members.all(m[1]).some((x) => isBlocked(x.device, device))) return bad('not_found', 404)
+    const p = parse(u.data) ?? {}
+    qp.addMember.run(m[1], device, p.name ?? 'Alguém', p.hue ?? 200, now, now)
+    groupNote(m[1], `${p.name ?? 'Alguém'} entrou na turma`)
+    return ok({ ok: true })
+  }
   // chat da turma (contínuo, além dos recados de cada rolê)
   if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/chat$/))) {
     if (!qp.member.get(m[1], device)) return bad('not_member', 403)
     if (method === 'GET') {
       const since = int(new URL(req.url, 'http://x').searchParams.get('since'), 0)
-      return ok(db.prepare(`SELECT id, device, name, text, at FROM group_messages WHERE group_id = ? AND at > ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'chat' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at DESC LIMIT 60`).all(m[1], since)
-        .reverse().map((x) => ({ id: x.id, name: x.name, text: x.text, at: x.at, mine: x.device === device, pid: pseudo(x.device) })))
+      return ok(db.prepare(`SELECT id, device, name, text, at, ref FROM group_messages WHERE group_id = ? AND at > ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'chat' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at DESC LIMIT 60`).all(m[1], since)
+        .reverse().map((x) => ({ id: x.id, name: x.name, text: x.text, at: x.at, mine: x.device === device, pid: x.device === 'system' ? null : pseudo(x.device), system: x.device === 'system', ref: x.ref ?? null })))
     }
     if (write) {
       const text = str(body.text, 500).trim()

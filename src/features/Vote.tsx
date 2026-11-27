@@ -21,6 +21,7 @@ import { AskBox } from './AskBox'
 import { InvitesList } from './Invites'
 import { venuesActive } from '../mocks/remote'
 import { DeadlineBadge, DecidedExtras, Messages, Participants, PhotoAlbum, RsvpBlock, SplitBill } from './GroupPanel'
+import { GroupChatLink, VoteLocked, VoteSetup } from './VoteSetup'
 import type { StoryCard } from '../lib/storyCard'
 
 const FRIENDS = ['Bia', 'Caio', 'Duda', 'Léo', 'Mari']
@@ -97,7 +98,9 @@ export function VotePage() {
   // visitante (veio pelo link) depois de votar: convite para fazer o próprio pedido
   const showCta = !!data && iVoted && (external || !me?.onboarded)
 
+  const locked = data?.extra?.canVote === false
   function cast(placeId: string, kind: 'place' | 'time' = 'place') {
+    if (locked) { track('vote_locked', {}); return }
     if (!voter.trim()) {
       nameRef.current?.focus()
       shake.start({ x: [0, -8, 8, -5, 5, 0], transition: { duration: 0.4 } })
@@ -156,6 +159,7 @@ export function VotePage() {
             const p = data.options.find((o) => o.id === data.request.decidedPlaceId)
             return p ? <DecidedExtras place={p} time={data.request.decidedTime} createdAt={data.request.createdAt} text={data.request.text} /> : null
           })()}
+          <VoteLocked d={data} />
           <RsvpBlock d={data} voter={voter} />
           <SplitBill d={data} />
           <PhotoAlbum d={data} voter={voter} />
@@ -314,7 +318,9 @@ export function VotePage() {
           )}
 
           <Participants d={data} />
+          <GroupChatLink d={data} />
           <Messages d={data} voter={voter} />
+          <VoteSetup d={data} />
           <AskBox
             pedido={data.request.text}
             options={data.options}
