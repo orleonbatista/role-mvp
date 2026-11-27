@@ -26,6 +26,7 @@ export function PullToRefresh() {
   useEffect(() => {
     const down = (e: TouchEvent) => {
       if (busy || e.touches.length !== 1) return
+      if ((e.target as Element | null)?.closest?.('[role=dialog],[data-no-pull]')) return // dentro de folha: o arrasto fecha a folha
       const el = scroller(e.target)
       if ((el?.scrollTop ?? 0) > 0) return
       start.current = { y: e.touches[0].clientY, x: e.touches[0].clientX, el }

@@ -65,7 +65,7 @@ export function AvatarCrop({ file, onCancel, onDone }: { file: File | null; onCa
       <p className="mt-1 text-[13px] text-mute">Arraste pra enquadrar e use dois dedos ou o controle pra aproximar.</p>
       <div className="mt-5 flex justify-center">
         <div
-          className="relative touch-none select-none overflow-hidden rounded-full bg-surface-2 ring-2 ring-accent/60"
+          data-sheet-nodrag className="relative touch-none select-none overflow-hidden rounded-full bg-surface-2 ring-2 ring-accent/60"
           style={{ width: VIEW, height: VIEW }}
           onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
           onWheel={(e) => setZ(zoom * (e.deltaY < 0 ? 1.08 : 0.93))}
