@@ -56,7 +56,7 @@ async function boot() {
     const r = await import('./mocks/remote')
     if (!(await r.apiBase(synced ? false : true))) return
     await r.ensureSession()
-    void import('./lib/push').then((m) => m.resyncPush())
+    void import('./lib/push').then((m) => m.resyncPush()).catch(() => {})
     const local = Number(localStorage.getItem('role.profileEpoch') ?? 0)
     if (r.serverEpoch > local) {
       localStorage.setItem('role.profileEpoch', String(r.serverEpoch))
@@ -70,10 +70,10 @@ async function boot() {
     // o servidor garante o @ único: se ele ajustou, o celular passa a usar o mesmo
     if (cur && res?.handle && res.handle !== cur.handle) { await db.profile.put({ ...cur, handle: res.handle }); qc.invalidateQueries({ queryKey: ['me'] }) }
   }
-  void reconcile()
-  const timer = setInterval(() => { if (synced) clearInterval(timer); else void reconcile() }, 45_000)
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void reconcile() })
-  window.addEventListener('online', () => void reconcile())
+  void reconcile().catch(() => {})
+  const timer = setInterval(() => { if (synced) clearInterval(timer); else void reconcile().catch(() => {}) }, 45_000)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void reconcile().catch(() => {}) })
+  window.addEventListener('online', () => void reconcile().catch(() => {}))
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <QueryClientProvider client={qc}>

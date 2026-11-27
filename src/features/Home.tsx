@@ -68,7 +68,7 @@ export function Home() {
           <span className="grid size-9 place-items-center rounded-full bg-accent/15 text-accent"><Sparkles size={16} /></span>
           <span className="flex-1 text-[15px] text-mute">Descreve o rolê que você quer…</span>
         </motion.button>
-        <Link to="/buscar" className="mt-2 inline-flex min-h-9 items-center gap-1.5 px-1 text-[13px] text-mute hover:text-ink">Só quer uma lista rápida, sem votação? <span className="text-accent">Busca rápida →</span></Link>
+        <Link to="/buscar" className="mt-2 inline-flex min-h-9 flex-wrap items-center gap-x-1.5 px-1 text-[13px] text-mute hover:text-ink">Só quer uma lista, sem votação? <span className="whitespace-nowrap text-accent">Busca rápida →</span></Link>
         <div className="no-scrollbar -mx-5 mt-3 flex gap-2 overflow-x-auto px-5">
           {OCCASIONS.map((o, i) => (
             <motion.button

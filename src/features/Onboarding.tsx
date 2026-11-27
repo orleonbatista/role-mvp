@@ -238,7 +238,7 @@ function Region({ home, setHome, hood, setHood }: { home?: Home; setHome: (h?: H
 
 function Welcome({ onGoogle }: { onGoogle: (r: LoginOutcome) => void }) {
   return (
-    <div className="flex flex-1 flex-col justify-end pb-8">
+    <div className="mt-auto flex flex-col pb-4">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[60%]">
         {[0, 1, 2].map((i) => (
           <motion.div
