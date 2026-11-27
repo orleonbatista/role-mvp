@@ -225,6 +225,7 @@ async function buildDetail(id: string): Promise<RequestDetail | null> {
     options: optionIds.map((p) => placeById.get(p)!),
     tally: tallyOf(votes.filter((v) => (v.kind ?? 'place') === 'place'), optionIds),
     times, timeTally: tallyOf(timeVotes, times),
+    extra: remote.extraOf(id) ?? null,
   }
 }
 
@@ -536,6 +537,14 @@ export const handlers = [
   http.post('/api/requests/:id/votes', async ({ params, request }) => {
     const { placeId, voter, kind = 'place', demo } = (await request.json()) as { placeId: string; voter: string; kind?: 'place' | 'time'; demo?: boolean }
     const requestId = params.id as string
+    // horário = disponibilidade: cada toque marca ou desmarca aquele horário (vários por pessoa)
+    if (kind === 'time') {
+      const same = await db.votes.where('requestId').equals(requestId).filter((v) => v.voter === voter && v.kind === 'time' && v.placeId === placeId && !v.id.startsWith('rs-')).toArray()
+      if (same.length) await db.votes.bulkDelete(same.map((v) => v.id))
+      else await db.votes.add({ id: uid('v'), requestId, kind, placeId, voter, createdAt: Date.now() })
+      const synced = demo ? false : await remote.pushSlot(requestId, placeId, !same.length, voter)
+      return HttpResponse.json({ ok: true, on: !same.length, synced })
+    }
     const prev = await db.votes.where('requestId').equals(requestId).filter((v) => v.voter === voter && (v.kind ?? 'place') === kind).toArray()
     await db.votes.bulkDelete(prev.map((v) => v.id))
     const vote: Vote = { id: uid('v'), requestId, kind, placeId, voter, createdAt: Date.now() }

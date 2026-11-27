@@ -74,11 +74,18 @@ export function useVote(requestId: string) {
       qc.setQueryData<RequestDetail>(['request', requestId], (d) =>
         d && {
           ...d,
-          [kind === 'time' ? 'timeTally' : 'tally']: (kind === 'time' ? d.timeTally : d.tally).map((t) => {
-            const voters = t.voters.filter((v) => v !== voter)
-            if (t.placeId === placeId) voters.push(voter)
-            return { ...t, voters, count: voters.length }
-          }),
+          ...(kind === 'time'
+            // horário: alterna só aquele (vários por pessoa)
+            ? { timeTally: [...d.timeTally, ...(d.timeTally.some((t) => t.placeId === placeId) ? [] : [{ placeId, count: 0, voters: [] as string[] }])].map((t) => {
+                if (t.placeId !== placeId) return t
+                const voters = t.voters.includes(voter) ? t.voters.filter((v) => v !== voter) : [...t.voters, voter]
+                return { ...t, voters, count: voters.length }
+              }) }
+            : { tally: d.tally.map((t) => {
+                const voters = t.voters.filter((v) => v !== voter)
+                if (t.placeId === placeId) voters.push(voter)
+                return { ...t, voters, count: voters.length }
+              }) }),
         },
       )
     },

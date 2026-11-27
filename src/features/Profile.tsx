@@ -1,3 +1,4 @@
+import { confirmSheet } from '../ui/Confirm'
 import { motion } from 'motion/react'
 import { Link, useNavigate } from 'react-router'
 import { ArrowUpRight, BarChart3, MapPinPlus, Megaphone, RotateCcw, Settings2, ShieldCheck, Sparkles, Trash2, Users } from 'lucide-react'
@@ -20,7 +21,7 @@ export function ProfilePage() {
   const qc = useQueryClient()
   const toast = useToast()
   async function eraseAll() {
-    if (!confirm('Apagar seu perfil, avaliações e participação em turmas do servidor e deste celular? Não dá pra desfazer.')) return
+    if (!(await confirmSheet({ title: 'Apagar seus dados?', text: 'Perfil, avaliações e participação em turmas saem do servidor e deste celular. Não dá pra desfazer.', ok: 'Apagar tudo', danger: true }))) return
     const r = await deleteMe()
     if (!r) { toast('Servidor fora do ar: tente de novo daqui a pouco pra apagar também de lá.'); return }
     await resetAll()

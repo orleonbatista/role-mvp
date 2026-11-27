@@ -92,7 +92,16 @@ interface RemoteState {
   decision: { placeId: string; time?: string; at: number } | null
   votes: { device: string; kind: 'place' | 'time'; value: string; voter: string; at: number }[]
   suggestions: { id: string; placeId: string; byName: string; comment: string; hue: number; device: string; at: number; place?: unknown }[]
+  slots?: { device: string; slot: string; voter: string; at: number }[]
+  rsvps?: { device: string; status: Rsvp; voter: string; at: number }[]
+  messages?: { id: string; device: string; voter: string; text: string; at: number }[]
+  closesAt?: number | null
 }
+export type Rsvp = 'vou' | 'talvez' | 'nao'
+/** o que só existe no servidor (presença, recados, prazo): guardado em memória por pedido, vem junto do detalhe */
+export interface GroupExtra { rsvps: { status: Rsvp; voter: string; mine: boolean }[]; messages: { id: string; voter: string; text: string; at: number; mine: boolean }[]; closesAt: number | null; online: boolean }
+const extras = new Map<string, GroupExtra>()
+export const extraOf = (id: string): GroupExtra | undefined => extras.get(id)
 
 const pushed = new Set<string>()
 /** junta resumos por id (o primeiro vence) */
@@ -140,11 +149,22 @@ export async function syncRequest(id: string): Promise<boolean> {
       await db.requests.update(id, { status: 'decidido', decidedPlaceId: s.decision.placeId, decidedTime: s.decision.time })
     }
   }
-  // votos de OUTROS aparelhos (os meus já estão no local); id estável = um voto por aparelho e tipo
-  const remoteVotes = s.votes.filter((v) => v.device !== me)
+  // votos de lugar de OUTROS aparelhos (os meus já estão no local); id estável = um voto por aparelho
+  const remoteVotes = s.votes.filter((v) => v.device !== me && v.kind === 'place')
   if (remoteVotes.length) {
     await db.votes.bulkPut(remoteVotes.map((v) => ({ id: `rv-${v.device}-${v.kind}-${id}`, requestId: id, kind: v.kind, placeId: v.value, voter: v.voter, createdAt: v.at })))
   }
+  // horários: cada pessoa marca quantos quiser (disponibilidade); o retrato do servidor substitui o anterior
+  const slotVotes = [...(s.slots ?? []).map((x) => ({ device: x.device, slot: x.slot, voter: x.voter, at: x.at })),
+    ...s.votes.filter((v) => v.kind === 'time').map((v) => ({ device: v.device, slot: v.value, voter: v.voter, at: v.at }))].filter((x) => x.device !== me)
+  const stale = await db.votes.where('requestId').equals(id).filter((v) => v.id.startsWith('rs-') || v.id.startsWith(`rv-`) && v.kind === 'time').primaryKeys()
+  await db.votes.bulkDelete(stale)
+  if (slotVotes.length) await db.votes.bulkPut(slotVotes.map((x) => ({ id: `rs-${x.device}-${x.slot}-${id}`, requestId: id, kind: 'time' as const, placeId: x.slot, voter: x.voter, createdAt: x.at })))
+  extras.set(id, {
+    rsvps: (s.rsvps ?? []).map((x) => ({ status: x.status, voter: x.voter, mine: x.device === me })),
+    messages: (s.messages ?? []).map((x) => ({ id: x.id, voter: x.voter, text: x.text, at: x.at, mine: x.device === me })),
+    closesAt: s.closesAt ?? null, online: true,
+  })
   // sugestões que chegaram por qualquer aparelho viram respostas "sugestão pelo link"
   if (s.suggestions.length) {
     const existing = await db.answers.where('requestId').equals(id).toArray()
@@ -162,6 +182,14 @@ export async function syncRequest(id: string): Promise<boolean> {
 
 export const pushVote = (rid: string, kind: 'place' | 'time', value: string, voter: string) =>
   call('POST', `/api/requests/${encodeURIComponent(rid)}/votes`, { kind, value, voter }).then(Boolean)
+export const pushSlot = (rid: string, slot: string, on: boolean, voter: string) =>
+  call('POST', `/api/requests/${encodeURIComponent(rid)}/slots`, { slot, on, voter }).then(Boolean)
+export const pushRsvp = (rid: string, status: Rsvp, voter: string) =>
+  call('POST', `/api/requests/${encodeURIComponent(rid)}/rsvp`, { status, voter }).then(Boolean)
+export const pushMessage = (rid: string, text: string, voter: string) =>
+  call<{ ok: boolean; id: string }>('POST', `/api/requests/${encodeURIComponent(rid)}/messages`, { text, voter }).then(Boolean)
+export const pushDeadline = (rid: string, closesAt: number | null) =>
+  call('POST', `/api/requests/${encodeURIComponent(rid)}/deadline`, { closesAt }).then(Boolean)
 export const pushSuggestion = (rid: string, b: { placeId: string; by: string; comment: string; hue?: number }) => {
   const p = placeById.get(b.placeId)
   return call('POST', `/api/requests/${encodeURIComponent(rid)}/suggestions`, { ...b, place: p?.source ? snapOf(p) : undefined }).then(Boolean)

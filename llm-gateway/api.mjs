@@ -88,6 +88,14 @@ db.exec(`
 if (!db.prepare("SELECT 1 FROM pragma_table_info('suggestions') WHERE name = 'place'").get()) db.exec('ALTER TABLE suggestions ADD COLUMN place TEXT')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'group_id'").get()) db.exec('ALTER TABLE requests ADD COLUMN group_id TEXT')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('base_areas') WHERE name = 'radius'").get()) db.exec('ALTER TABLE base_areas ADD COLUMN radius INTEGER NOT NULL DEFAULT 2500')
+// decisão em grupo: vários horários por pessoa, presença confirmada, recados e prazo de votação
+db.exec(`
+  CREATE TABLE IF NOT EXISTS slots (request_id TEXT NOT NULL, device TEXT NOT NULL, slot TEXT NOT NULL, voter TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (request_id, device, slot));
+  CREATE TABLE IF NOT EXISTS rsvps (request_id TEXT NOT NULL, device TEXT NOT NULL, status TEXT NOT NULL, voter TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (request_id, device));
+  CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, device TEXT NOT NULL, voter TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS ix_msg_req ON messages(request_id, at);
+`)
+if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'closes_at'").get()) { db.exec('ALTER TABLE requests ADD COLUMN closes_at INTEGER'); db.exec('ALTER TABLE requests ADD COLUMN close_notified INTEGER') }
 if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'role'").get()) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'usuario'")
 if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'google_sub'").get()) {
   db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT'); db.exec('ALTER TABLE users ADD COLUMN email TEXT')
@@ -186,6 +194,10 @@ function requestState(id) {
     authorDevice: r.author_device, groupId: r.group_id ?? undefined,
     decision: r.decided_place ? { placeId: r.decided_place, time: r.decided_time ?? undefined, at: r.decided_at } : null,
     votes: q.votes.all(id),
+    slots: db.prepare('SELECT device, slot, voter, at FROM slots WHERE request_id = ? ORDER BY at').all(id),
+    rsvps: db.prepare('SELECT device, status, voter, at FROM rsvps WHERE request_id = ? ORDER BY at').all(id),
+    messages: db.prepare('SELECT id, device, voter, text, at FROM messages WHERE request_id = ? ORDER BY at DESC LIMIT 30').all(id).reverse(),
+    closesAt: r.closes_at ?? null,
     suggestions: q.sugs.all(id).map((x) => ({ ...x, place: x.place ? parse(x.place) : undefined })),
   }
 }
@@ -376,8 +388,40 @@ function joinGroupOf(requestId, device, name, hue) {
   const r = q.getReq.get(requestId)
   if (!r?.group_id) return
   const now = Date.now()
-  qp.addMember.run(r.group_id, device, str(name, 40) || 'Alguém', int(hue, 200), now, now)
-  qp.touchGroup.run(now, r.group_id)
+  let gid = r.group_id
+  // primeiro convidado entrando num pedido cuja turma ainda é só o autor: se autor e convidado já têm uma turma juntos,
+  // o pedido vai pra ela (a mesma galera vira uma turma só, em vez de uma por pedido)
+  if (device !== r.author_device) {
+    const ms = qp.members.all(gid)
+    if (ms.length === 1 && ms[0].device === r.author_device) {
+      const other = db.prepare(`SELECT g.id FROM groups g JOIN group_members a ON a.group_id = g.id AND a.device = ?
+        JOIN group_members b ON b.group_id = g.id AND b.device = ? WHERE g.id != ? ORDER BY g.updated_at DESC LIMIT 1`).get(r.author_device, device, gid)
+      if (other) {
+        q.setGroup.run(other.id, requestId)
+        db.prepare('DELETE FROM group_members WHERE group_id = ?').run(gid)
+        db.prepare('DELETE FROM groups WHERE id = ?').run(gid)
+        gid = other.id
+      }
+    }
+  }
+  qp.addMember.run(gid, device, str(name, 40) || 'Alguém', int(hue, 200), now, now)
+  qp.touchGroup.run(now, gid)
+}
+
+/** quem participa de um pedido: autor + quem votou, marcou horário, confirmou presença ou mandou recado */
+function participantsOf(requestId) {
+  const r = q.getReq.get(requestId)
+  const set = new Set(r ? [r.author_device] : [])
+  for (const t of ['votes', 'slots', 'rsvps', 'messages']) for (const x of db.prepare(`SELECT DISTINCT device FROM ${t} WHERE request_id = ?`).all(requestId)) set.add(x.device)
+  return [...set]
+}
+/** prazos vencidos: avisa o autor uma vez pra fechar o rolê (chamado pelo server a cada poucos minutos) */
+export function checkDeadlines() {
+  const now = Date.now()
+  for (const r of db.prepare('SELECT id, author_device, data FROM requests WHERE closes_at IS NOT NULL AND closes_at <= ? AND decided_place IS NULL AND close_notified IS NULL').all(now)) {
+    db.prepare('UPDATE requests SET close_notified = ? WHERE id = ?').run(now, r.id)
+    notify({ to: [r.author_device], key: `close-${r.id}`, title: 'A votação do seu rolê encerrou', body: `Feche o rolê: "${(parse(r.data)?.text ?? '').slice(0, 80)}"`, url: `pedido/${r.id}` })
+  }
 }
 
 /* ---------- aprendizado: exemplos parecidos pro prompt da LLM ---------- */
@@ -449,7 +493,7 @@ function handlePeople(method, path, body, device, now) {
     for (const r of qp.ratings.all()) { const a = (acc[r.place_id] ??= [0, 0]); a[0] += VERDICT_SCORE[r.verdict] * r.n; a[1] += r.n }
     return ok(Object.fromEntries(Object.entries(acc).map(([k, [sum, n]]) => [k, [Math.round((sum / n) * 10) / 10, n]])))
   }
-  if (method === 'GET' && path === '/api/groups') return ok(qp.myGroups.all(device).map((g) => groupView(g, device)))
+  if (method === 'GET' && path === '/api/groups') return ok(qp.myGroups.all(device).map((g) => groupView(g, device)).filter((g) => g.members.length >= 2)) // turma de uma pessoa só não é turma
   if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/(name|leave)$/)) && method === 'POST') {
     if (!qp.member.get(m[1], device)) return bad('not_member', 403)
     if (m[2] === 'leave') { qp.leave.run(m[1], device); return ok({ ok: true }) }
@@ -559,6 +603,59 @@ export function handleApi(method, path, req, body) {
       const r = q.getReq.get(m[1])
       if (r && r.author_device !== device) notify({ to: [r.author_device], key: `v-${m[1]}`, title: 'Voto novo no seu rolê', body: `${str(body.voter, 40) || 'Alguém'} votou${kind === 'place' ? ` em ${placeNameIn(r, value) ?? 'uma opção'}` : ` no horário ${value}`}`, url: `pedido/${m[1]}` })
     }
+    return ok({ ok: true })
+  }
+
+  // vários horários por pessoa (disponibilidade): marca/desmarca um horário
+  if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/slots$/)) && write) {
+    const r = q.getReq.get(m[1])
+    if (!r) return bad('not_found', 404)
+    const slot = str(body.slot, 40).trim()
+    if (!slot) return bad('slot')
+    if (body.on === false) db.prepare('DELETE FROM slots WHERE request_id = ? AND device = ? AND slot = ?').run(m[1], device, slot)
+    else {
+      if (db.prepare('SELECT COUNT(*) n FROM slots WHERE request_id = ? AND device = ?').get(m[1], device).n >= 12) return bad('too_many')
+      db.prepare('INSERT OR REPLACE INTO slots (request_id, device, slot, voter, at) VALUES (?, ?, ?, ?, ?)').run(m[1], device, slot, str(body.voter, 40) || 'Alguém', now)
+      joinGroupOf(m[1], device, body.voter, body.hue)
+    }
+    // compatibilidade: o voto de horário antigo (um por pessoa) sai, a disponibilidade manda
+    db.prepare("DELETE FROM votes WHERE request_id = ? AND device = ? AND kind = 'time'").run(m[1], device)
+    return ok({ ok: true })
+  }
+  // presença no rolê fechado
+  if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/rsvp$/)) && write) {
+    const r = q.getReq.get(m[1])
+    if (!r) return bad('not_found', 404)
+    const status = ['vou', 'talvez', 'nao'].includes(body.status) ? body.status : null
+    if (!status) return bad('status')
+    const voter = str(body.voter, 40) || 'Alguém'
+    db.prepare('INSERT OR REPLACE INTO rsvps (request_id, device, status, voter, at) VALUES (?, ?, ?, ?, ?)').run(m[1], device, status, voter, now)
+    joinGroupOf(m[1], device, voter, body.hue)
+    if (r.author_device !== device) notify({ to: [r.author_device], key: `rsvp-${m[1]}`, title: status === 'vou' ? `${voter} vai no rolê` : status === 'talvez' ? `${voter} talvez vá` : `${voter} não vai`, body: 'Veja quem confirmou', url: `r/${m[1]}` })
+    return ok({ ok: true })
+  }
+  // recado pra turma toda (fica na votação e chega como aviso no celular de quem participou)
+  if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/messages$/)) && write) {
+    const r = q.getReq.get(m[1])
+    if (!r) return bad('not_found', 404)
+    const text = str(body.text, 280).trim()
+    if (!text) return bad('text')
+    if (/https?:\/\/|www\.|\b\d{4,5}-?\d{4}\b/i.test(text)) return bad('link_ou_telefone')
+    if (db.prepare('SELECT COUNT(*) n FROM messages WHERE request_id = ? AND device = ? AND at > ?').get(m[1], device, now - 60_000).n >= 5) return bad('rate_limited', 429)
+    const voter = str(body.voter, 40) || 'Alguém'
+    const id = `msg-${randomBytes(6).toString('hex')}`
+    db.prepare('INSERT INTO messages (id, request_id, device, voter, text, at) VALUES (?, ?, ?, ?, ?, ?)').run(id, m[1], device, voter, text, now)
+    notify({ to: participantsOf(m[1]).filter((d) => d !== device), key: `msg-${m[1]}`, title: `${voter} no rolê`, body: text.slice(0, 120), url: `r/${m[1]}` })
+    return ok({ ok: true, id })
+  }
+  // prazo da votação (só o autor); quando vence, o autor recebe um aviso pra fechar
+  if ((m = path.match(/^\/api\/requests\/(r-[a-z0-9-]{1,24})\/deadline$/)) && write) {
+    const r = q.getReq.get(m[1])
+    if (!r) return bad('not_found', 404)
+    if (r.author_device !== device) return bad('not_author', 403)
+    const at = body.closesAt == null ? null : int(body.closesAt, 0)
+    if (at !== null && (at < now || at > now + 14 * 86_400_000)) return bad('closesAt')
+    db.prepare('UPDATE requests SET closes_at = ?, close_notified = NULL WHERE id = ?').run(at, m[1])
     return ok({ ok: true })
   }
 

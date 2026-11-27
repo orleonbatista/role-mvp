@@ -1,3 +1,4 @@
+import { ConfirmHost } from '../ui/Confirm'
 import { AnimatePresence, LayoutGroup, MotionConfig } from 'motion/react'
 import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router'
@@ -79,6 +80,7 @@ export function App() {
           </LayoutGroup>
           {showFeedback && profile?.onboarded && <FeedbackButton path={location.pathname} />}
           <TabBar visible={TAB_ROUTES.includes(location.pathname) && !!profile?.onboarded} />
+          <ConfirmHost />
         </ToastHost>
       </PhoneFrame>
     </MotionConfig>

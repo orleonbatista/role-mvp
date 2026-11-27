@@ -1,3 +1,5 @@
+import { DeadlinePicker } from './GroupPanel'
+import { confirmSheet } from '../ui/Confirm'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -141,6 +143,8 @@ export function Results() {
             </motion.section>
           )}
 
+          {data.request.authorId === 'me' && <DeadlinePicker d={data} />}
+
           <Community data={data} />
 
           <div className="mt-8 px-5 text-center">
@@ -151,7 +155,7 @@ export function Results() {
               <Link to={`/novo?t=${encodeURIComponent(data.request.text)}&substitui=${id}${data.request.groupId ? `&turma=${data.request.groupId}` : ''}`}
                 onClick={() => track('request_edit', { id })} className="inline-flex min-h-11 items-center text-mute hover:text-ink">Editar pedido</Link>
               <button onClick={async () => {
-                if (!confirm('Apagar este pedido e a votação? Quem tem o link não vai mais conseguir votar.')) return
+                if (!(await confirmSheet({ title: 'Apagar este pedido?', text: 'A votação some junto: quem tem o link não vai mais conseguir votar.', ok: 'Apagar pedido', danger: true }))) return
                 await del.mutateAsync(id); track('request_deleted', { id }); nav('/', { replace: true })
               }} className="inline-flex min-h-11 items-center text-[#ff8a8a]">Apagar pedido</button>
             </div>

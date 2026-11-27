@@ -19,6 +19,7 @@ import { StorySheet } from './StorySheet'
 import { isCommunity } from '../mocks/seeds/places'
 import { AskBox } from './AskBox'
 import { InvitesList } from './Invites'
+import { DeadlineBadge, DecidedExtras, Messages, RsvpBlock } from './GroupPanel'
 import type { StoryCard } from '../lib/storyCard'
 
 const FRIENDS = ['Bia', 'Caio', 'Duda', 'Léo', 'Mari']
@@ -150,6 +151,12 @@ export function VotePage() {
               </motion.div>
             ) : null
           })()}
+          {decided && (() => {
+            const p = data.options.find((o) => o.id === data.request.decidedPlaceId)
+            return p ? <DecidedExtras place={p} time={data.request.decidedTime} createdAt={data.request.createdAt} text={data.request.text} /> : null
+          })()}
+          <RsvpBlock d={data} voter={voter} />
+          <DeadlineBadge d={data} />
 
           {decided && (() => {
             const when = slotDate(data.request.decidedTime, data.request.createdAt)
@@ -240,7 +247,8 @@ export function VotePage() {
           </section>
 
           <section className="mt-7 px-5">
-            <p className="mb-2.5 flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-mute"><Clock size={13} /> Quando?</p>
+            <p className="mb-1 flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-mute"><Clock size={13} /> Quando?</p>
+            {!decided && <p className="mb-2.5 text-[12px] text-faint">Marque todos os horários que dão pra você.</p>}
             <div className="grid grid-cols-3 gap-2">
               {data.times.map((tm) => {
                 const t = data.timeTally.find((x) => x.placeId === tm)
@@ -301,6 +309,7 @@ export function VotePage() {
             </div>
           )}
 
+          <Messages d={data} voter={voter} />
           <AskBox
             pedido={data.request.text}
             options={data.options}

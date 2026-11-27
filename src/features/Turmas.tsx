@@ -1,3 +1,4 @@
+import { confirmSheet } from '../ui/Confirm'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'motion/react'
 import { useState } from 'react'
@@ -9,7 +10,12 @@ import { timeAgo } from '../lib/labels'
 import { track } from '../lib/track'
 import { leaveGroup, myGroups, renameGroup, type Turma } from '../mocks/remote'
 
-export const turmaName = (t: Turma) => t.name || `Turma de ${t.members.slice(0, 3).map((m) => (m.me ? 'você' : m.name.split(' ')[0])).join(', ')}${t.members.length > 3 ? ` +${t.members.length - 3}` : ''}`
+export const turmaName = (t: Turma) => {
+  if (t.name) return t.name
+  const others = t.members.filter((m) => !m.me).map((m) => m.name.split(' ')[0])
+  if (!others.length) return 'Só você por enquanto'
+  return `Você, ${others.slice(0, 3).join(', ')}${others.length > 3 ? ` +${others.length - 3}` : ''}`
+}
 export const useTurmas = () => useQuery({ queryKey: ['turmas'], queryFn: myGroups, staleTime: 30_000 })
 
 /** Turmas: cada votação vira uma turma com quem votou. Dá pra renomear e chamar a mesma turma pro próximo rolê. */
@@ -75,7 +81,7 @@ function TurmaCard({ t, i }: { t: Turma; i: number }) {
         <Link to={`/novo?turma=${t.id}`} onClick={() => track('turma_novo_role', { members: t.members.length })} className="flex-1">
           <Button variant="soft" className="w-full" icon={<Sparkles size={15} />}>Novo rolê com essa turma</Button>
         </Link>
-        <button onClick={() => { if (confirm('Sair dessa turma?')) leave.mutate() }} className="min-h-11 px-2 text-[12px] text-faint hover:text-mute">sair</button>
+        <button onClick={async () => { if (await confirmSheet({ title: 'Sair dessa turma?', text: 'Você deixa de ver os rolês dela. Se alguém te chamar de novo, você volta.', ok: 'Sair', danger: true })) leave.mutate() }} className="min-h-11 px-2 text-[12px] text-faint hover:text-mute">sair</button>
       </div>
     </motion.div>
   )

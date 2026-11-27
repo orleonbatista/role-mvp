@@ -4,7 +4,7 @@
 //   node llm-gateway/server.mjs        (ou llm-gateway\start.cmd, que também abre o túnel)
 import http from 'node:http'
 import { DESTAQUES, askBody, moderateBody, moderationRules, ollamaBody, pickBody } from '../src/mocks/llmPrompt.ts'
-import { dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
+import { checkDeadlines, dropPushSub, hooks, pushSubsOf, adminKeyFile, similarExamples, googleLogin, insertReview, dataDir, handleApi, insertPlace, placeForModeration, purgeGoogleSnaps, validLatLng } from './api.mjs'
 import { geoFromCep, geoReverse } from './geo.mjs'
 import { createLLM } from './providers.mjs'
 import { createPush } from './push.mjs'
@@ -276,8 +276,9 @@ const server = http.createServer(async (req, res) => {
 // (opções da votação) saem depois de 30 dias, a não ser que a comunidade tenha confirmado o lugar (catálogo).
 purgeGoogleSnaps()
 setInterval(purgeGoogleSnaps, 12 * 3600_000).unref()
+setInterval(checkDeadlines, 5 * 60_000).unref()
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, process.env.HOST ?? '127.0.0.1', () => {
   console.log(`gateway do rolê em http://127.0.0.1:${PORT}  (modelo ${MODEL}, origens: ${ORIGINS.join(', ')})`)
   console.log(`dados: SQLite em ${dataDir} · chave da curadoria em ${adminKeyFile}`)
 })

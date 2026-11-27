@@ -216,6 +216,8 @@ export interface RequestDetail {
   tally: VoteTally[]
   times: string[]
   timeTally: VoteTally[]
+  /** presença, recados e prazo (só existem no servidor; null sem conexão) */
+  extra?: import('../mocks/remote').GroupExtra | null
 }
 
 export interface PlaceDetail {
