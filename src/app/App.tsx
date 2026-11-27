@@ -58,6 +58,7 @@ const PrivacidadePage = lazy(() => retryImport(() => import('../features/Privaci
 const TurmasPage = lazy(() => retryImport(() => import('../features/Turmas').then((m) => ({ default: m.TurmasPage }))))
 const SocialPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.SocialPage }))))
 const PersonPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.PersonPage }))))
+const InboxPage = lazy(() => retryImport(() => import('../features/Inbox').then((m) => ({ default: m.InboxPage }))))
 const ListPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.ListPage }))))
 const QuickSearch = lazy(() => retryImport(() => import('../features/QuickSearch').then((m) => ({ default: m.QuickSearch }))))
 const TestesPage = lazy(() => retryImport(() => import('../features/Testes').then((m) => ({ default: m.TestesPage }))))
@@ -107,7 +108,7 @@ export function App() {
                     ['/onboarding', <Onboarding />], ['/novo', <NewRequest />], ['/pedido/:id', <Results />], ['/r/:id', <VotePage />],
                     ['/lugar/:id', <PlacePage />], ['/avaliar/:id', <ReviewPage />], ['/perfil', <ProfilePage />], ['/testes', <TestesPage />],
                     ['/s/:id', <SuggestPage />], ['/i/:id', <ImportSuggestion />],
-                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />], ['/buscar', <QuickSearch />], ['/amigos', <SocialPage />], ['/u/:pid', <PersonPage />], ['/lista/:id', <ListPage />],
+                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />], ['/buscar', <QuickSearch />], ['/amigos', <SocialPage />], ['/u/:pid', <PersonPage />], ['/lista/:id', <ListPage />], ['/notificacoes', <InboxPage />],
                   ].map(([path, el]) => (
                     <Route key={path as string} path={path as string} element={<RouteError><Suspense fallback={<Fallback />}>{el}</Suspense></RouteError>} />
                   ))}

@@ -117,6 +117,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS ix_gmsg ON group_messages(group_id, at);
   CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, kind TEXT NOT NULL, target_id TEXT NOT NULL, device TEXT NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'aberta', UNIQUE (kind, target_id, device));
 `)
+if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'handle'").get()) db.exec('ALTER TABLE users ADD COLUMN handle TEXT')
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_users_handle ON users(handle)')
+// caixa de notificações: tudo que vira aviso no celular também fica aqui (dá pra ver depois, mesmo sem avisos ligados)
+db.exec(`CREATE TABLE IF NOT EXISTS inbox (id TEXT PRIMARY KEY, device TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, url TEXT NOT NULL, ref TEXT, actor TEXT, at INTEGER NOT NULL, read INTEGER NOT NULL DEFAULT 0);
+  CREATE INDEX IF NOT EXISTS ix_inbox ON inbox(device, at);`)
+if (!db.prepare("SELECT 1 FROM pragma_table_info('inbox') WHERE name = 'actor'").get()) db.exec('ALTER TABLE inbox ADD COLUMN actor TEXT')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'review_notified'").get()) db.exec('ALTER TABLE requests ADD COLUMN review_notified INTEGER')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'closes_at'").get()) { db.exec('ALTER TABLE requests ADD COLUMN closes_at INTEGER'); db.exec('ALTER TABLE requests ADD COLUMN close_notified INTEGER') }
 if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'role'").get()) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'usuario'")
@@ -266,7 +272,7 @@ function requestState(id, viewer) {
       if (!u) return null
       const p = parse(u.data) ?? {}
       const rep = reputationOf(d)
-      return { pid: pseudo(d), name: p.name ?? 'Alguém', hue: p.hue ?? 200, level: rep.level, points: rep.points, me: d === viewer, author: d === r.author_device }
+      return { pid: pseudo(d), handle: handleOf(d), name: p.name ?? 'Alguém', hue: p.hue ?? 200, level: rep.level, points: rep.points, me: d === viewer, author: d === r.author_device }
     }).filter(Boolean),
     photos: db.prepare("SELECT id, device, voter, at FROM photos WHERE request_id = ? AND id NOT IN (SELECT target_id FROM reports WHERE kind = 'photo' GROUP BY target_id HAVING COUNT(*) >= 3) ORDER BY at").all(id).map((x) => ({ ...x, device: pseudo(x.device) })),
     suggestions: q.sugs.all(id).map((x) => ({ ...x, device: pseudo(x.device), place: x.place ? parse(x.place) : undefined })),
@@ -466,7 +472,7 @@ export function insertReview(body, device, verdict) {
 function groupView(g, device) {
   return {
     id: g.id, name: g.name, mine: g.owner_device === device, updatedAt: g.updated_at,
-    members: qp.members.all(g.id).map((m) => ({ name: m.name, hue: m.hue, me: m.device === device, pid: pseudo(m.device) })),
+    members: qp.members.all(g.id).map((m) => ({ name: m.name, hue: m.hue, me: m.device === device, pid: pseudo(m.device), handle: handleOf(m.device), level: reputationOf(m.device).level })),
     requests: qp.groupRequests.all(g.id).map((r) => ({ id: r.id, text: parse(r.data)?.text ?? '', createdAt: r.created_at, decided: !!r.decided_place })),
   }
 }
@@ -656,13 +662,35 @@ export const hooks = { notify: null, scorePhoto: null }
 export const pushSubsOf = (devices) => devices.length ? db.prepare(`SELECT endpoint, p256dh, auth, device FROM push_subs WHERE device IN (${devices.map(() => '?').join(',')})`).all(...devices).map((r) => ({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth }, device: r.device })) : []
 export const dropPushSub = (endpoint) => db.prepare('DELETE FROM push_subs WHERE endpoint = ?').run(endpoint)
 const placeNameIn = (r, placeId) => (parse(r.data)?.places ?? []).find((p) => p[0] === placeId)?.[1]
-function notify(e) { try { hooks.notify?.(e) } catch { /* aviso nunca derruba a API */ } }
+function notify(e) {
+  try {
+    const now = Date.now()
+    const kind = String(e.key ?? '').replace(/-.*$/, '') || 'aviso'
+    for (const d of new Set(e.to ?? [])) {
+      // mesma chave em sequência (ex.: vários votos) atualiza a notificação em vez de empilhar
+      const same = db.prepare('SELECT id FROM inbox WHERE device = ? AND ref = ? AND read = 0 AND at > ?').get(d, e.key ?? '', now - 3600_000)
+      if (same) db.prepare('UPDATE inbox SET title = ?, body = ?, url = ?, at = ? WHERE id = ?').run(e.title, e.body ?? '', e.url ?? '', now, same.id)
+      else db.prepare('INSERT INTO inbox (id, device, kind, title, body, url, ref, actor, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(`nt-${randomBytes(6).toString('hex')}`, d, kind, e.title, e.body ?? '', e.url ?? '', e.key ?? '', e.from ? pseudo(e.from) : null, now)
+    }
+    db.prepare('DELETE FROM inbox WHERE at < ?').run(now - 60 * 86_400_000)
+  } catch { /* caixa nunca derruba a API */ }
+  try { hooks.notify?.(e) } catch { /* aviso nunca derruba a API */ }
+}
+const handleOf = (d) => { const h = db.prepare('SELECT handle FROM users WHERE device = ?').get(d)?.handle; return h ? `@${h}` : null }
+const slugHandle = (h) => String(h ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^@/, '').replace(/[^a-z0-9_.]/g, '').slice(0, 20)
+// quem se cadastrou antes do @ ganha um a partir do nome
+for (const u of db.prepare('SELECT device, data FROM users WHERE handle IS NULL').all()) {
+  const want = slugHandle(parse(u.data)?.handle || parse(u.data)?.name) || 'role'
+  let h = want
+  for (let i = 2; db.prepare('SELECT 1 FROM users WHERE handle = ?').get(h); i++) h = `${want}${i}`
+  db.prepare('UPDATE users SET handle = ? WHERE device = ?').run(h, u.device)
+}
 
 function handlePeople(method, path, body, device, now) {
   let m
   if (method === 'GET' && path === '/api/me') {
     const u = qp.getUser.get(device)
-    return u ? ok({ profile: parse(u.data), consentAt: u.consent_at, email: u.email ?? undefined, role: roleOf(device) }) : bad('not_found', 404)
+    return u ? ok({ profile: { ...parse(u.data), handle: u.handle ? `@${u.handle}` : parse(u.data)?.handle }, consentAt: u.consent_at, email: u.email ?? undefined, role: roleOf(device) }) : bad('not_found', 404)
   }
   if (method === 'POST' && path === '/api/me') {
     const consentAt = int(body.consentAt, 0)
@@ -671,7 +699,26 @@ function handlePeople(method, path, body, device, now) {
     if (p.name.length < 2) return bad('profile')
     const ex = qp.getUser.get(device)
     qp.putUser.run(device, JSON.stringify(p), p.hood, p.home?.lat ?? null, p.home?.lng ?? null, consentAt, ex?.created_at ?? now, now)
-    return ok({ ok: true })
+    // @ único: mantém o que já tem; senão tenta o pedido e, se ocupado, acrescenta número
+    let handle = ex?.handle ?? null
+    if (!handle) {
+      const want = slugHandle(p.handle || p.name) || 'role'
+      handle = want
+      for (let i = 2; db.prepare('SELECT 1 FROM users WHERE handle = ? AND device != ?').get(handle, device); i++) handle = `${want}${i}`
+      db.prepare('UPDATE users SET handle = ? WHERE device = ?').run(handle, device)
+    }
+    return ok({ ok: true, handle: `@${handle}` })
+  }
+  // trocar o @ (único; 3 a 20 letras, números, ponto ou _)
+  if (method === 'POST' && path === '/api/me/handle') {
+    if (!qp.getUser.get(device)) return bad('perfil', 403)
+    const h = slugHandle(body.handle)
+    if (!/^[a-z0-9_.]{3,20}$/.test(h)) return ok({ ok: false, error: 'handle' })
+    if (db.prepare('SELECT 1 FROM users WHERE handle = ? AND device != ?').get(h, device)) return ok({ ok: false, error: 'taken' })
+    db.prepare('UPDATE users SET handle = ? WHERE device = ?').run(h, device)
+    const u = qp.getUser.get(device); const d = parse(u.data) ?? {}; d.handle = `@${h}`
+    db.prepare('UPDATE users SET data = ? WHERE device = ?').run(JSON.stringify(d), device)
+    return ok({ ok: true, handle: `@${h}` })
   }
   if (method === 'POST' && path === '/api/me/delete') {
     db.exec('BEGIN')
@@ -685,7 +732,7 @@ function handlePeople(method, path, body, device, now) {
       db.prepare('DELETE FROM leads WHERE device = ?').run(device)
       db.prepare('DELETE FROM events WHERE device = ?').run(device)
       for (const t of ['slots', 'rsvps', 'push_subs', 'sessions', 'blocks', 'lists']) db.prepare(`DELETE FROM ${t} WHERE device = ?`).run(device)
-      db.prepare('DELETE FROM friendships WHERE a = ? OR b = ?').run(device, device); db.prepare("UPDATE group_messages SET name = 'Alguém' WHERE device = ?").run(device)
+      db.prepare('DELETE FROM friendships WHERE a = ? OR b = ?').run(device, device); db.prepare('DELETE FROM inbox WHERE device = ?').run(device); db.prepare("UPDATE group_messages SET name = 'Alguém' WHERE device = ?").run(device)
       db.prepare("UPDATE messages SET voter = 'Alguém' WHERE device = ?").run(device)
       db.exec('COMMIT')
     } catch (e) { db.exec('ROLLBACK'); throw e }
@@ -1018,16 +1065,38 @@ export function handleApi(method, path, req, body) {
     return upd.changes ? ok({ ok: true }) : bad('not_found', 404)
   }
   /* ---------- rede social ---------- */
+  // abrir perfil pelo @
+  if ((m = path.match(/^\/api\/people\/by-handle\/([A-Za-z0-9_.]{2,30})$/)) && method === 'GET') {
+    const u = db.prepare('SELECT device FROM users WHERE handle = ?').get(slugHandle(m[1]))
+    return u && !(device && isBlocked(device, u.device)) ? ok({ pid: pseudo(u.device) }) : bad('not_found', 404)
+  }
+  // caixa de notificações
+  if (method === 'GET' && path === '/api/inbox') {
+    if (!RE.device.test(device)) return bad('device')
+    const items = db.prepare('SELECT id, kind, title, body, url, actor, at, read FROM inbox WHERE device = ? ORDER BY at DESC LIMIT 60').all(device)
+    return ok({ unread: items.filter((x) => !x.read).length, items: items.map((x) => ({ ...x, read: !!x.read })) })
+  }
+  if (method === 'POST' && path === '/api/inbox/read') {
+    if (body.id) db.prepare('UPDATE inbox SET read = 1 WHERE device = ? AND id = ?').run(device, str(body.id, 40))
+    else db.prepare('UPDATE inbox SET read = 1 WHERE device = ?').run(device)
+    return ok({ ok: true })
+  }
   // busca de pessoas por nome (só quem tem cadastro; sem e-mail; bloqueados não aparecem)
   if (method === 'GET' && path === '/api/people') {
-    const q = normTxt(new URL(req.url, 'http://x').searchParams.get('q') ?? '').trim()
+    const raw = (new URL(req.url, 'http://x').searchParams.get('q') ?? '').trim()
+    const byAt = raw.startsWith('@')
+    const q = normTxt(raw.replace(/^@/, '')).trim(), h = slugHandle(raw)
     if (q.length < 2) return ok([])
     const out = []
-    for (const u of db.prepare('SELECT device, data, hood FROM users WHERE consent_at > 0').all()) {
+    // @ exato primeiro, depois começo do @, depois nome
+    const rows = db.prepare('SELECT device, data, hood, handle FROM users WHERE consent_at > 0').all()
+      .map((u) => ({ u, rank: u.handle === h ? 0 : (u.handle ?? '').startsWith(h) && h ? 1 : !byAt && normTxt(parse(u.data)?.name ?? '').includes(q) ? 2 : (u.handle ?? '').includes(h) && h ? 3 : 9 }))
+      .filter((x) => x.rank < 9).sort((a, b) => a.rank - b.rank)
+    for (const { u } of rows) {
       const p = parse(u.data) ?? {}
-      if (u.device === device || !normTxt(p.name ?? '').includes(q) || (device && isBlocked(device, u.device))) continue
+      if (u.device === device || (device && isBlocked(device, u.device))) continue
       const rep = reputationOf(u.device)
-      out.push({ pid: pseudo(u.device), name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u.hood, reputation: rep, relation: device ? relation(device, u.device) : 'nenhuma' })
+      out.push({ pid: pseudo(u.device), handle: u.handle ? `@${u.handle}` : null, name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u.hood, reputation: rep, relation: device ? relation(device, u.device) : 'nenhuma' })
       if (out.length >= 20) break
     }
     return ok(out)
@@ -1040,7 +1109,7 @@ export function handleApi(method, path, req, body) {
     const rel = device ? relation(device, dev) : 'nenhuma'
     const friends = rel === 'amigos' || dev === device
     return ok({
-      pid: m[1], name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u?.hood ?? null, niches: p.niches ?? [], me: dev === device, relation: rel,
+      pid: m[1], handle: handleOf(dev), name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u?.hood ?? null, niches: p.niches ?? [], me: dev === device, relation: rel,
       reputation: reputationOf(dev),
       reviews: db.prepare("SELECT place_id, verdict, note, place, at FROM reviews WHERE device = ? AND status = 'ok' ORDER BY at DESC LIMIT 12").all(dev)
         .map((r) => ({ placeId: r.place_id, verdict: r.verdict, note: r.note, name: parse(r.place ?? 'null')?.[1] ?? null, at: r.at })),
@@ -1063,20 +1132,20 @@ export function handleApi(method, path, req, body) {
       if (cur) return ok({ ok: true, status: relation(device, other) })
       if (db.prepare("SELECT COUNT(*) n FROM friendships WHERE status LIKE 'pedido:%' AND status = ? AND at > ?").get(`pedido:${device}`, now - 86_400_000).n >= 30) return bad('rate_limited', 429)
       db.prepare('INSERT INTO friendships (a, b, status, at) VALUES (?, ?, ?, ?)').run(a, b, `pedido:${device}`, now)
-      notify({ to: [other], key: `fr-${device}`, title: `${userName(device) ?? 'Alguém'} quer ser seu amigo no rolê`, body: 'Aceite pra ver as curadorias e os rolês um do outro', url: 'amigos' })
+      notify({ to: [other], from: device, key: `fr-${device}`, title: `${userName(device) ?? 'Alguém'} quer ser seu amigo no rolê`, body: 'Aceite pra ver as curadorias e os rolês um do outro', url: 'amigos' })
       return ok({ ok: true, status: 'enviado' })
     }
     if (m[2] === 'accept') {
       if (cur?.status !== `pedido:${other}`) return bad('sem_pedido', 409)
       db.prepare("UPDATE friendships SET status = 'amigos', at = ? WHERE a = ? AND b = ?").run(now, a, b)
-      notify({ to: [other], key: `fra-${device}`, title: `${userName(device) ?? 'Alguém'} aceitou sua amizade`, body: 'Agora vocês veem as curadorias um do outro', url: 'amigos' })
+      notify({ to: [other], from: device, key: `fra-${device}`, title: `${userName(device) ?? 'Alguém'} aceitou sua amizade`, body: 'Agora vocês veem as curadorias um do outro', url: 'amigos' })
       return ok({ ok: true })
     }
   }
   // amigos, pedidos recebidos e feed (avaliações, listas e rolês fechados dos amigos)
   if (method === 'GET' && path === '/api/social') {
     const rows = db.prepare('SELECT a, b, status, at FROM friendships WHERE a = ? OR b = ?').all(device, device)
-    const card = (d) => { const p = parse(qp.getUser.get(d)?.data ?? 'null') ?? {}; return { pid: pseudo(d), name: p.name ?? 'Alguém', hue: p.hue ?? 200, reputation: reputationOf(d) } }
+    const card = (d) => { const p = parse(qp.getUser.get(d)?.data ?? 'null') ?? {}; return { pid: pseudo(d), handle: handleOf(d), name: p.name ?? 'Alguém', hue: p.hue ?? 200, reputation: reputationOf(d) } }
     const other = (r) => (r.a === device ? r.b : r.a)
     const friends = rows.filter((r) => r.status === 'amigos').map(other)
     const incoming = rows.filter((r) => r.status.startsWith('pedido:') && r.status !== `pedido:${device}`).map(other)

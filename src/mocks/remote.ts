@@ -131,7 +131,7 @@ interface RemoteState {
   rsvps?: { device: string; status: Rsvp; voter: string; at: number }[]
   messages?: { id: string; device: string; voter: string; text: string; at: number }[]
   closesAt?: number | null
-  participants?: { pid: string; name: string; hue: number; level: string; points: number; me: boolean; author: boolean }[]
+  participants?: { pid: string; handle?: string | null; name: string; hue: number; level: string; points: number; me: boolean; author: boolean }[]
   photos?: { id: string; device: string; voter: string; at: number }[]
 }
 export type Rsvp = 'vou' | 'talvez' | 'nao'
@@ -342,7 +342,7 @@ export const geoCep = (cep: string) => call<GeoOut>('GET', `/api/geo/cep/${cep}`
 export const geoRev = (lat: number, lng: number) => call<GeoOut>('GET', `/api/geo/rev?lat=${lat}&lng=${lng}`, undefined, { timeout: 12000 })
 
 /* ---------- pessoas: perfil, avaliações, turmas (LGPD: perfil só com consentimento) ---------- */
-export const pushMe = (p: Profile) => (p.consentAt ? call('POST', '/api/me', { consentAt: p.consentAt, profile: { name: p.name, handle: p.handle, hue: p.hue, hood: p.hood, niches: p.niches, vibes: p.vibes, home: p.home } }) : Promise.resolve(null))
+export const pushMe = (p: Profile) => (p.consentAt ? call<{ ok: boolean; handle?: string }>('POST', '/api/me', { consentAt: p.consentAt, profile: { name: p.name, handle: p.handle, hue: p.hue, hood: p.hood, niches: p.niches, vibes: p.vibes, home: p.home } }) : Promise.resolve(null))
 export interface GoogleLogin {
   existing: boolean; device: string; session?: string; email: string; name?: string; profile?: Partial<Profile>; consentAt?: number
   reviews?: { id: string; place_id: string; request_id: string | null; verdict: Review['verdict']; note: string; place?: unknown; at: number }[]
@@ -354,7 +354,7 @@ export const pushPlaceReview = (r: Review & { name: string; hue: number; placeNa
 export interface CommunityReviews { score: number | null; count: number; items: { id: string; name: string; hue: number; verdict: NonNullable<Review['verdict']>; note: string; at: number; mine: boolean; pending: boolean; pid: string }[] }
 export const placeReviews = (id: string) => call<CommunityReviews>('GET', `/api/places/${encodeURIComponent(id)}/reviews`, undefined, { timeout: 4000 })
 export const ratings = () => call<Record<string, [number, number]>>('GET', '/api/ratings', undefined, { timeout: 4000 })
-export interface Turma { id: string; name: string | null; mine: boolean; updatedAt: number; members: { name: string; hue: number; me: boolean; pid?: string }[]; requests: { id: string; text: string; createdAt: number; decided: boolean }[] }
+export interface Turma { id: string; name: string | null; mine: boolean; updatedAt: number; members: { name: string; hue: number; me: boolean; pid?: string; handle?: string | null; level?: string }[]; requests: { id: string; text: string; createdAt: number; decided: boolean }[] }
 export const myGroups = () => call<Turma[]>('GET', '/api/groups', undefined, { timeout: 4000 })
 export const renameGroup = (id: string, name: string) => call('POST', `/api/groups/${id}/name`, { name })
 export const leaveGroup = (id: string) => call('POST', `/api/groups/${id}/leave`, {})
@@ -411,9 +411,14 @@ export const allPlacePhotos = (pid: string) => call<{ id: string; source: string
 export const deletePlacePhoto = (id: string) => call('POST', `/api/place-photos/${id}/delete`, {}).then(Boolean)
 
 /* ---------- rede social ---------- */
+export const setHandle = (handle: string) => call<{ ok: boolean; handle?: string; error?: 'taken' | 'handle' }>('POST', '/api/me/handle', { handle })
+export const personByHandle = (h: string) => call<{ pid: string }>('GET', `/api/people/by-handle/${encodeURIComponent(h.replace(/^@/, ''))}`, undefined, { timeout: 5000 })
+export interface InboxItem { id: string; kind: string; title: string; body: string; url: string; actor: string | null; at: number; read: boolean }
+export const inbox = () => call<{ unread: number; items: InboxItem[] }>('GET', '/api/inbox', undefined, { timeout: 5000 })
+export const inboxRead = (id?: string) => call('POST', '/api/inbox/read', id ? { id } : {}).then(Boolean)
 export interface Rep { points: number; level: string; reviews: number; photos: number; closed: number }
-export interface PersonCard { pid: string; name: string; hue: number; reputation: Rep }
-export interface PersonPage { pid: string; name: string; hue: number; hood: string | null; niches: string[]; me: boolean; relation: 'nenhuma' | 'enviado' | 'recebido' | 'amigos'; reputation: Rep
+export interface PersonCard { pid: string; handle?: string | null; name: string; hue: number; reputation: Rep }
+export interface PersonPage { pid: string; handle?: string | null; name: string; hue: number; hood: string | null; niches: string[]; me: boolean; relation: 'nenhuma' | 'enviado' | 'recebido' | 'amigos'; reputation: Rep
   reviews: { placeId: string; verdict: string; note: string; name: string | null; at: number }[]; lists: { id: string; title: string; places: unknown[]; updatedAt: number }[]; friendsCount: number }
 export type FeedItem = { kind: 'review'; who: PersonCard; placeId: string; placeName: string | null; verdict: string; note: string; at: number }
   | { kind: 'list'; who: PersonCard; listId: string; title: string; count: number; at: number }

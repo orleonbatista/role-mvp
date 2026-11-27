@@ -65,7 +65,10 @@ async function boot() {
     if (synced) return
     if (await r.pullMyRequests().catch(() => 0)) qc.invalidateQueries()
     const cur = await db.profile.get('me')
-    synced = !cur?.consentAt || !!(await pushMe(cur))
+    const res = cur?.consentAt ? await pushMe(cur) : null
+    synced = !cur?.consentAt || !!res
+    // o servidor garante o @ único: se ele ajustou, o celular passa a usar o mesmo
+    if (cur && res?.handle && res.handle !== cur.handle) { await db.profile.put({ ...cur, handle: res.handle }); qc.invalidateQueries({ queryKey: ['me'] }) }
   }
   void reconcile()
   const timer = setInterval(() => { if (synced) clearInterval(timer); else void reconcile() }, 45_000)

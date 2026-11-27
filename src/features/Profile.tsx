@@ -4,11 +4,13 @@ import { Link, useNavigate } from 'react-router'
 import { ArrowUpRight, BarChart3, MapPinPlus, Megaphone, RotateCcw, Settings2, ShieldCheck, Sparkles, Trash2, Users } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { GoogleButton } from './GoogleButton'
-import { deleteMe } from '../mocks/remote'
+import { deleteMe, setHandle } from '../mocks/remote'
+import { useState } from 'react'
+import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
 import { AnimatedNumber, Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
-import { useDiary, useProfile, useSync } from '../lib/api'
+import { useDiary, useProfile, useSaveProfile, useSync } from '../lib/api'
 import { placeIcon } from '../ui/placeIcon'
 import { NICHES, VERDICT_LABEL, nicheLabel, timeAgo, vibeLabel } from '../lib/labels'
 import { resetAll } from '../db/db'
@@ -52,7 +54,7 @@ export function ProfilePage() {
           </motion.button>
         </div>
         <h1 className="relative mt-4 font-serif text-[42px] leading-none">{me.name}</h1>
-        <p className="mt-1 text-sm text-mute">{me.handle} · {me.hood}</p>
+        <p className="mt-1 text-sm text-mute"><HandleEditor handle={me.handle} /> · {me.hood}</p>
 
         <div className="mt-6 grid grid-cols-3 divide-x divide-line rounded-[22px] border border-line bg-surface/60 py-4 text-center">
           {[{ k: 'rolês avaliados', v: diary.filter((d) => d.went).length }, { k: 'pedidos', v: requests.length }, { k: 'reputação', v: rep }].map((s) => (
@@ -190,5 +192,46 @@ export function ProfilePage() {
         <button onClick={resetAll} className="flex items-center gap-2 text-xs text-faint hover:text-ink"><RotateCcw size={12} /> zerar dados locais</button>
       </div>
     </Page>
+  )
+}
+
+/** @ único no rolê: é por ele que os amigos te acham */
+function HandleEditor({ handle }: { handle: string }) {
+  const [open, setOpen] = useState(false)
+  const [v, setV] = useState(handle.replace(/^@/, ''))
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const save = useSaveProfile()
+  const toast = useToast()
+  const clean = v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9_.]/g, '').slice(0, 20)
+  async function submit() {
+    if (clean.length < 3) { setErr('Use de 3 a 20 letras, números, ponto ou _'); return }
+    setBusy(true)
+    const r = await setHandle(clean)
+    setBusy(false)
+    if (!r) { setErr('Sem conexão com o servidor agora. Tente daqui a pouco.'); return }
+    if (!r.ok) { setErr(r.error === 'taken' ? `@${clean} já é de outra pessoa` : 'Use de 3 a 20 letras, números, ponto ou _'); return }
+    await save.mutateAsync({ handle: r.handle })
+    toast(`Agora você é ${r.handle}`)
+    setOpen(false)
+  }
+  return (
+    <>
+      <button onClick={() => { setV(handle.replace(/^@/, '')); setErr(''); setOpen(true) }} className="text-accent underline decoration-dotted underline-offset-4" aria-label={`Seu @ é ${handle}. Toque pra trocar`}>{handle}</button>
+      <Sheet open={open} onClose={() => setOpen(false)}>
+        <div className="p-5">
+          <p className="font-serif text-[26px] leading-none">Seu @ no rolê</p>
+          <p className="mt-2 text-[13px] text-mute">É por ele que os amigos te acham na busca. Único: ninguém mais pode usar.</p>
+          <label className="mt-4 flex h-12 items-center rounded-full border border-line bg-white/[0.03] px-4 focus-within:border-accent">
+            <span className="text-mute">@</span>
+            <input value={v} onChange={(e) => { setV(e.target.value); setErr('') }} autoFocus autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={24}
+              className="ml-0.5 min-w-0 flex-1 bg-transparent text-[15px] outline-none" aria-label="Seu @" onKeyDown={(e) => e.key === 'Enter' && submit()} />
+          </label>
+          {clean !== v.replace(/^@/, '') && clean && <p className="mt-2 text-[12px] text-faint">Fica assim: @{clean}</p>}
+          {err && <p className="mt-2 text-[12px] text-rose-300">{err}</p>}
+          <button onClick={submit} disabled={busy} className="mt-4 h-12 w-full rounded-full bg-accent text-[15px] font-medium text-accent-ink disabled:opacity-50">{busy ? 'Salvando…' : 'Salvar'}</button>
+        </div>
+      </Sheet>
+    </>
   )
 }

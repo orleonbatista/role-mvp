@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { ArrowUpRight, CalendarDays, MessageCircle, Sparkles, Users } from 'lucide-react'
 import { InvitesList } from './Invites'
+import { InboxBell } from './Inbox'
 import { Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
 import { ease, item, list } from '../ui/motion'
 import { useEvents, useFeed, useForYou, useProfile } from '../lib/api'
@@ -42,9 +43,12 @@ export function Home() {
   return (
     <Page tabbed>
       <header className="px-5 pt-safe-lg">
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-mute">
-          {greeting()}, {me?.name.split(' ')[0]}
-        </motion.p>
+        <div className="flex items-center justify-between">
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-mute">
+            {greeting()}, {me?.name.split(' ')[0]}
+          </motion.p>
+          <InboxBell />
+        </div>
         <h1 className="mt-1 font-serif text-[40px] leading-[0.95] tracking-tight">
           Pra onde<br /><em className="text-accent">hoje?</em>
         </h1>

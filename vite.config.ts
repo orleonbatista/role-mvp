@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 // rotas fixas do app respondem 200 (cópia do index): no GitHub Pages só /v/ e a raiz existiam de verdade, o resto
 // caía no 404.html. Rotas com id (/r/abc) seguem pelo 404.html; links compartilhados usam /v/ (200 + og:*)
-const STATIC_ROUTES = ['novo', 'perfil', 'turmas', 'testes', 'onboarding', 'divulgar', 'indicar', 'fundador', 'privacidade', 'buscar', 'amigos']
+const STATIC_ROUTES = ['novo', 'perfil', 'turmas', 'testes', 'onboarding', 'divulgar', 'indicar', 'fundador', 'privacidade', 'buscar', 'amigos', 'notificacoes']
 const routeCopies = () => ({
   name: 'route-copies',
   apply: 'build' as const,

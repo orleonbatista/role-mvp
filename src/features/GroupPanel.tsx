@@ -269,7 +269,7 @@ export function Participants({ d }: { d: RequestDetail }) {
         {ps.map((p) => (
           <a key={p.pid} href={p.me ? `${import.meta.env.BASE_URL}perfil` : `${import.meta.env.BASE_URL}u/${p.pid}`} className="flex shrink-0 items-center gap-2 rounded-full border border-line py-1.5 pl-1.5 pr-3">
             <span className="grid size-7 place-items-center rounded-full text-[12px] font-medium text-black" style={{ background: `hsl(${p.hue} 80% 70%)` }}>{p.name[0]}</span>
-            <span className="text-[12px]"><span className="block leading-tight">{p.me ? 'Você' : p.name.split(' ')[0]}{p.author ? ' · criou' : ''}</span><span className="block text-[10px] text-mute">{p.level} · {p.points} pts</span></span>
+            <span className="text-[12px]"><span className="block leading-tight">{p.me ? 'Você' : p.name.split(' ')[0]}{p.author ? ' · criou' : ''}</span><span className="block text-[10px] text-mute">{p.handle ?? `${p.level} · ${p.points} pts`}</span></span>
           </a>
         ))}
       </div>

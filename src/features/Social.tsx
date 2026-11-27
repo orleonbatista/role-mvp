@@ -21,7 +21,7 @@ const PersonRow = ({ p, right }: { p: PersonCard; right?: React.ReactNode }) => 
   <div className="flex items-center gap-3 px-4 py-3">
     <Link to={`/u/${p.pid}`} className="flex min-w-0 flex-1 items-center gap-3">
       <Avatar name={p.name} hue={p.hue} size={36} />
-      <span className="min-w-0"><span className="block truncate text-[15px]">{p.name}</span><span className="text-[11px] text-mute">{p.reputation.level} · {p.reputation.points} pts</span></span>
+      <span className="min-w-0"><span className="block truncate text-[15px]">{p.name}</span><span className="text-[11px] text-mute">{p.handle ? `${p.handle} · ` : ''}{p.reputation.level} · {p.reputation.points} pts</span></span>
     </Link>
     {right}
   </div>
@@ -131,7 +131,8 @@ export function PersonPage() {
             <Avatar name={p.name} hue={p.hue} size={68} />
             <div className="min-w-0">
               <h1 className="font-serif text-[36px] leading-none">{p.name}</h1>
-              <p className="mt-1 text-[13px] text-mute">{p.hood ?? ''}{p.friendsCount ? ` · ${p.friendsCount} amigos` : ''}</p>
+              {p.handle && <p className="mt-1 text-[14px] text-accent">{p.handle}</p>}
+              <p className="mt-0.5 text-[13px] text-mute">{p.hood ?? ''}{p.friendsCount ? ` · ${p.friendsCount} amigos` : ''}</p>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-1.5">
@@ -252,12 +253,12 @@ function FindPeople() {
   const r = useQuery({ queryKey: ['people', q.trim()], queryFn: () => searchPeople(q.trim()), enabled: q.trim().length >= 2, staleTime: 30_000 })
   return (
     <div className="mx-5 mb-4">
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar amigos pelo nome" aria-label="Buscar amigos pelo nome"
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por @ ou nome" aria-label="Buscar amigos por @ ou nome" autoCapitalize="none" autoCorrect="off"
         className="h-11 w-full rounded-full border border-line bg-white/[0.03] px-4 text-[14px] outline-none placeholder:text-faint focus:border-accent" />
       {q.trim().length >= 2 && (
         <div className="mt-2 divide-y divide-line overflow-hidden rounded-[20px] border border-line">
           {r.isFetching && !r.data && <p className="p-4 text-[13px] text-faint">Buscando…</p>}
-          {r.data?.length === 0 && <p className="p-4 text-[13px] text-faint">Ninguém com esse nome no rolê ainda.</p>}
+          {r.data?.length === 0 && <p className="p-4 text-[13px] text-faint">{q.trim().startsWith('@') ? 'Ninguém com esse @ no rolê. Confira a grafia ou mande o convite do app pra pessoa.' : 'Ninguém com esse nome no rolê ainda.'}</p>}
           {r.data?.map((p) => (
             <PersonRow key={p.pid} p={p} right={p.relation === 'nenhuma'
               ? <button onClick={async () => { await personAction(p.pid, 'add'); qc.invalidateQueries({ queryKey: ['people'] }); qc.invalidateQueries({ queryKey: ['social'] }) }} aria-label={`Adicionar ${p.name}`} className="grid size-9 place-items-center rounded-full bg-accent text-accent-ink"><UserPlus size={15} /></button>

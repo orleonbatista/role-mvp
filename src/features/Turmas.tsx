@@ -62,11 +62,12 @@ function TurmaCard({ t, i }: { t: Turma; i: number }) {
         </div>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        {t.members.map((m, j) => (
+        {t.members.slice(0, 5).map((m, j) => (
           <Link key={j} to={m.me || !m.pid ? '/perfil' : `/u/${m.pid}`} className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.05] py-1 pl-1 pr-2.5 text-xs">
-            <Avatar name={m.name} hue={m.hue ?? 200} size={20} />{m.me ? 'Você' : m.name}
+            <Avatar name={m.name} hue={m.hue ?? 200} size={20} />{m.me ? 'Você' : m.name.split(' ')[0]}
           </Link>
         ))}
+        <MembersButton t={t} />
       </div>
       {t.requests.length > 0 && (
         <ul className="mt-3 grid gap-1">
@@ -140,6 +141,36 @@ function TurmaChat({ gid }: { gid: string }) {
           <input value={text} onChange={(e) => setText(e.target.value.slice(0, 500))} placeholder="Mensagem" aria-label="Mensagem pra turma" className="h-11 min-w-0 flex-1 rounded-full border border-line bg-white/[0.03] px-4 text-[14px] outline-none focus:border-accent" />
           <button type="submit" aria-label="Enviar" className="grid size-11 place-items-center rounded-full bg-accent text-accent-ink"><Send size={16} /></button>
         </form>
+      </Sheet>
+    </>
+  )
+}
+
+/** lista completa de quem está na turma, com @ e nível; cada linha abre o perfil */
+function MembersButton({ t }: { t: Turma }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="inline-flex h-7 items-center rounded-full border border-line px-2.5 text-xs text-mute">
+        {t.members.length > 5 ? `+${t.members.length - 5} · ` : ''}ver membros
+      </button>
+      <Sheet open={open} onClose={() => setOpen(false)}>
+        <div className="p-5">
+          <p className="mb-3 font-serif text-[24px] leading-none">{turmaName(t)} · {t.members.length}</p>
+          <ul className="divide-y divide-line overflow-hidden rounded-[18px] border border-line">
+            {t.members.map((m, j) => (
+              <li key={j}>
+                <Link to={m.me || !m.pid ? '/perfil' : `/u/${m.pid}`} onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-3">
+                  <Avatar name={m.name} hue={m.hue ?? 200} size={34} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px]">{m.me ? `${m.name} (você)` : m.name}</span>
+                    <span className="block text-[12px] text-mute">{[m.handle, m.level].filter(Boolean).join(' · ') || 'sem @ ainda'}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       </Sheet>
     </>
   )
