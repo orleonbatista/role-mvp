@@ -35,7 +35,7 @@ export function CreatorPage() {
 
   return (
     <Page>
-      <div className="flex flex-col items-center px-5 pt-16 text-center">
+      <div className="flex flex-col items-center px-5 pt-safe-lg text-center">
         <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 20 }}>
           <Avatar name={handle} hue={hue} size={84} />
         </motion.div>

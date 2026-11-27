@@ -120,7 +120,7 @@ export function VotePage() {
 
   return (
     <Page className="pb-8" footer={footer}>
-      <div className="flex items-center justify-between px-5 pt-14">
+      <div className="flex items-center justify-between px-5 pt-safe-lg">
         <span className="font-serif text-xl italic">rolê<span className="text-accent">.</span></span>
         <button onClick={() => (history.length > 1 ? nav(-1) : nav('/'))} className="grid size-9 place-items-center rounded-full bg-white/[0.06]" aria-label="Fechar"><X size={16} /></button>
       </div>

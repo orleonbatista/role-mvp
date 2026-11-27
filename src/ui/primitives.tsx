@@ -56,7 +56,7 @@ export function Page({ children, className, tabbed, footer, chrome, scrollRef }:
 export function TopBar({ title, right, back = true }: { title?: ReactNode; right?: ReactNode; back?: boolean }) {
   const nav = useNavigate()
   return (
-    <div className="sticky top-0 z-20 flex items-center gap-2 bg-bg/70 px-4 pb-2 pt-[max(env(safe-area-inset-top),8px)] backdrop-blur-xl sm:pt-12">
+    <div className="sticky top-0 z-20 flex items-center gap-2 bg-bg/70 px-4 pb-2 pt-safe backdrop-blur-xl">
       {back && (
         <motion.button
           whileTap={{ scale: 0.9 }}
@@ -203,9 +203,9 @@ export function StreamText({ text, className, speed = 28, onDone }: { text: stri
 
 export function Skeleton({ className }: { className?: string }) {
   return (
-    <div className={cx('relative overflow-hidden rounded-2xl bg-white/[0.04]', className)}>
+    <div className={cx('relative overflow-hidden rounded-2xl bg-white/[0.08]', className)}>
       <motion.div
-        className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/[0.06] to-transparent"
+        className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/[0.12] to-transparent"
         animate={{ x: ['-100%', '250%'] }}
         transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}
       />

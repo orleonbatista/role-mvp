@@ -41,7 +41,7 @@ export function Home() {
 
   return (
     <Page tabbed>
-      <header className="px-5 pt-14">
+      <header className="px-5 pt-safe-lg">
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-mute">
           {greeting()}, {me?.name.split(' ')[0]}
         </motion.p>

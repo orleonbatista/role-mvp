@@ -75,7 +75,7 @@ export function Onboarding() {
   return (
     <Page className="flex flex-col">
       {step > 0 && (
-        <div className="flex gap-1.5 px-6 pt-14">
+        <div className="flex gap-1.5 px-6 pt-safe-lg">
           {[1, 2].map((i) => (
             <div key={i} className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
               <motion.div className="h-full bg-accent" initial={false} animate={{ width: step >= i ? '100%' : '0%' }} transition={{ duration: 0.6, ease }} />

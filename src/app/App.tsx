@@ -66,7 +66,8 @@ const TAB_ROUTES = ['/', '/amigos', '/turmas', '/perfil']
 
 function Fallback() {
   return (
-    <div className="absolute inset-0 grid content-start gap-3 bg-bg px-5 pt-20">
+    <div className="absolute inset-0 grid content-start gap-3 bg-bg px-5 pt-safe-lg" role="status" aria-label="Carregando">
+      <div className="mb-2 flex items-center gap-3"><span className="font-serif text-[26px] italic">rolê<span className="text-accent">.</span></span><span className="h-[3px] w-16 animate-pulse rounded-full bg-accent/70" /></div>
       <Skeleton className="h-10 w-2/3" /><Skeleton className="h-40" /><Skeleton className="h-40" />
     </div>
   )
@@ -95,7 +96,9 @@ export function App() {
         <ToastHost>
           <LayoutGroup>
             <AnimatePresence initial={false}>
-              {needsOnboarding ? (
+              {isLoading && !isPublic ? (
+                <Fallback key="boot" />
+              ) : needsOnboarding ? (
                 <Navigate key="redirect" to="/onboarding" replace />
               ) : (
                 <Routes location={location} key={location.pathname}>

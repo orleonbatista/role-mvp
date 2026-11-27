@@ -41,7 +41,7 @@ export function ProfilePage() {
 
   return (
     <Page tabbed>
-      <header className="relative px-5 pt-16">
+      <header className="relative px-5 pt-safe-lg">
         <div className="pointer-events-none absolute -top-10 left-1/2 size-72 -translate-x-1/2 rounded-full blur-3xl" style={{ background: `hsl(${me.hue} 90% 60% / .18)` }} />
         <div className="relative flex items-end justify-between">
           <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 20 }}>

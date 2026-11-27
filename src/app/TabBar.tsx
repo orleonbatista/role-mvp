@@ -27,7 +27,7 @@ export function TabBar({ visible }: { visible: boolean }) {
           animate={{ y: 0 }}
           exit={{ y: 100 }}
           transition={{ type: 'spring', stiffness: 360, damping: 34 }}
-          className="absolute inset-x-0 bottom-0 z-30 border-t border-white/10 bg-bg/85 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-2xl"
+          className="absolute inset-x-0 bottom-0 z-30 border-t border-white/10 bg-bg/85 pb-safe-bar backdrop-blur-2xl"
         >
           <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2 pt-1.5">
             {left.map((t) => <Tab key={t.to} {...t} active={pathname === t.to} onClick={() => nav(t.to)} />)}
@@ -36,7 +36,7 @@ export function TabBar({ visible }: { visible: boolean }) {
                 whileTap={{ scale: 0.9, rotate: 90 }}
                 transition={spring}
                 onClick={() => nav('/novo')}
-                className="-mt-5 grid size-14 place-items-center rounded-full bg-accent text-accent-ink shadow-[0_8px_28px_-6px_rgba(198,255,61,0.7)] ring-4 ring-bg"
+                className="-mt-4 grid size-13 place-items-center rounded-full bg-accent text-accent-ink shadow-[0_8px_28px_-6px_rgba(198,255,61,0.7)] ring-4 ring-bg"
                 aria-label="Novo pedido"
               >
                 <Plus size={24} strokeWidth={2.5} />
@@ -52,7 +52,7 @@ export function TabBar({ visible }: { visible: boolean }) {
 
 function Tab({ label, icon: Icon, active, onClick }: { label: string; icon: typeof Compass; active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} aria-current={active ? 'page' : undefined} className={cx('relative flex h-14 flex-col items-center justify-center gap-1 text-[11px] transition-colors', active ? 'text-accent' : 'text-mute')}>
+    <button onClick={onClick} aria-current={active ? 'page' : undefined} className={cx('relative flex h-12 flex-col items-center justify-center gap-1 text-[11px] transition-colors', active ? 'text-accent' : 'text-mute')}>
       {active && <motion.span layoutId="tab-dot" transition={spring} className="absolute top-0 h-0.5 w-8 rounded-full bg-accent" />}
       <Icon size={20} />
       <span>{label}</span>
