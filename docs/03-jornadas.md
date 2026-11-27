@@ -12,6 +12,7 @@ Legenda: ✅ coberto pelo E2E publicado · 🧪 coberto pelo teste de API (servi
 |---|---|---|---|
 | E2E (`e2e/jornadas.spec.ts`) | GitHub Actions, contra o site publicado, depois de cada deploy e 1x por dia | Chromium em viewport de celular, dados marcados `[E2E]`, apaga tudo no fim | 4/4 passaram em 42,2 s (abertura 3,7 s · rotas 0,2 s · ferramentas 3,1 s · pedido→votação→limpeza 34,6 s) |
 | API (`/tmp/t.mjs`, `/tmp/t2.mjs`) | Node 22 com banco SQLite temporário (`ROLE_DATA_DIR`) | 3 aparelhos fictícios: Ana, Bia, Caio | todas as respostas abaixo conferidas |
+| Auditoria (`auditoria/audit.spec.ts`, workflow "Auditoria") | Actions, sob demanda | 32 telas × iPhone 13 (WebKit), Android 360×640 e 320×568; prints, tempos e checagens | 5 rodadas em 27/11; final: 32/32 telas nos 3 aparelhos, 0 bloqueios, votação pelo link em 4,4–4,6 s (era 7–8 s) |
 | Monitor (`monitor.yml`) | Actions, a cada 15 min | `GET /api/health` pelo túnel | abre/fecha a issue "Servidor fora do ar" |
 
 Personagens: **Nina** (organiza), **Bia** (vota pelo link, nunca abriu o app), **Caio** (desconhecido),
@@ -138,7 +139,22 @@ Login Google → o servidor devolve a sessão do perfil → o app puxa pedidos, 
 
 ---
 
+## Achados da due diligence 2 (27/11) que mudaram as jornadas
+- J6: o link da votação abria rolado até o meio (a caixa "Pergunte à IA" puxava a rolagem). Corrigido; a auditoria confere a posição.
+- J5/J6: abertura a frio mais rápida (endereço do servidor guardado, cópia local na hora). Tempos medidos na auditoria final:
+
+| Tela | iPhone 13 | Android 360 | 320 px |
+|---|---|---|---|
+| Abertura (site frio) | 6,3 s | 4,5 s | 4,5 s |
+| Início depois do cadastro | 1,1 s | 1,0 s | 1,0 s |
+| Resultados do pedido (IA + Google) | 6,5 s | 4,5 s | 4,8 s |
+| Votação pelo link | 4,6 s | 4,4 s | 4,4 s |
+
+- J5: quando o Google limita as buscas (429 em rajada), o pedido mostra um aviso com saída (editar, afrouxar, pôr lugar) em vez de lista vazia.
+- J8: fechar o rolê avisa todos os participantes (antes só quem votou em lugar). Apagar o pedido apaga fotos, horários, presença e recados.
+
 ## Gaps conhecidos ⚠️
-- Layout no iPhone usa a área segura real, mas falta confirmar num aparelho físico.
+- Layout no iPhone conferido no motor do Safari (WebKit) na auditoria; falta um aparelho físico com notch.
+- Cota por minuto do Google Places: com várias pessoas pedindo ao mesmo tempo, a busca volta 429 (ajuste no Google Cloud).
 - Ferramentas "Quem leva o quê" e Pix ficam só no aparelho (de propósito); não sincronizam.
 - Instagram da casa conectado (NF15) depende do app de desenvolvedor da Meta.

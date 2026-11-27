@@ -220,3 +220,10 @@ Na dúvida, recuse.
 | `EADDRINUSE 8787` ao subir o gateway | Já existe um gateway rodando | `netstat -ano \| findstr 8787` e encerrar o PID |
 | Evento aprovado não aparece pra todos | Aprovado sem a chave ou sem backend | Salvar a chave no `/testes` e aprovar de novo, ou publicar no `eventos.json` |
 | WhatsApp sem preview | Link sem `/v/` ou cache do WhatsApp | Usar os botões do app; o WhatsApp guarda o preview por URL |
+
+## Auditoria (due diligence)
+- Actions → "Auditoria (due diligence)" → Run workflow. Leva ~5 min.
+- Baixe o artefato `audit-out`: um JSON por aparelho (tempos, achados, erros de console) e os prints de cada tela.
+- Os dados de teste são `[E2E]` e se apagam no fim. Se uma rodada for interrompida, rode no PC
+  `node llm-gateway/data/cleanup-e2e.cjs` (apaga só cadastros "E2E …" e pedidos "[E2E] …").
+

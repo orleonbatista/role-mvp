@@ -81,4 +81,10 @@ Formato curto: **decisão**, **por quê**, **trade-off**.
 33. **Turma privada por padrão.** Pública é opt-in da dona e só expõe nome e tamanho no perfil.
 34. **Ferramentas sem servidor.** Pix, flyer, sorteio e listas rodam no aparelho: funcionam com o PC desligado
     e não criam dados pessoais no banco.
+35. **Auditoria visual no CI em vez de navegador local.** O ambiente de desenvolvimento não instala navegadores; o
+    GitHub Actions já instala. A auditoria roda 32 telas em 3 aparelhos e devolve prints e um JSON de achados.
+36. **Limites por aparelho, não só por IP.** No Brasil a operadora coloca muita gente atrás do mesmo IP (CGNAT) e a
+    turma costuma estar no mesmo Wi-Fi. Por IP fica um teto 6× mais folgado contra abuso.
+37. **Toda chamada espera a sessão.** Tentar ler antes da sessão nascer economizava uma ida e volta, mas criou corrida
+    que descartava o token válido (pega pelo E2E). A economia veio de outro lugar: endereço guardado e cópia local na hora.
 

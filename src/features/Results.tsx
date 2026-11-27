@@ -129,6 +129,12 @@ export function Results() {
                 : [0, 1, 2].map((i) => <Skeleton key={i} className="h-[300px] rounded-[28px]" />)}
             </AnimatePresence>
           </section>
+          {introDone && !data.recommendations.length && (
+            <div className="mx-5 mt-2 rounded-[24px] border border-dashed border-amber-300/40 p-5 text-[14px]">
+              <p className="text-amber-100">Não achei lugares agora.</p>
+              <p className="mt-1 text-[13px] text-mute">Pode ser a busca do Google cheia por um instante ou um pedido muito específico. Tente “Editar pedido” daqui a 1 minuto, afrouxe algum detalhe ou ponha um lugar que você conhece em “Pôr outro lugar”.</p>
+            </div>
+          )}
 
           <OptionsMap places={recs.map((r) => r.place)} home={me?.home} />
           {data.request.authorId === 'me' && <PushCard context="autor" text="Quer saber quando a galera votar ou sugerir? A gente avisa no celular." />}
