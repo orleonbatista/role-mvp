@@ -5,13 +5,14 @@ import type { Place } from '../lib/types'
 import { usePlacePhotoQuery } from '../lib/gphoto'
 import { placePhotos, type OwnPhoto } from '../mocks/remote'
 import { cx } from './primitives'
+import type { LightItem } from './Lightbox'
 
 /* Carrossel de fotos por cima da capa colorida (a capa fica de fundo enquanto carrega ou sem foto).
    Ordem: fotos nossas (da casa e da comunidade, já ordenadas pela nota da IA) e depois as do Google.
    Foto nossa não gasta franquia; foto do Google só é buscada (ao vivo) quando o slide aparece. */
 type Slide = { kind: 'own'; p: OwnPhoto } | { kind: 'google'; name: string; by?: string }
 
-export function PlacePhoto({ place, enabled, className, rounded = 'rounded-[28px]', w: _w, credit = 'top', carousel = true }: { place: Place; enabled: boolean; className?: string; rounded?: string; w?: number; credit?: 'top' | 'bottom'; carousel?: boolean }) {
+export function PlacePhoto({ place, enabled, className, rounded = 'rounded-[28px]', w: _w, credit = 'top', carousel = true, onOpen }: { place: Place; enabled: boolean; className?: string; rounded?: string; w?: number; credit?: 'top' | 'bottom'; carousel?: boolean; onOpen?: (items: LightItem[], at: number) => void }) {
   const own = useQuery({ queryKey: ['place-photos', place.id], queryFn: () => placePhotos(place.id), enabled, staleTime: 10 * 60_000, retry: false })
   const google = place.photos?.length ? place.photos : place.photo ? [place.photo] : []
   // foto que não veio (cota do dia, link expirado) sai da fila em vez de virar slide vazio
@@ -26,7 +27,10 @@ export function PlacePhoto({ place, enabled, className, rounded = 'rounded-[28px
       <div className="no-scrollbar flex h-full snap-x snap-mandatory overflow-x-auto" aria-roledescription="carrossel" aria-label={`Fotos de ${place.name}`}
         onScroll={(e) => { const el = e.currentTarget; setAt(Math.round(el.scrollLeft / Math.max(1, el.clientWidth))) }}>
         {slides.map((s, i) => (
-          <div key={s.kind === 'own' ? s.p.id : s.name} className="relative h-full w-full shrink-0 snap-center">
+          <div key={s.kind === 'own' ? s.p.id : s.name} className={cx('relative h-full w-full shrink-0 snap-center', onOpen && 'cursor-zoom-in')}
+            onClick={onOpen ? () => onOpen(slides.map((x) => x.kind === 'own'
+              ? { key: x.p.id, src: x.p.url, caption: `${place.name} · ${x.p.source === 'casa' ? 'foto da casa' : 'foto da comunidade'}` }
+              : { key: x.name, gname: x.name, caption: `${place.name}${x.by ? ` · Foto: ${x.by}` : ''}` }), i) : undefined}>
             {s.kind === 'own'
               ? <img src={s.p.url} alt={`${place.name}: foto ${s.p.source === 'casa' ? 'da casa' : 'da comunidade'}`} loading="lazy" className="h-full w-full object-cover" />
               : <GoogleSlide name={s.name} load={i <= at + 1} onMissing={() => setMissing((m) => new Set(m).add(s.name))} />}

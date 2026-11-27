@@ -119,7 +119,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && (mm = path.match(/^\/media\/(r-[a-z0-9-]{1,24})\/(ph-[a-f0-9]{12}\.jpg)$/))) {
     const f = photoFile(mm[1], mm[2])
     if (!f) { res.writeHead(404); return res.end() }
-    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' })
+    // CORS liberado: o app baixa a foto pra salvar no celular (álbum e "escolher fotos")
+    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff', 'Access-Control-Allow-Origin': '*' })
     return createReadStream(f).pipe(res)
   }
   if (req.method === 'GET' && (mm = path.match(/^\/media\/a\/(u-[a-f0-9]{16})\.jpg$/))) {

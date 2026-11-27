@@ -1,3 +1,5 @@
+import { Lightbox } from '../ui/Lightbox'
+import { PhotoDeck } from './PhotoDeck'
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarPlus, Camera, CloudSun, Copy, Navigation, Receipt, Send, Timer, Trash2 } from 'lucide-react'
@@ -173,17 +175,22 @@ export function PhotoAlbum({ d, voter }: { d: RequestDetail; voter: string }) {
   const toast = useToast()
   const [busy, setBusy] = useState(false)
   const [toPlace, setToPlace] = useState(true)
+  const [light, setLight] = useState<number | null>(null) // foto aberta na moldura
+  const [deck, setDeck] = useState(false) // escolher fotos (arrasta pros lados)
   const base = useQuery({ queryKey: ['api-base'], queryFn: () => apiBase(), staleTime: 60_000 })
   const ex = d.extra
   if (!ex?.online || d.request.status !== 'decidido') return null
   const url = (id: string) => (base.data ? `${base.data}/media/${d.request.id}/${id}.jpg` : '')
   return (
     <section className="mx-5 mt-5">
-      <p className="mb-2 text-[13px] uppercase tracking-[0.14em] text-mute">Fotos da turma</p>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[13px] uppercase tracking-[0.14em] text-mute">Fotos da turma</p>
+        {ex.photos.length >= 2 && base.data && <button onClick={() => { setDeck(true); track('deck_open', { n: ex.photos.length }) }} className="hit text-[12px] text-accent">Escolher pra salvar →</button>}
+      </div>
       <div className="grid grid-cols-3 gap-1.5">
         {ex.photos.map((p) => (
           <div key={p.id} className="relative aspect-square overflow-hidden rounded-xl bg-white/[0.04]">
-            {base.data && <a href={url(p.id)} target="_blank" rel="noreferrer"><img src={url(p.id)} alt={`Foto de ${p.voter}`} loading="lazy" className="size-full object-cover" /></a>}
+            {base.data && <button className="size-full cursor-zoom-in" aria-label={`Abrir foto de ${p.voter}`} onClick={() => setLight(ex.photos.indexOf(p))}><img src={url(p.id)} alt={`Foto de ${p.voter}`} loading="lazy" className="size-full object-cover" /></button>}
             {p.mine
               ? <button aria-label="Apagar foto" onClick={async () => { await deletePhoto(p.id); qc.invalidateQueries({ queryKey: ['request', d.request.id] }) }} className="absolute right-1 top-1 grid size-7 place-items-center rounded-full bg-black/60"><Trash2 size={12} /></button>
               : <span className="absolute right-0.5 top-0.5"><ReportButton kind="photo" id={p.id} className="grid size-7 place-items-center rounded-full bg-black/50 text-ink/70" /></span>}
@@ -205,6 +212,8 @@ export function PhotoAlbum({ d, voter }: { d: RequestDetail; voter: string }) {
           }} />
         </label>
       </div>
+      <Lightbox items={ex.photos.map((p) => ({ key: p.id, src: url(p.id), caption: `Foto de ${p.voter}` }))} start={light} onClose={() => setLight(null)} />
+      <PhotoDeck open={deck} photos={ex.photos.map((p) => ({ id: p.id, src: url(p.id), by: p.voter }))} onClose={() => setDeck(false)} />
       <label className="mt-2 flex items-center gap-2 text-[12px] text-mute">
         <input type="checkbox" checked={toPlace} onChange={(e) => setToPlace(e.target.checked)} className="size-4 accent-[#c6ff3d]" />
         Mostrar minhas fotos na ficha do lugar (a IA escolhe as melhores; sem rostos em destaque)

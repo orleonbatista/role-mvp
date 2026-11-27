@@ -1,6 +1,7 @@
 import { SaveToList } from './Social'
 import { ShareToTurmaSheet } from './Turmas'
 import { PlacePhoto } from '../ui/PlacePhoto'
+import { Lightbox, type LightItem } from '../ui/Lightbox'
 import { motion, useScroll, useTransform } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { StoryCard } from '../lib/storyCard'
@@ -32,6 +33,7 @@ export function PlacePage() {
   const [sp] = useSearchParams()
   const sync = useSync().data
   const [toTurma, setToTurma] = useState(false)
+  const [light, setLight] = useState<{ items: LightItem[]; at: number } | null>(null) // foto aberta na moldura
   const groupN = Number(sp.get('n')) || undefined
   const community = useQuery({ queryKey: ['place-reviews', id], queryFn: () => placeReviews(id), staleTime: 30_000 })
   const cr = community.data
@@ -92,7 +94,7 @@ export function PlacePage() {
     <Page scrollRef={scroller} chrome={chrome} footer={footer}>
         <motion.div style={{ scale: coverScale, y: coverY }} className="relative h-[380px] origin-top">
           <Cover hue={place.hue} icon={placeIcon(place)} iconSize={120} layoutId={`cover-${place.id}`} className="h-full w-full" rounded="rounded-none" />
-          <PlacePhoto place={heroPlace ?? place} enabled rounded="rounded-none" credit="top" className="top-16" />
+          <PlacePhoto place={heroPlace ?? place} enabled rounded="rounded-none" credit="top" className="top-16" onOpen={(items, at) => setLight({ items, at })} />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-bg via-bg/20 to-transparent" />
         </motion.div>
 
@@ -206,6 +208,7 @@ export function PlacePage() {
             </Link>
           </div>
           <ShareToTurmaSheet place={place} open={toTurma} onClose={() => setToTurma(false)} />
+          <Lightbox items={light?.items ?? []} start={light ? light.at : null} onClose={() => setLight(null)} />
           {place.kind !== 'evento' && <VenueSection place={place} />}
 
           <h2 className="mb-3 mt-9 text-[13px] uppercase tracking-[0.14em] text-mute">Quem foi</h2>
