@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Award, Ban, Bookmark, Check, ListPlus, Trophy, UserPlus } from 'lucide-react'
+import { Award, Ban, Bookmark, Check, ListPlus, UserPlus } from 'lucide-react'
 import { Avatar, Page, SectionTitle, Skeleton, Tag, TopBar, cx } from '../ui/primitives'
 import { Sheet } from '../ui/Sheet'
 import { useToast } from '../ui/Toast'
@@ -34,7 +34,8 @@ export function SocialPage() {
   const s = useQuery({ queryKey: ['social'], queryFn: social, refetchInterval: 20_000 })
   const me = useProfile().data
   const [hoodOnly, setHoodOnly] = useState(false)
-  const rk = useQuery({ queryKey: ['ranking', hoodOnly ? me?.hood : ''], queryFn: () => ranking(hoodOnly ? me?.hood : undefined), enabled: tab === 'ranking' })
+  const [scope, setScope] = useState<'amigos' | 'geral'>('amigos')
+  const rk = useQuery({ queryKey: ['ranking', scope, hoodOnly ? me?.hood : ''], queryFn: () => ranking(hoodOnly ? me?.hood : undefined, scope), enabled: tab === 'ranking' })
   const accept = async (pid: string) => { await personAction(pid, 'accept'); track('friend_accept', {}); qc.invalidateQueries({ queryKey: ['social'] }) }
   return (
     <Page tabbed>
@@ -59,7 +60,7 @@ export function SocialPage() {
           {s.isLoading && [0, 1, 2].map((i) => <Skeleton key={i} className="h-24" />)}
           {s.data && !s.data.feed.length && (
             <p className="rounded-[20px] border border-dashed border-line p-5 text-center text-[13px] text-faint">
-              {s.data.friends.length ? 'Seus amigos ainda não avaliaram nem fecharam rolês.' : 'Ache amigos pelo @ na aba Amigos (ou pelo ranking) pra ver as curadorias e os rolês deles aqui.'}
+              {s.data.friends.length ? 'Seus amigos ainda não criaram, votaram, avaliaram nem fecharam rolês.' : 'Ache amigos pelo @ na aba Amigos (ou pelo ranking) pra ver as curadorias e os rolês deles aqui.'}
             </p>
           )}
           {s.data?.feed.map((f, i) => <FeedCard key={i} f={f} />)}
@@ -78,16 +79,20 @@ export function SocialPage() {
       {tab === 'ranking' && (
         <section className="px-5 pb-28">
           <div className="mb-3 flex items-center justify-between">
-            <p className="flex items-center gap-1.5 text-[13px] text-mute"><Trophy size={14} className="text-accent" />Curadores {hoodOnly && me?.hood ? `de ${me.hood}` : 'do rolê'}</p>
-            {me?.hood && <button onClick={() => setHoodOnly((x) => !x)} className="hit text-[12px] text-accent">{hoodOnly ? 'ver todos' : `só ${me.hood}`}</button>}
+            <div className="flex gap-1 rounded-full bg-white/[0.05] p-0.5 text-[12px]">
+              {(['amigos', 'geral'] as const).map((x) => (
+                <button key={x} onClick={() => setScope(x)} className={cx('h-7 rounded-full px-3', scope === x ? 'bg-surface-2 text-ink' : 'text-mute')}>{x === 'amigos' ? 'Você e amigos' : 'Geral'}</button>
+              ))}
+            </div>
+            {me?.hood && <button onClick={() => setHoodOnly((x) => !x)} className="hit text-[12px] text-accent">{hoodOnly ? 'todos os bairros' : `só ${me.hood}`}</button>}
           </div>
           <div className="divide-y divide-line overflow-hidden rounded-[20px] border border-line">
-            {rk.data?.length === 0 && <p className="p-4 text-[13px] text-faint">Ninguém pontuou ainda. Avalie um rolê que você foi e entre no ranking.</p>}
+            {rk.data?.length === 0 && <p className="p-4 text-[13px] text-faint">{scope === 'amigos' ? 'Adicione amigos pra comparar pontos.' : 'Ninguém pontuou ainda. Avalie um rolê que você foi e entre no ranking.'}</p>}
             {rk.data?.map((p, i) => (
               <PersonRow key={p.pid} p={p} right={<span className={cx('w-8 text-right font-serif text-[22px]', i < 3 ? 'text-accent' : 'text-mute')}>{i + 1}</span>} />
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-faint">Pontos: avaliação aprovada 10 (+5 se foi de um rolê combinado no app), foto aprovada 3, rolê fechado 4.</p>
+          <p className="mt-2 text-[11px] text-faint">Pontos: avaliação aprovada 10 (+5 se foi de um rolê combinado no app), foto aprovada 3, rolê fechado 4, rolê criado 2, votação em rolê de outra pessoa 1.</p>
         </section>
       )}
     </Page>
@@ -100,6 +105,8 @@ function FeedCard({ f }: { f: FeedItem }) {
       <Link to={`/u/${f.who.pid}`} className="flex items-center gap-2"><Avatar name={f.who.name} hue={f.who.hue} size={24} src={avatarUrl(f.who.pid, f.who.photo)} /><span className="text-[13px]">{f.who.name}</span><span className="ml-auto text-[11px] text-faint">{timeAgo(f.at)}</span></Link>
       {f.kind === 'review' && <p className="mt-2 text-[14px]">{VERDICT_LABEL[f.verdict as keyof typeof VERDICT_LABEL] ?? f.verdict} <Link to={`/lugar/${f.placeId}`} className="text-accent">{f.placeName ?? 'um lugar'}</Link>{f.note ? `: ${f.note}` : ''}</p>}
       {f.kind === 'decided' && <p className="mt-2 text-[14px]">Fechou rolê no <Link to={`/lugar/${f.placeId}`} className="text-accent">{f.placeName ?? 'lugar'}</Link></p>}
+      {f.kind === 'request' && <p className="mt-2 text-[14px]">Criou um rolê: <Link to={`/r/${f.requestId}`} className="text-accent">“{f.text}”</Link></p>}
+      {f.kind === 'voted' && <p className="mt-2 text-[14px]">Votou em <Link to={`/r/${f.requestId}`} className="text-accent">“{f.text}”</Link></p>}
       {f.kind === 'list' && <p className="mt-2 text-[14px]">Atualizou a lista <Link to={`/lista/${f.listId}`} className="text-accent">{f.title}</Link> · {f.count} lugares</p>}
     </div>
   )

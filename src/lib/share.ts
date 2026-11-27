@@ -158,3 +158,6 @@ export const bioUrl = (handle: string) => {
   const slug = handleSlug(handle.replace(/^@/, ''))
   return `${location.origin}${import.meta.env.BASE_URL}v/?to=p&id=${slug}&src=cr_${slug}`
 }
+
+/** convite da turma (sem votação): passa pela página v/ (funciona no GitHub Pages e abre o app instalado) */
+export const turmaInviteUrl = (token: string) => `${location.origin}${import.meta.env.BASE_URL}v/?to=t&id=${encodeURIComponent(token)}`

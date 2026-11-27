@@ -2,9 +2,9 @@ import type { Place as PlaceT } from '../lib/types'
 import type { EventDraft, EventSubmission, Feedback, Lead, Profile, Review, RoleRequest, TrackEvent } from '../lib/types'
 import { db } from '../db/db'
 import { gatewayConfig } from './llm'
-import { placeById } from './seeds/places'
+import { placeById, registerPlace } from './seeds/places'
 import { adoptSnaps, snapsFor } from './gplaces'
-import { snapOf } from '../lib/places'
+import { fromSnap, snapOf } from '../lib/places'
 
 /* Sincronização com o backend do PC (llm-gateway/api.mjs, exposto no mesmo túnel do LLM).
    Regra: o app NUNCA depende dele. Toda escrita vai primeiro pro IndexedDB local; depois, se o backend
@@ -398,10 +398,17 @@ export const pushPlaceReview = (r: Review & { name: string; hue: number; placeNa
 export interface CommunityReviews { score: number | null; count: number; items: { id: string; name: string; hue: number; verdict: NonNullable<Review['verdict']>; note: string; at: number; mine: boolean; pending: boolean; pid: string }[] }
 export const placeReviews = (id: string) => call<CommunityReviews>('GET', `/api/places/${encodeURIComponent(id)}/reviews`, undefined, { timeout: 4000 })
 export const ratings = () => call<Record<string, [number, number]>>('GET', '/api/ratings', undefined, { timeout: 4000 })
-export interface Turma { id: string; name: string | null; mine: boolean; updatedAt: number; visibility?: 'privada' | 'publica'; members: { name: string; hue: number; me: boolean; pid?: string; handle?: string | null; photo?: number | null; level?: string }[]; requests: { id: string; text: string; createdAt: number; decided: boolean }[] }
+export interface Turma { id: string; name: string | null; mine: boolean; admin?: boolean; updatedAt: number; visibility?: 'privada' | 'publica'; members: { name: string; hue: number; me: boolean; pid?: string; handle?: string | null; photo?: number | null; level?: string; owner?: boolean; admin?: boolean }[]; requests: { id: string; text: string; createdAt: number; decided: boolean; mine?: boolean }[] }
 export const myGroups = () => call<Turma[]>('GET', '/api/groups', undefined, { timeout: 4000 })
 export const renameGroup = (id: string, name: string) => call('POST', `/api/groups/${id}/name`, { name })
 export const leaveGroup = (id: string) => call('POST', `/api/groups/${id}/leave`, {})
+/** turma sem votação, link de convite e administração */
+export const createGroup = (name: string) => call<{ ok: boolean; id: string }>('POST', '/api/groups', { name })
+export const groupLink = (gid: string, reset = false) => call<{ ok: boolean; token: string }>('POST', `/api/groups/${gid}/link`, { reset }).then((r) => r?.token ?? null)
+export interface GroupPeek { id: string; name: string | null; members: { name: string; hue: number; pid: string; photo: number | null }[]; count: number; member: boolean }
+export const groupByLink = (token: string) => call<GroupPeek>('GET', `/api/groups/by-link/${encodeURIComponent(token)}`, undefined, { timeout: 6000 })
+export const joinByLink = (token: string) => call<{ ok: boolean; id: string }>('POST', `/api/groups/by-link/${encodeURIComponent(token)}/join`, {})
+export const manageMember = (gid: string, pid: string, action: 'admin' | 'membro' | 'remove') => call<{ ok: boolean }>('POST', `/api/groups/${gid}/members`, { pid, action }).then(Boolean)
 
 /* ---------- aprendizado da IA: exemplos rotulados (pedido → critérios confirmados) ---------- */
 export const pushExample = (e: { text: string; ai: unknown; final: unknown; corrected: boolean; unmet: string[]; engine: string }) => call('POST', '/api/examples', e)
@@ -467,11 +474,12 @@ export interface PersonPage { pid: string; handle?: string | null; photo?: numbe
 export type FeedItem = { kind: 'review'; who: PersonCard; placeId: string; placeName: string | null; verdict: string; note: string; at: number }
   | { kind: 'list'; who: PersonCard; listId: string; title: string; count: number; at: number }
   | { kind: 'decided'; who: PersonCard; placeId: string; placeName: string | null; at: number }
+  | { kind: 'request' | 'voted'; who: PersonCard; requestId: string; text: string; at: number }
 export const person = (pid: string) => call<PersonPage>('GET', `/api/people/${pid}`, undefined, { timeout: 5000 })
 export const personAction = (pid: string, a: 'add' | 'accept' | 'remove' | 'block' | 'unblock') => call<{ ok: boolean }>('POST', `/api/people/${pid}/${a}`, {}).then(Boolean)
 export const searchPeople = (q: string) => call<(PersonCard & { hood: string | null; relation: string })[]>('GET', `/api/people?q=${encodeURIComponent(q)}`, undefined, { timeout: 5000 })
 export const social = () => call<{ friends: PersonCard[]; incoming: PersonCard[]; sent: PersonCard[]; feed: FeedItem[] }>('GET', '/api/social', undefined, { timeout: 5000 })
-export const ranking = (hood?: string) => call<(PersonCard & { hood: string | null; me: boolean })[]>('GET', `/api/ranking${hood ? `?hood=${encodeURIComponent(hood)}` : ''}`, undefined, { timeout: 5000 })
+export const ranking = (hood?: string, scope: 'amigos' | 'geral' = 'amigos') => call<(PersonCard & { hood: string | null; me: boolean })[]>('GET', `/api/ranking?scope=${scope}${hood ? `&hood=${encodeURIComponent(hood)}` : ''}`, undefined, { timeout: 5000 })
 export interface UserList { id: string; title: string; places: unknown[]; public: boolean; updatedAt: number }
 export const myLists = () => call<UserList[]>('GET', '/api/lists/mine', undefined, { timeout: 5000 })
 export const listOf = (id: string) => call<UserList & { mine: boolean; owner: { pid: string; name: string; hue: number } }>('GET', `/api/lists/${id}`, undefined, { timeout: 5000 })
@@ -480,7 +488,18 @@ export const listAction = (id: string, a: 'add' | 'remove' | 'delete', place?: P
   call('POST', `/api/lists/${id}/${a}`, place ? { placeId: place.id, place: place.source ? snapOf(place) : undefined } : {}).then(Boolean)
 export interface ChatMsg { id: string; name: string; text: string; at: number; mine: boolean; pid: string | null; system?: boolean; ref?: string | null }
 export const groupChat = (gid: string, since = 0) => call<ChatMsg[]>('GET', `/api/groups/${gid}/chat?since=${since}`, undefined, { timeout: 5000 })
-export const sendChat = (gid: string, text: string) => call('POST', `/api/groups/${gid}/chat`, { text }).then(Boolean)
+export const sendChat = (gid: string, text: string, place?: PlaceT) => call('POST', `/api/groups/${gid}/chat`, place ? { text, placeId: place.id, place: place.source ? snapOf(place) : undefined } : { text }).then(Boolean)
+/** lugar compartilhado no chat: 'place:[id, ...resumo]' → o lugar (registra no catálogo da sessão se veio do Google) */
+export function chatPlace(ref?: string | null): PlaceT | null {
+  if (!ref?.startsWith('place:')) return null
+  try {
+    const a = JSON.parse(ref.slice(6)) as unknown[]
+    const id = String(a[0])
+    if (placeById.has(id)) return placeById.get(id)!
+    if (a.length > 1) { const p = fromSnap(a as never); if (p) { registerPlace(p); return p } }
+  } catch { /* ref estranho */ }
+  return null
+}
 export const pushTest = () => call<{ subs: number; results: string[] }>('POST', '/api/admin/push-test', {}, { admin: true, timeout: 15000 })
 
 /* ---------- montar a votação (autor) ---------- */

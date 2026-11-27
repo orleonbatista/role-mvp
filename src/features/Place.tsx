@@ -1,4 +1,5 @@
 import { SaveToList } from './Social'
+import { ShareToTurmaSheet } from './Turmas'
 import { PlacePhoto } from '../ui/PlacePhoto'
 import { motion, useScroll, useTransform } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -30,6 +31,7 @@ export function PlacePage() {
   const { id = '' } = useParams()
   const [sp] = useSearchParams()
   const sync = useSync().data
+  const [toTurma, setToTurma] = useState(false)
   const groupN = Number(sp.get('n')) || undefined
   const community = useQuery({ queryKey: ['place-reviews', id], queryFn: () => placeReviews(id), staleTime: 30_000 })
   const cr = community.data
@@ -196,12 +198,14 @@ export function PlacePage() {
 
           <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
             <SaveToList place={place} />
+            <button onClick={() => { setToTurma(true); track('place_to_turma_open', {}) }} className="hit flex items-center gap-2 text-[13px] text-mute underline-offset-4 hover:underline"><Users size={15} />Mandar pra turma</button>
             {/* curadoria direto daqui (antes só pelo menu do Perfil); curador vê como ação principal */}
             <Link to={`/indicar?id=${encodeURIComponent(place.id)}`} onClick={() => track('curate_from_place', { id: place.id })}
               className={cx('hit flex items-center gap-2 text-[13px] underline-offset-4 hover:underline', sync?.curator ? 'font-medium text-accent' : 'text-mute')}>
               <Star size={15} />{sync?.curator ? 'Curar este lugar' : base ? 'Indicar pro rolê' : 'Avaliar / curar'}
             </Link>
           </div>
+          <ShareToTurmaSheet place={place} open={toTurma} onClose={() => setToTurma(false)} />
           {place.kind !== 'evento' && <VenueSection place={place} />}
 
           <h2 className="mb-3 mt-9 text-[13px] uppercase tracking-[0.14em] text-mute">Quem foi</h2>

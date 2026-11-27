@@ -127,6 +127,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS inbox (id TEXT PRIMARY KEY, device TEXT NOT 
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'reopened_at'").get()) db.exec('ALTER TABLE requests ADD COLUMN reopened_at INTEGER')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'voters'").get()) db.exec("ALTER TABLE requests ADD COLUMN voters TEXT NOT NULL DEFAULT 'link'")
 if (!db.prepare("SELECT 1 FROM pragma_table_info('groups') WHERE name = 'visibility'").get()) db.exec("ALTER TABLE groups ADD COLUMN visibility TEXT NOT NULL DEFAULT 'privada'")
+// admins da turma (o dono é sempre admin) e link de convite da turma (sem precisar de votação)
+if (!db.prepare("SELECT 1 FROM pragma_table_info('group_members') WHERE name = 'role'").get()) db.exec('ALTER TABLE group_members ADD COLUMN role TEXT')
+if (!db.prepare("SELECT 1 FROM pragma_table_info('groups') WHERE name = 'invite'").get()) db.exec('ALTER TABLE groups ADD COLUMN invite TEXT')
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ix_groups_invite ON groups(invite) WHERE invite IS NOT NULL')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('group_messages') WHERE name = 'ref'").get()) db.exec('ALTER TABLE group_messages ADD COLUMN ref TEXT')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('inbox') WHERE name = 'actor'").get()) db.exec('ALTER TABLE inbox ADD COLUMN actor TEXT')
 if (!db.prepare("SELECT 1 FROM pragma_table_info('requests') WHERE name = 'review_notified'").get()) db.exec('ALTER TABLE requests ADD COLUMN review_notified INTEGER')
@@ -430,7 +434,7 @@ const qp = {
   leave: db.prepare('DELETE FROM group_members WHERE group_id = ? AND device = ?'),
   myGroups: db.prepare(`SELECT g.* FROM groups g JOIN group_members m ON m.group_id = g.id WHERE m.device = ? ORDER BY g.updated_at DESC LIMIT 20`),
   members: db.prepare('SELECT device, name, hue FROM group_members WHERE group_id = ? ORDER BY joined_at'),
-  groupRequests: db.prepare('SELECT id, data, created_at, decided_place FROM requests WHERE group_id = ? ORDER BY created_at DESC LIMIT 6'),
+  groupRequests: db.prepare('SELECT id, data, created_at, decided_place, author_device FROM requests WHERE group_id = ? ORDER BY created_at DESC LIMIT 6'),
   setReqGroup: db.prepare('UPDATE requests SET group_id = ? WHERE id = ?'),
 }
 const userName = (device) => parse(qp.getUser.get(device)?.data ?? 'null')?.name
@@ -476,11 +480,17 @@ export function insertReview(body, device, verdict) {
   return ok({ ok: true, status: verdict.ok ? 'ok' : 'revisao' })
 }
 
+/** admin da turma: o dono ou quem um admin promoveu */
+function groupAdmin(g, device) {
+  if (!g) return false
+  if (g.owner_device === device) return true
+  return db.prepare("SELECT role FROM group_members WHERE group_id = ? AND device = ?").get(g.id, device)?.role === 'admin'
+}
 function groupView(g, device) {
   return {
-    id: g.id, name: g.name, mine: g.owner_device === device, updatedAt: g.updated_at, visibility: g.visibility ?? 'privada',
-    members: qp.members.all(g.id).map((m) => ({ name: m.name, hue: m.hue, me: m.device === device, pid: pseudo(m.device), handle: handleOf(m.device), photo: avatarVersion(m.device), level: reputationOf(m.device).level })),
-    requests: qp.groupRequests.all(g.id).map((r) => ({ id: r.id, text: parse(r.data)?.text ?? '', createdAt: r.created_at, decided: !!r.decided_place })),
+    id: g.id, name: g.name, mine: g.owner_device === device, admin: groupAdmin(g, device), updatedAt: g.updated_at, visibility: g.visibility ?? 'privada',
+    members: db.prepare('SELECT device, name, hue, role FROM group_members WHERE group_id = ? ORDER BY joined_at').all(g.id).map((m) => ({ name: m.name, hue: m.hue, me: m.device === device, pid: pseudo(m.device), handle: handleOf(m.device), photo: avatarVersion(m.device), level: reputationOf(m.device).level, owner: m.device === g.owner_device, admin: m.device === g.owner_device || m.role === 'admin' })),
+    requests: qp.groupRequests.all(g.id).map((r) => ({ id: r.id, text: parse(r.data)?.text ?? '', createdAt: r.created_at, decided: !!r.decided_place, mine: r.author_device === device })),
   }
 }
 /** quem pode votar: 'link' (qualquer um com o link) ou 'amigos' (amigos do autor e quem já está na turma) */
@@ -608,9 +618,11 @@ function reputationOf(dev) {
   const fromRole = db.prepare("SELECT COUNT(*) n FROM reviews WHERE device = ? AND status = 'ok' AND request_id IS NOT NULL").get(dev).n
   const photos = db.prepare("SELECT COUNT(*) n FROM place_photos WHERE device = ? AND status = 'ok'").get(dev).n
   const closed = db.prepare('SELECT COUNT(*) n FROM requests WHERE author_device = ? AND decided_place IS NOT NULL').get(dev).n
-  const points = reviews * 10 + fromRole * 5 + photos * 3 + closed * 4
+  const created = db.prepare('SELECT COUNT(*) n FROM requests WHERE author_device = ?').get(dev).n
+  const voted = db.prepare("SELECT COUNT(DISTINCT request_id) n FROM votes WHERE device = ? AND request_id NOT IN (SELECT id FROM requests WHERE author_device = ?)").get(dev, dev).n
+  const points = reviews * 10 + fromRole * 5 + photos * 3 + closed * 4 + Math.min(created, 20) * 2 + Math.min(voted, 30)
   const level = points >= 300 ? 'curador ouro' : points >= 120 ? 'curador prata' : points >= 40 ? 'curador bronze' : points > 0 ? 'iniciante' : 'novo'
-  return { points, level, reviews, photos, closed }
+  return { points, level, reviews, photos, closed, created, voted }
 }
 
 /** quem participa de um pedido: autor + quem votou, marcou horário, confirmou presença ou mandou recado */
@@ -800,7 +812,7 @@ function handlePeople(method, path, body, device, now) {
     for (const r of qp.ratings.all()) { const a = (acc[r.place_id] ??= [0, 0]); a[0] += VERDICT_SCORE[r.verdict] * r.n; a[1] += r.n }
     return ok(Object.fromEntries(Object.entries(acc).map(([k, [sum, n]]) => [k, [Math.round((sum / n) * 10) / 10, n]])))
   }
-  if (method === 'GET' && path === '/api/groups') return ok(qp.myGroups.all(device).map((g) => groupView(g, device)).filter((g) => g.members.length >= 2)) // turma de uma pessoa só não é turma
+  if (method === 'GET' && path === '/api/groups') return ok(qp.myGroups.all(device).map((g) => groupView(g, device)).filter((g) => g.members.length >= 2 || !g.requests.length)) // turma de uma pessoa só (de votação) não é turma; criada à mão aparece
   if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/(name|leave)$/)) && method === 'POST') {
     if (!qp.member.get(m[1], device)) return bad('not_member', 403)
     if (m[2] === 'leave') { qp.leave.run(m[1], device); return ok({ ok: true }) }
@@ -1301,6 +1313,15 @@ export function handleApi(method, path, req, body) {
         feed.push({ kind: 'review', who: card(r.device), placeId: r.place_id, placeName: parse(r.place ?? 'null')?.[1] ?? null, verdict: r.verdict, note: r.note, at: r.at })
       for (const l of db.prepare(`SELECT id, device, title, places, updated_at FROM lists WHERE device IN (${ph}) ORDER BY updated_at DESC LIMIT 15`).all(...friends))
         feed.push({ kind: 'list', who: card(l.device), listId: l.id, title: l.title, count: (parse(l.places) ?? []).length, at: l.updated_at })
+      // pedidos que os amigos criaram e votações em que entraram (sem os de teste)
+      for (const r of db.prepare(`SELECT id, author_device, data, created_at FROM requests WHERE author_device IN (${ph}) ORDER BY created_at DESC LIMIT 15`).all(...friends)) {
+        const t = parse(r.data)?.text ?? ''
+        if (!t.startsWith('[E2E]')) feed.push({ kind: 'request', who: card(r.author_device), requestId: r.id, text: t.slice(0, 120), at: r.created_at })
+      }
+      for (const v of db.prepare(`SELECT v.request_id, v.device, MAX(v.at) at, r.data FROM votes v JOIN requests r ON r.id = v.request_id WHERE v.device IN (${ph}) AND r.author_device != v.device GROUP BY v.request_id, v.device ORDER BY at DESC LIMIT 15`).all(...friends)) {
+        const t = parse(v.data)?.text ?? ''
+        if (!t.startsWith('[E2E]')) feed.push({ kind: 'voted', who: card(v.device), requestId: v.request_id, text: t.slice(0, 120), at: v.at })
+      }
       for (const r of db.prepare(`SELECT author_device, decided_place, decided_at, data FROM requests WHERE decided_place IS NOT NULL AND author_device IN (${ph}) ORDER BY decided_at DESC LIMIT 15`).all(...friends)) {
         const d = parse(r.data) ?? {}
         const p = (d.places ?? []).find((x) => Array.isArray(x) && x[0] === r.decided_place)
@@ -1345,15 +1366,19 @@ export function handleApi(method, path, req, body) {
   if (method === 'GET' && path === '/api/ranking') {
     const hood = str(new URL(req.url, 'http://x').searchParams.get('hood') ?? '', 40)
     const users = db.prepare('SELECT device, data, hood FROM users WHERE consent_at > 0' + (hood ? ' AND hood = ?' : '')).all(...(hood ? [hood] : []))
-    const out = users.map((u) => { const p = parse(u.data) ?? {}; return { pid: pseudo(u.device), name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u.hood, reputation: reputationOf(u.device), me: u.device === device } })
-      .filter((x) => x.reputation.points > 0).sort((a, b) => b.reputation.points - a.reputation.points).slice(0, 30)
+    // amigos: você + seus amigos, mesmo sem pontos; geral: quem já pontuou
+    const scope = new URL(req.url, 'http://x').searchParams.get('scope') === 'geral' ? 'geral' : 'amigos'
+    const circle = scope === 'amigos' ? new Set([device, ...db.prepare("SELECT a, b FROM friendships WHERE (a = ? OR b = ?) AND status = 'amigos'").all(device, device).map((r) => (r.a === device ? r.b : r.a))]) : null
+    const out = users.filter((u) => !circle || circle.has(u.device))
+      .map((u) => { const p = parse(u.data) ?? {}; return { pid: pseudo(u.device), name: p.name ?? 'Alguém', hue: p.hue ?? 200, hood: u.hood, handle: handleOf(u.device), photo: avatarVersion(u.device), reputation: reputationOf(u.device), me: u.device === device } })
+      .filter((x) => circle || x.reputation.points > 0).filter((x) => !/^E2E/.test(x.name)).sort((a, b) => b.reputation.points - a.reputation.points).slice(0, 30)
     return ok(out)
   }
   // turma pública ou privada (privada: só entra quem recebe o link de uma votação; pública: aparece no perfil dos membros e qualquer um entra)
   if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/settings$/)) && write) {
     const g = db.prepare('SELECT * FROM groups WHERE id = ?').get(m[1])
     if (!g || !qp.member.get(m[1], device)) return bad('not_member', 403)
-    if (g.owner_device !== device) return bad('not_owner', 403)
+    if (!groupAdmin(g, device)) return bad('not_admin', 403)
     const vis = body.visibility === 'publica' ? 'publica' : 'privada'
     db.prepare('UPDATE groups SET visibility = ? WHERE id = ?').run(vis, m[1])
     return ok({ ok: true, visibility: vis })
@@ -1384,6 +1409,70 @@ export function handleApi(method, path, req, body) {
     groupNote(m[1], `${p.name ?? 'Alguém'} entrou na turma`)
     return ok({ ok: true })
   }
+  // criar turma sem votação: quem cria é o dono (admin) e chama a galera pelo link ou pelos amigos
+  if (write && path === '/api/groups') {
+    const u = qp.getUser.get(device)
+    if (!u) return bad('perfil', 403)
+    if (db.prepare('SELECT COUNT(*) n FROM groups WHERE owner_device = ? AND created_at > ?').get(device, now - 86_400_000).n >= 10) return bad('rate_limited', 429)
+    const p = parse(u.data) ?? {}
+    const id = `t-${randomBytes(5).toString('hex')}`
+    qp.insGroup.run(id, str(body.name, 40).trim() || null, device, now, now)
+    qp.addMember.run(id, device, p.name ?? 'Alguém', p.hue ?? 200, now, now)
+    db.prepare("UPDATE group_members SET role = 'admin' WHERE group_id = ? AND device = ?").run(id, device)
+    groupNote(id, `${p.name ?? 'Alguém'} criou a turma`)
+    return ok({ ok: true, id })
+  }
+  // link de convite da turma: qualquer membro pega o link; admin pode trocar (o antigo para de funcionar)
+  if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/link$/)) && write) {
+    const g = qp.getGroup.get(m[1])
+    if (!g || !qp.member.get(m[1], device)) return bad('not_member', 403)
+    let token = g.invite
+    if (!token || (body.reset === true && groupAdmin(g, device))) {
+      token = randomBytes(9).toString('base64url')
+      db.prepare('UPDATE groups SET invite = ? WHERE id = ?').run(token, m[1])
+    }
+    return ok({ ok: true, token })
+  }
+  if ((m = path.match(/^\/api\/groups\/by-link\/([A-Za-z0-9_-]{8,20})(\/join)?$/))) {
+    const g = db.prepare('SELECT * FROM groups WHERE invite = ?').get(m[1])
+    if (!g) return bad('not_found', 404)
+    const mem = qp.members.all(g.id)
+    if (mem.some((x) => isBlocked(x.device, device))) return bad('not_found', 404)
+    if (method === 'GET') return ok({ id: g.id, name: g.name, members: mem.map((x) => ({ name: x.name, hue: x.hue, pid: pseudo(x.device), photo: avatarVersion(x.device) })).slice(0, 8), count: mem.length, member: !!qp.member.get(g.id, device) })
+    if (write && m[2]) {
+      const u = qp.getUser.get(device)
+      if (!u) return bad('perfil', 403)
+      if (qp.member.get(g.id, device)) return ok({ ok: true, id: g.id, already: true })
+      if (mem.length >= 60) return bad('cheia', 409)
+      const p = parse(u.data) ?? {}
+      qp.addMember.run(g.id, device, p.name ?? 'Alguém', p.hue ?? 200, now, now)
+      qp.touchGroup.run(now, g.id)
+      groupNote(g.id, `${p.name ?? 'Alguém'} entrou na turma pelo link`)
+      notify({ to: mem.filter((x) => groupAdmin(g, x.device)).map((x) => x.device), from: device, key: `gj-${g.id}`, title: `${p.name ?? 'Alguém'} entrou na turma${g.name ? ` ${g.name}` : ''}`, body: 'Pelo link de convite', url: 'turmas' })
+      return ok({ ok: true, id: g.id })
+    }
+  }
+  // admin: torna admin, tira de admin ou remove alguém (o dono não pode ser mexido)
+  if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/members$/)) && write) {
+    const g = qp.getGroup.get(m[1])
+    if (!g || !groupAdmin(g, device)) return bad('not_admin', 403)
+    const other = deviceOfPseudo(str(body.pid, 20))
+    if (!other || !qp.member.get(m[1], other)) return bad('not_found', 404)
+    if (other === g.owner_device) return bad('dono', 403)
+    const who = db.prepare('SELECT name FROM group_members WHERE group_id = ? AND device = ?').get(m[1], other)?.name ?? 'Alguém'
+    if (body.action === 'admin' || body.action === 'membro') {
+      db.prepare('UPDATE group_members SET role = ? WHERE group_id = ? AND device = ?').run(body.action === 'admin' ? 'admin' : null, m[1], other)
+      if (body.action === 'admin') notify({ to: [other], from: device, key: `ga-${m[1]}`, title: `Você agora é admin da turma${g.name ? ` ${g.name}` : ''}`, body: 'Dá pra chamar, remover e promover gente', url: 'turmas' })
+      return ok({ ok: true })
+    }
+    if (body.action === 'remove') {
+      if (other === device) return bad('self')
+      qp.leave.run(m[1], other)
+      groupNote(m[1], `${userName(device) ?? 'Um admin'} tirou ${who} da turma`)
+      return ok({ ok: true })
+    }
+    return bad('action')
+  }
   // chat da turma (contínuo, além dos recados de cada rolê)
   if ((m = path.match(/^\/api\/groups\/(t-[a-z0-9]{10})\/chat$/))) {
     if (!qp.member.get(m[1], device)) return bad('not_member', 403)
@@ -1398,7 +1487,10 @@ export function handleApi(method, path, req, body) {
       if (db.prepare('SELECT COUNT(*) n FROM group_messages WHERE group_id = ? AND device = ? AND at > ?').get(m[1], device, now - 60_000).n >= 15) return bad('rate_limited', 429)
       const id = `gm-${randomBytes(6).toString('hex')}`
       const name = userName(device) ?? str(body.name, 40) ?? 'Alguém'
-      db.prepare('INSERT INTO group_messages (id, group_id, device, name, text, at) VALUES (?, ?, ?, ?, ?, ?)').run(id, m[1], device, name, text, now)
+      // lugar compartilhado: guarda o id (e o resumo, se for lugar do Google) pra virar cartão com "pôr na votação"
+      const pid = str(body.placeId, 120)
+      const ref = pid && /^[A-Za-z0-9_-]{4,120}$/.test(pid) ? `place:${JSON.stringify(snap(body.place) ?? [pid])}` : null
+      db.prepare('INSERT INTO group_messages (id, group_id, device, name, text, at, ref) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, m[1], device, name, text, now, ref)
       qp.touchGroup.run(now, m[1])
       const to = qp.members.all(m[1]).map((x) => x.device).filter((d) => d !== device && !isBlocked(d, device))
       notify({ to, key: `chat-${m[1]}`, title: `${name} na turma`, body: text.slice(0, 120), url: 'turmas' })

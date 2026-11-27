@@ -10,6 +10,8 @@ import { isVague, parseRequest } from '../mocks/ranker'
 import { parseText, useCreateRequest, useDeleteRequest } from '../lib/api'
 import { turmaName, useTurmas } from './Turmas'
 import type { Criteria, Occasion, Vibe } from '../lib/types'
+import { placeById } from '../mocks/seeds/places'
+import { editOption } from '../mocks/remote'
 
 const EXAMPLES = [
   'aniversário pra 14 pessoas sábado em Pinheiros, até R$ 90',
@@ -28,7 +30,9 @@ export function NewRequest() {
   const create = useCreateRequest()
   const del = useDeleteRequest()
   const replaces = params.get('substitui')
-  const [text, setText] = useState(params.get('t') ?? '')
+  // votação a partir de um lugar (chat da turma): o lugar entra fixo nas opções
+  const fixed = params.get('lugar') ? placeById.get(params.get('lugar')!) : undefined
+  const [text, setText] = useState(params.get('t') ?? (fixed ? `Rolê no ${fixed.name}${fixed.hood ? ` em ${fixed.hood}` : ''}` : ''))
   const [parsed, setParsed] = useState<Criteria | null>(null)
   const [occasion, setOccasion] = useState<Occasion | undefined>((params.get('o') as Occasion) || undefined)
   const [group, setGroup] = useState<number | undefined>()
@@ -76,6 +80,8 @@ export function NewRequest() {
     const { id } = await create.mutateAsync({ text, groupId: turmaId, overrides: { occasion, groupSize: group, vibes: vibes.length ? [...new Set([...(parsed?.vibes ?? []), ...vibes])] : undefined } })
     // editar = novo pedido no lugar do antigo (a votação recomeça com as opções novas)
     if (replaces && /^r-[a-z0-9-]{1,24}$/.test(replaces)) await del.mutateAsync(replaces).catch(() => {})
+    // o lugar escolhido no chat entra na votação (o pedido sobe pro servidor em segundo plano; tenta algumas vezes)
+    if (fixed) void (async () => { for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 1200 * (i + 1))); if (await editOption(id, 'add', fixed).catch(() => false)) return } })()
     track('request_created', { vague, clarified: clarify, groupSize: group ?? now.groupSize, occasion: occasion ?? now.occasion, niches: now.niches, unmet })
     nav(`/pedido/${id}`, { replace: true })
   }
