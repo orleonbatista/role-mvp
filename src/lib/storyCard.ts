@@ -46,7 +46,18 @@ export interface AvaliacaoCard {
   note?: string
   author: string
 }
-export type StoryCard = PedidoCard | FechadoCard | SugiraCard | EventoCard | AvaliacaoCard
+/** convite/flyer livre (caixa de ferramentas): story 1080×1920 ou post de feed 1080×1350 */
+export interface ConviteCard {
+  kind: 'convite'
+  title: string
+  when?: string
+  where?: string
+  note?: string
+  author: string
+  hue: number
+  format?: 'story' | 'feed'
+}
+export type StoryCard = PedidoCard | FechadoCard | SugiraCard | EventoCard | AvaliacaoCard | ConviteCard
 
 async function fontsReady() {
   try {
@@ -352,16 +363,51 @@ function drawEvento(ctx: CanvasRenderingContext2D, c: EventoCard) {
   footer(ctx, c.by ? `divulgado por ${c.by} no rolê.` : 'decidam juntos no rolê.')
 }
 
+function drawConvite(ctx: CanvasRenderingContext2D, c: ConviteCard) {
+  const h = ctx.canvas.height
+  const feed = h < H
+  background(ctx, [c.hue, (c.hue + 60) % 360, 82])
+  brand(ctx)
+  ctx.textAlign = 'center'
+  label(ctx, 'Você tá convidado', W / 2, feed ? 330 : 560)
+  ctx.font = `400 ${feed ? 128 : 150}px ${SERIF}`
+  ctx.fillStyle = INK
+  const lh = feed ? 124 : 150
+  const lines = wrap(ctx, c.title || 'Rolê', W - 160, 3)
+  let y = (feed ? 480 : 740)
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, y + i * lh))
+  y += (lines.length - 1) * lh + (feed ? 100 : 130)
+  ctx.font = `500 ${feed ? 44 : 48}px ${SANS}`
+  for (const [txt, color] of [[c.when, ACCENT], [c.where, INK]] as const) {
+    if (!txt) continue
+    wrap(ctx, txt, W - 200, 2).forEach((l) => { ctx.fillStyle = color; ctx.fillText(l, W / 2, y); y += feed ? 62 : 70 })
+  }
+  if (c.note) {
+    y += 20
+    ctx.font = `italic 400 ${feed ? 48 : 56}px ${SERIF}`
+    ctx.fillStyle = MUTE
+    wrap(ctx, c.note, W - 200, feed ? 2 : 3).forEach((l) => { ctx.fillText(l, W / 2, y); y += feed ? 60 : 68 })
+  }
+  ctx.textAlign = 'left'
+  if (!feed) stickerSlot(ctx, 1600, 'Confirma pelo link ↓')
+  ctx.font = `500 28px ${SANS}`
+  ctx.fillStyle = MUTE
+  ctx.textAlign = 'center'
+  ctx.fillText(`${c.author ? `convite de ${c.author} · ` : ''}feito no rolê.`, W / 2, h - 70)
+  ctx.textAlign = 'left'
+}
+
 export async function renderStory(card: StoryCard): Promise<Blob> {
   await fontsReady()
   const canvas = document.createElement('canvas')
   canvas.width = W
-  canvas.height = H
+  canvas.height = card.kind === 'convite' && card.format === 'feed' ? 1350 : H
   const ctx = canvas.getContext('2d')!
   if (card.kind === 'pedido') drawPedido(ctx, card)
   else if (card.kind === 'sugira') drawSugira(ctx, card)
   else if (card.kind === 'evento') drawEvento(ctx, card)
   else if (card.kind === 'avaliacao') drawAvaliacao(ctx, card)
+  else if (card.kind === 'convite') drawConvite(ctx, card)
   else drawFechado(ctx, card)
   return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('canvas vazio'))), 'image/png'))
 }

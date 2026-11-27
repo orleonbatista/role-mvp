@@ -2,7 +2,7 @@ import { limits as googleLimits } from '../lib/gdiscover'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { ArrowUpRight, CalendarDays, MessageCircle, Sparkles, Users } from 'lucide-react'
+import { ArrowUpRight, CalendarDays, MessageCircle, Sparkles, Users, Wrench } from 'lucide-react'
 import { InvitesList } from './Invites'
 import { InboxBell } from './Inbox'
 import { Avatar, Cover, Page, SectionTitle, Skeleton, Tag } from '../ui/primitives'
@@ -47,7 +47,10 @@ export function Home() {
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-mute">
             {greeting()}, {me?.name.split(' ')[0]}
           </motion.p>
-          <InboxBell />
+          <span className="flex items-center gap-2">
+            <Link to="/ferramentas" aria-label="Ferramentas: dividir conta, convite, sorteio" className="grid size-10 place-items-center rounded-full bg-white/[0.06]"><Wrench size={16} /></Link>
+            <InboxBell />
+          </span>
         </div>
         <h1 className="mt-1 font-serif text-[40px] leading-[0.95] tracking-tight">
           Pra onde<br /><em className="text-accent">hoje?</em>

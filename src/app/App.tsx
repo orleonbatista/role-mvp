@@ -59,6 +59,7 @@ const TurmasPage = lazy(() => retryImport(() => import('../features/Turmas').the
 const SocialPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.SocialPage }))))
 const PersonPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.PersonPage }))))
 const InboxPage = lazy(() => retryImport(() => import('../features/Inbox').then((m) => ({ default: m.InboxPage }))))
+const FerramentasPage = lazy(() => retryImport(() => import('../features/Ferramentas').then((m) => ({ default: m.FerramentasPage }))))
 const ListPage = lazy(() => retryImport(() => import('../features/Social').then((m) => ({ default: m.ListPage }))))
 const QuickSearch = lazy(() => retryImport(() => import('../features/QuickSearch').then((m) => ({ default: m.QuickSearch }))))
 const TestesPage = lazy(() => retryImport(() => import('../features/Testes').then((m) => ({ default: m.TestesPage }))))
@@ -77,7 +78,7 @@ function Fallback() {
 export function App() {
   const location = useLocation()
   const { data: profile, isLoading } = useProfile()
-  const isPublic = ['/u/', '/lista/', '/r/', '/s/', '/e/', '/p/', '/lugar/', '/avaliar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
+  const isPublic = ['/u/', '/lista/', '/ferramentas', '/r/', '/s/', '/e/', '/p/', '/lugar/', '/avaliar/', '/divulgar', '/indicar', '/fundador', '/testes', '/privacidade'].some((p) => location.pathname.startsWith(p))
   const needsOnboarding = !isLoading && !profile?.onboarded && !location.pathname.startsWith('/onboarding') && !isPublic
   // /perfil/ (com barra no fim, como o GitHub Pages serve as rotas fixas) vira /perfil: antes a barra inferior sumia
   // nessas telas porque a rota não batia
@@ -108,7 +109,7 @@ export function App() {
                     ['/onboarding', <Onboarding />], ['/novo', <NewRequest />], ['/pedido/:id', <Results />], ['/r/:id', <VotePage />],
                     ['/lugar/:id', <PlacePage />], ['/avaliar/:id', <ReviewPage />], ['/perfil', <ProfilePage />], ['/testes', <TestesPage />],
                     ['/s/:id', <SuggestPage />], ['/i/:id', <ImportSuggestion />],
-                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />], ['/buscar', <QuickSearch />], ['/amigos', <SocialPage />], ['/u/:pid', <PersonPage />], ['/lista/:id', <ListPage />], ['/notificacoes', <InboxPage />],
+                    ['/e/:id', <EventInvite />], ['/divulgar', <DivulgarPage />], ['/c/:id', <ImportSubmission />], ['/p/:handle', <CreatorPage />], ['/indicar', <IndicarPage />], ['/fundador', <FundadorPage />], ['/privacidade', <PrivacidadePage />], ['/turmas', <TurmasPage />], ['/buscar', <QuickSearch />], ['/amigos', <SocialPage />], ['/u/:pid', <PersonPage />], ['/lista/:id', <ListPage />], ['/notificacoes', <InboxPage />], ['/ferramentas', <FerramentasPage />],
                   ].map(([path, el]) => (
                     <Route key={path as string} path={path as string} element={<RouteError><Suspense fallback={<Fallback />}>{el}</Suspense></RouteError>} />
                   ))}

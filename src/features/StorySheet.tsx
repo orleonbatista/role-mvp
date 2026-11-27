@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { Check, Copy, Download } from 'lucide-react'
 import { Sheet } from '../ui/Sheet'
-import { Button, Skeleton } from '../ui/primitives'
+import { Button, Skeleton, cx } from '../ui/primitives'
 import { useToast } from '../ui/Toast'
 import { ease } from '../ui/motion'
 import { renderStory, type StoryCard } from '../lib/storyCard'
@@ -36,7 +36,9 @@ export function StorySheet({ open, onClose, card, link, context }: { open: boole
     return () => { if (url) URL.revokeObjectURL(url) }
   }, [open, card, context])
 
+  const feed = card?.kind === 'convite' && card.format === 'feed'
   async function copyLink() {
+    if (!link) return false
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); return true } catch { return false }
   }
 
@@ -68,11 +70,11 @@ export function StorySheet({ open, onClose, card, link, context }: { open: boole
 
   return (
     <Sheet open={open} onClose={onClose}>
-      <p className="font-serif text-[28px] leading-none">Postar no Story</p>
-      <p className="mt-2 text-sm text-mute">Quem tocar no link vota sem instalar nada, e conhece o app.</p>
+      <p className="font-serif text-[28px] leading-none">{feed ? 'Postar no feed' : 'Postar no Story'}</p>
+      <p className="mt-2 text-sm text-mute">{card?.kind === 'convite' ? (feed ? 'Arte 4:5 pronta pro feed do Instagram.' : 'Arte pronta pro Story; o link vai no sticker.') : 'Quem tocar no link vota sem instalar nada, e conhece o app.'}</p>
 
       <div className="mt-4 flex gap-4">
-        <div className="relative aspect-[9/16] w-[38%] shrink-0 overflow-hidden rounded-[18px] border border-line bg-bg shadow-[0_20px_50px_-20px_rgba(198,255,61,0.35)]">
+        <div className={cx('relative w-[38%] shrink-0 overflow-hidden rounded-[18px] border border-line bg-bg shadow-[0_20px_50px_-20px_rgba(198,255,61,0.35)]', feed ? 'aspect-[4/5]' : 'aspect-[9/16]')}>
           <AnimatePresence mode="wait">
             {preview ? (
               <motion.img key="img" src={preview} alt="Prévia da arte do Story" className="h-full w-full object-cover"
@@ -83,11 +85,11 @@ export function StorySheet({ open, onClose, card, link, context }: { open: boole
           </AnimatePresence>
         </div>
         <ol className="grid content-start gap-3 text-[13px] leading-snug text-ink/85">
-          {[
+          {(feed ? [['1', 'Toque em postar e escolha', 'Instagram → Feed'], ['2', 'Escreva a legenda e', 'marque a galera']] : [
             ['1', 'Toque em postar e escolha', 'Instagram → Story'],
             ['2', 'No Story, abra os stickers e', 'escolha “Link”'],
             ['3', 'Cole o link (já copiado) e', 'coloque na área marcada'],
-          ].map(([n, a, b]) => (
+          ]).map(([n, a, b]) => (
             <li key={n} className="flex gap-2.5">
               <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent/15 text-[12px] font-semibold text-accent">{n}</span>
               <span>{a} <b className="font-medium text-ink">{b}</b></span>
@@ -106,7 +108,7 @@ export function StorySheet({ open, onClose, card, link, context }: { open: boole
           {posted ? <Check size={17} /> : <IgGlyph />} {posted ? 'Pronto! Agora cola o link' : 'Postar no Instagram'}
         </button>
         <div className="grid grid-cols-2 gap-2">
-          <Button size="lg" variant="soft" icon={copied ? <Check size={16} /> : <Copy size={16} />} onClick={copyLink}>{copied ? 'Copiado' : 'Copiar link'}</Button>
+          <Button size="lg" variant="soft" disabled={!link} icon={copied ? <Check size={16} /> : <Copy size={16} />} onClick={copyLink}>{copied ? 'Copiado' : 'Copiar link'}</Button>
           <Button size="lg" variant="soft" icon={<Download size={16} />} disabled={!preview} onClick={() => { download(); track('story_downloaded', { context }) }}>Baixar</Button>
         </div>
       </div>

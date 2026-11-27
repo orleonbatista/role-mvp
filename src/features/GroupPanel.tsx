@@ -217,48 +217,61 @@ export function PhotoAlbum({ d, voter }: { d: RequestDetail; voter: string }) {
 export function SplitBill({ d }: { d: RequestDetail }) {
   const [open, setOpen] = useState(false)
   const going = d.extra?.rsvps.filter((r) => r.status === 'vou').length || d.request.criteria.groupSize || 2
-  const [f, setF] = useState({ total: '', people: String(going), key: '', name: '', city: '' })
-  const toast = useToast()
   if (d.request.status !== 'decidido') return null
-  const total = Number(f.total.replace(',', '.')) || 0
-  const people = Math.max(1, Number(f.people) || 1)
-  const each = Math.ceil((total / people) * 100) / 100
-  const keyOk = pixKeyOk(f.key)
-  const code = total > 0 && keyOk && f.name.trim() ? pixPayload({ key: f.key, name: f.name, city: f.city || 'SAO PAULO', amount: each }) : ''
-  const fi = 'h-12 w-full rounded-2xl border border-line bg-white/[0.03] px-4 text-[14px] outline-none placeholder:text-faint focus:border-accent'
   return (
     <>
       <button onClick={() => setOpen(true)} className="mx-5 mt-3 flex h-11 w-[calc(100%-2.5rem)] items-center justify-center gap-2 rounded-full border border-line text-[13px]"><Receipt size={15} />Dividir a conta</button>
-      <Sheet open={open} onClose={() => setOpen(false)}>
-        <p className="font-serif text-[28px] leading-tight">Dividir a conta</p>
-        <p className="mt-1 text-[13px] text-mute">Quem pagou põe a chave Pix; o app gera o código com o valor de cada um. O pagamento acontece no app do banco.</p>
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <input className={fi} inputMode="decimal" placeholder="Total (R$)" value={f.total} onChange={(e) => setF({ ...f, total: e.target.value.replace(/[^\d,.]/g, '') })} />
-          <input className={fi} inputMode="numeric" placeholder="Pessoas" value={f.people} onChange={(e) => setF({ ...f, people: e.target.value.replace(/\D/g, '') })} />
-        </div>
-        {total > 0 && <p className="mt-3 text-center font-serif text-[34px] leading-none">R$ {each.toFixed(2).replace('.', ',')} <span className="font-sans text-[13px] text-mute">por pessoa</span></p>}
-        <div className="mt-4 grid gap-2">
-          <input className={fi} placeholder="Chave Pix de quem pagou" value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })} />
-          {f.key && !keyOk && <p className="text-[12px] text-[#ff8a8a]">Chave inválida: CPF/CNPJ só números, celular com +55, e-mail ou chave aleatória.</p>}
-          <div className="grid grid-cols-2 gap-2">
-            <input className={fi} placeholder="Nome de quem recebe" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-            <input className={fi} placeholder="Cidade" value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} />
-          </div>
-        </div>
-        {code && (
-          <>
-            <p className="mt-4 break-all rounded-2xl bg-white/[0.04] p-3 font-mono text-[11px] text-ink/80">{code}</p>
-            <Button size="lg" className="mt-3 w-full" icon={<Copy size={16} />} onClick={async () => { await navigator.clipboard.writeText(code); toast('Código Pix copiado'); track('pix_copied', {}) }}>Copiar Pix copia e cola</Button>
-            <a className="mt-2 flex h-12 items-center justify-center rounded-full border border-line text-[14px]" target="_blank" rel="noreferrer"
-              href={`https://wa.me/?text=${encodeURIComponent(`Rolê no ${d.options.find((o) => o.id === d.request.decidedPlaceId)?.name ?? 'bar'}: R$ ${each.toFixed(2).replace('.', ',')} pra cada. Pix copia e cola:\n${code}`)}`}>Mandar no grupo</a>
-          </>
-        )}
-      </Sheet>
+      <SplitSheet open={open} onClose={() => setOpen(false)} people={going} place={d.options.find((o) => o.id === d.request.decidedPlaceId)?.name} />
     </>
   )
 }
 
-/** quem está na votação, com reputação e link pro perfil (onde dá pra adicionar como amigo) */
+/** divisão da conta com Pix copia e cola (também usada fora de grupo, na caixa de ferramentas) */
+export function SplitSheet({ open, onClose, people: defPeople = 2, place }: { open: boolean; onClose: () => void; people?: number; place?: string }) {
+  const [f, setF] = useState(() => {
+    let saved: { key?: string; name?: string; city?: string } = {}
+    try { saved = JSON.parse(localStorage.getItem('role.pix') ?? '{}') } catch { /* */ }
+    return { total: '', people: String(defPeople), key: saved.key ?? '', name: saved.name ?? '', city: saved.city ?? '', tip: false }
+  })
+  const toast = useToast()
+  const total = (Number(f.total.replace(',', '.')) || 0) * (f.tip ? 1.1 : 1)
+  const people = Math.max(1, Number(f.people) || 1)
+  const each = Math.ceil((total / people) * 100) / 100
+  const keyOk = pixKeyOk(f.key)
+  const code = total > 0 && keyOk && f.name.trim() ? pixPayload({ key: f.key, name: f.name, city: f.city || 'SAO PAULO', amount: each }) : ''
+  useEffect(() => { if (code) try { localStorage.setItem('role.pix', JSON.stringify({ key: f.key, name: f.name, city: f.city })) } catch { /* */ } }, [code]) // eslint-disable-line react-hooks/exhaustive-deps
+  const fi = 'h-12 w-full rounded-2xl border border-line bg-white/[0.03] px-4 text-[14px] outline-none placeholder:text-faint focus:border-accent'
+  const brl = (n: number) => n.toFixed(2).replace('.', ',')
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <p className="font-serif text-[28px] leading-tight">Dividir a conta</p>
+      <p className="mt-1 text-[13px] text-mute">Quem pagou põe a chave Pix; o app gera o código com o valor de cada um. O pagamento acontece no app do banco.</p>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <input className={fi} inputMode="decimal" placeholder="Total (R$)" aria-label="Total da conta" value={f.total} onChange={(e) => setF({ ...f, total: e.target.value.replace(/[^\d,.]/g, '') })} />
+        <input className={fi} inputMode="numeric" placeholder="Pessoas" aria-label="Quantas pessoas" value={f.people} onChange={(e) => setF({ ...f, people: e.target.value.replace(/\D/g, '') })} />
+      </div>
+      <label className="mt-2 flex items-center gap-2 text-[13px] text-mute"><input type="checkbox" checked={f.tip} onChange={(e) => setF({ ...f, tip: e.target.checked })} className="accent-[#c6ff3d]" />Somar 10% de serviço</label>
+      {total > 0 && <p className="mt-3 text-center font-serif text-[34px] leading-none">R$ {brl(each)} <span className="font-sans text-[13px] text-mute">por pessoa{f.tip ? ` (total R$ ${brl(total)})` : ''}</span></p>}
+      <div className="mt-4 grid gap-2">
+        <input className={fi} placeholder="Chave Pix de quem pagou" aria-label="Chave Pix" value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })} />
+        {f.key && !keyOk && <p className="text-[12px] text-[#ff8a8a]">Chave inválida: CPF/CNPJ só números, celular com +55, e-mail ou chave aleatória.</p>}
+        <div className="grid grid-cols-2 gap-2">
+          <input className={fi} placeholder="Nome de quem recebe" aria-label="Nome de quem recebe" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+          <input className={fi} placeholder="Cidade" aria-label="Cidade" value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} />
+        </div>
+      </div>
+      {code && (
+        <>
+          <p className="mt-4 break-all rounded-2xl bg-white/[0.04] p-3 font-mono text-[11px] text-ink/80">{code}</p>
+          <Button size="lg" className="mt-3 w-full" icon={<Copy size={16} />} onClick={async () => { await navigator.clipboard.writeText(code); toast('Código Pix copiado'); track('pix_copied', {}) }}>Copiar Pix copia e cola</Button>
+          <a className="mt-2 flex h-12 items-center justify-center rounded-full border border-line text-[14px]" target="_blank" rel="noreferrer"
+            href={`https://wa.me/?text=${encodeURIComponent(`${place ? `Rolê no ${place}` : 'Rolê'}: R$ ${brl(each)} pra cada. Pix copia e cola:\n${code}`)}`}>Mandar no grupo</a>
+        </>
+      )}
+    </Sheet>
+  )
+}
+
 export function Participants({ d }: { d: RequestDetail }) {
   const ps = d.extra?.participants ?? []
   if (!d.extra?.online || ps.length < 2) return null
