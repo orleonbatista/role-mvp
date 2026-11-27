@@ -99,11 +99,11 @@ export async function discoverOSM(center: { lat: number; lng: number }, radius =
     done.set(ck, (async () => {
       try {
         track('osm_call', {})
-        const q = `[out:json][timeout:20];nwr(around:${radius},${center.lat},${center.lng})[amenity~"^(bar|pub|biergarten|restaurant|cafe|nightclub)$"][name];out center 120;`
+        const q = `[out:json][timeout:10];(node(around:${Math.min(radius, 4000)},${center.lat},${center.lng})[amenity~"^(bar|pub|biergarten|restaurant|cafe|nightclub)$"][name];way(around:${Math.min(radius, 4000)},${center.lat},${center.lng})[amenity~"^(bar|pub|biergarten|nightclub)$"][name];);out center 80;`
         // servidor principal e um espelho público (o principal às vezes fica ocupado)
         let r: Response | null = null
-        for (const host of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
-          try { r = await fetch(host, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: AbortSignal.timeout(15000) }) } catch { r = null }
+        for (const host of ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+          try { r = await fetch(host, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: AbortSignal.timeout(9000) }) } catch { r = null }
           if (r?.ok) break
         }
         if (!r?.ok) { done.delete(ck); return [] }
