@@ -68,9 +68,13 @@ test('pedido → votação → limpeza', async ({ page }) => {
   const id = page.url().match(/r-[a-z0-9-]+/)![0]
   await page.goto(`pedido/${id}`)
   await page.getByRole('button', { name: 'Apagar pedido' }).click()
+  const delReq = page.waitForResponse((r) => /\/api\/requests\/r-[^/]+\/delete/.test(r.url()), { timeout: 15_000 })
   await page.getByRole('alertdialog').getByRole('button', { name: 'Apagar pedido' }).click()
+  expect((await delReq).ok(), 'pedido de teste apagado no servidor').toBeTruthy()
   await expect(page).toHaveURL(/role-mvp\/?$/)
   await page.goto('perfil/')
   await page.getByText('Apagar meus dados').click()
+  const del = page.waitForResponse((r) => r.url().includes('/api/me/delete'), { timeout: 15_000 })
   await page.getByRole('alertdialog').getByRole('button', { name: 'Apagar tudo' }).click()
+  expect((await del).ok(), 'perfil de teste apagado no servidor').toBeTruthy()
 })

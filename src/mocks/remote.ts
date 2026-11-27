@@ -74,7 +74,8 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, opt
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(opts.timeout ?? 4000),
-      keepalive: method === 'POST',
+      // keepalive só pra corpo pequeno: o navegador recusa keepalive acima de 64 KB (era isso que barrava as fotos)
+      keepalive: method === 'POST' && (body ? JSON.stringify(body).length < 60_000 : true),
     })
     if (!r.ok) return null
     return (await r.json()) as T

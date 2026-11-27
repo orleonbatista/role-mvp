@@ -200,7 +200,7 @@ export function PhotoAlbum({ d, voter }: { d: RequestDetail; voter: string }) {
             for (const f of files) { try { if (await pushPhoto(d.request.id, await shrink(f), voter.trim(), toPlace)) n++ } catch { /* foto ilegível */ } }
             setBusy(false); e.target.value = ''
             track('photos_uploaded', { n })
-            toast(n ? `${n} ${n === 1 ? 'foto enviada' : 'fotos enviadas'}` : 'Não deu pra enviar (só quem participou do rolê pode pôr fotos)')
+            toast(n ? `${n} ${n === 1 ? 'foto enviada' : 'fotos enviadas'}` : 'Não deu pra enviar as fotos agora. Tente de novo; se continuar, avise a gente.')
             qc.invalidateQueries({ queryKey: ['request', d.request.id] })
           }} />
         </label>
